@@ -37,5 +37,12 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
+
+      - name: Install unreleased ExaModels
+        shell: julia --project=. {0}
+        run: |
+          using Pkg
+          Pkg.add(url="https://github.com/exanauts/ExaModels.jl", rev="main")
+
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1

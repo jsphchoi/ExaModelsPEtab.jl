@@ -37,14 +37,14 @@ function _build_petab_examodel(
     c = ExaModels.ExaCore(; backend, concrete = Val(true))
 
     # Create decision variables
-    PEinfo = _create_variables(c, PEprob, PEmodel)
+    PEinfo = _create_variables(c, PEmodel, PEprob)
     
     # Create constraints
-    _create_collocation(c, PEprob, PEmodel, PEinfo)
-    _create_continuity(c, PEprob, PEmodel, PEinfo)
+    _create_collocation(c, PEmodel, PEprob, PEinfo)
+    _create_continuity(c, PEmodel, PEprob, PEinfo)
 
     # Create objective
-    _create_objective(c, PEprob, PEmodel, PEinfo)
+    _create_objective(c, PEmodel, PEprob, PEinfo)
 
     return ExaModels.ExaModel(c)
 end

@@ -1,5 +1,5 @@
-# Problem details 
-struct ProblemInfo
+# Parameter Estimation Info (examodels nlp problem details)
+struct PEInfo
     Np::Int32           # number of parameters
     Nz::Int32           # (v = 1,...,Nz) number of state variables
     Nc::Int32           # (cidx = 1,...,Nc) number of experimental conditions
