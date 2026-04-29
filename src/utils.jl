@@ -34,3 +34,40 @@ function _get_cids(PEmodel::PEtabModel)
     conditions_df = PEtable[:conditions] # DataFrame of different conditions and properties for each condition
     return conditions_df[!,:conditionId]
 end
+
+# Returns ::Vector{(Function)} of ODE RHS equations
+# f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
+function _get_rhs_funcs(PEmodel, PEprob)
+    # Get symbolic ODE RHS expressions
+    sys = PEprob.model_info.model.sys # ODESystem from PEprob
+    f_exprs_raw = [ # Vector of raw symbolic ODE RHS expressions
+        eqn.rhs for eqn in MTK.equations(sys)
+    ]
+
+    # Substitute in fixed constant values
+    p_map = Dict(PEprob.model_info.model.parametermap) # Mapping: symbolics of all parameters => nominal values
+    fixed_syms = setdiff( # Symbolics of fixed constants
+        keys(Dict(p_map)), 
+        union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
+    )
+    dict_fixed = Dict(sym => val for (sym,val) in p_map if (sym in fixed_syms)) # Mapping: symbolics of fixed constants => values
+    f_exprs = [ # Substitute fixed values
+        Symbolics.substitute(f_expr_raw, dict_fixed)
+        for f_expr_raw in f_exprs_raw
+    ]
+
+    # Convert symbolic RHS expression into numeric function
+    return [ 
+        Symbolics.build_function(
+            f_expr,
+            [_get_zp_syms(PEprob); _get_cv_syms(PEmodel)]...,
+            expression = Val{false}
+        )
+        for f_expr in f_exprs
+    ]
+end
+
+# Returns ::Dictionary{} of p::String -> p[pidx] index
+function _get_dict_pstr_pidx(PEprob::PEtabODEProblem)
+    return Dict(pstr => pidx for (pidx,pstr) in enumerate(String.(PEprob.xnames)))
+end

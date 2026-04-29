@@ -6,4 +6,5 @@ function _create_objective(
     PEinfo::PEInfo
 )
     
+    return c
 end
