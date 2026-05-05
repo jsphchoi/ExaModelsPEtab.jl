@@ -18,10 +18,10 @@ function _create_variables(
         c = _create_cv(c, PEinfo)
     end
 
-    # # If initial conditions are steady-state equilibrium...
-    # if _check_x0SSpre(PEprob) 
-    #     c = _create_zss(c, PEmodel, PEprob, PEinfo) # TODO +x0SSpre(p)
-    # end
+    # If initial conditions are steady-state equilibrium...
+    if _check_x0SSpre(PEprob) 
+        c = _create_zss(c, PEmodel, PEprob, PEinfo)
+    end
 
     # # If there are time-dependent input functions u(t) or u(t,p)...
     # if _check_ut(PEprob)
@@ -82,9 +82,10 @@ end
 # Creates ExaModels decision variables for steady-state pre-equilibrium state 
 # zss[1:Nz,1:Nc]
 function _create_zss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    Nz = PEinfo.Nz
-    Nc = PEinfo.Nc
-    zss_init = _get_zss_init(PEmodel, PEprob, PEinfo) # TODO solve steady-state models conds
+    # Unpack problem info
+    (; Nz, Nc) = PEinfo
+
+    zss_init = _get_zss_init(PEmodel, PEprob, PEinfo)
     ExaModels.@add_var(c,
         zss,
         1:Nz, 1:Nc;

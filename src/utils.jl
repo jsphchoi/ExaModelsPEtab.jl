@@ -67,7 +67,29 @@ function _get_rhs_funcs(PEmodel, PEprob)
     ]
 end
 
-# Returns ::Dictionary{} of p::String -> p[pidx] index
+# Returns ::Dictionary{} of p::String => p[pidx] index
 function _get_dict_pstr_pidx(PEprob::PEtabODEProblem)
     return Dict(pstr => pidx for (pidx,pstr) in enumerate(String.(PEprob.xnames)))
+end
+
+# Returns ::Dictionary{} of cidx => steady-state cidx
+function _get_dict_cidx_sscidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+    cids = _get_cids(PEmodel)
+    sim_ids = PEprob.model_info.simulation_info.conditionids[:simulation]
+    ssc_ids = PEprob.model_info.simulation_info.conditionids[:pre_equilibration]
+    dict_cid_cidx = Dict(cids[i] => i for i in eachindex(cids))
+    dict_cidx_sscidx = map(eachindex(cids)) do cidx
+        sim_idx = findfirst(==(Symbol(cids[cidx])), sim_ids)
+        dict_cid_cidx[string(ssc_ids[sim_idx])]
+    end
+    return dict_cidx_sscidx
+end
+
+# Returns ::Vector{(Function)} of ODE RHS equations
+# f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
+
+# Returns ::Dictionary{} of obsid => ovfidx observable variable function index
+function _get_dict_obsid_ovfidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+
+    return
 end

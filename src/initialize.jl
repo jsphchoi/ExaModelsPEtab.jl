@@ -5,7 +5,8 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     t_meas = sort(unique(filter(t -> !iszero(t), PEtable[:measurements][!,:time])))
 
     # Solve all experimental conditions at nominal values
-    sol = _solve_conds(get_x(PEprob), PEmodel, PEprob, t_meas)
+    p_nominal = PEtab.get_x(PEprob)
+    sol = _solve_conds(p_nominal, PEmodel, PEprob, t_meas)
 
     # Construct mesh
     h = diff(sol[argmax(k -> length(sol[k].t), keys(sol))].t) # choose mesh based on finest sol.t
@@ -49,6 +50,33 @@ end
 
 # get initial guess for zss by solving steady-state model for each condition
 function _get_zss_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    # TODO
-    return zss_init
+    # Unpack problem info
+    (; Nz, Nc) = PEinfo
+
+    cids       = Symbol.(_get_cids(PEmodel))
+    sim_cids   = PEprob.model_info.simulation_info.conditionids[:simulation]
+    preeq_cids = PEprob.model_info.simulation_info.conditionids[:pre_equilibration]
+
+    p_nominal = PEtab.get_x(PEprob)
+
+    # Solve each unique pre-equilibration condition to steady state
+    preeq_sols = Dict{Symbol, Any}()
+    for preeq_cid in unique(preeq_cids)
+        odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; cid = preeq_cid)
+        ssprob = SteadyStateProblem(odesys)
+        preeq_sols[preeq_cid] = solve(
+            ssprob, DynamicSS(PEprob.probinfo.solver.solver);
+            callback = callbacks,
+            abstol   = PEprob.probinfo.solver.abstol,
+            reltol   = PEprob.probinfo.solver.reltol
+        )
+    end
+
+    # Map each cidx to the steady-state of its pre-equilibration condition
+    zss_inits = zeros(Nz, Nc)
+    for (cidx, cid) in enumerate(cids)
+        sim_pos = findfirst(==(cid), sim_cids)
+        zss_inits[:, cidx] = preeq_sols[preeq_cids[sim_pos]].u
+    end
+    return zss_inits
 end
