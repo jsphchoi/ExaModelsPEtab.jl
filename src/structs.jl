@@ -14,3 +14,4 @@ struct PEInfo{T <: Number}
     L1::Vector{Float64}
 end
 # PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, N, K, t_meas, t_vec_mesh, h, taus, L1)
+# (; Np, Nz, Nc, Ncv, Nm, N, K, t_meas, t_vec_mesh, h, taus, L1) = PEinfo

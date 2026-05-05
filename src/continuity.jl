@@ -44,6 +44,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
     # Check which type of initial condition
     if _check_x0SSpre(PEprob)
         # if x0SSpre(p)...
+        zss = c.zss
         itr_ss1 = [(z,cidx) for v in 1:Nz, cidx in 1:Nc]
         ExaModels.@add_con(c,
             z[v,1,0,cidx] - zss[v,cidx]
