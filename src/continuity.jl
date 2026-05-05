@@ -15,8 +15,6 @@ function _create_interval_continuity(c::ExaCore, PEmodel::PEtabModel, PEprob::PE
     # Unpack problem info
     (; Nz, N, Nc, L1) = PEinfo
     z = c.z
-    p = c.p
-    cv = c.cv
 
     itr_cont1 = [(v,i,cidx) for v in 1:Nz, i in 1:N-1, cidx in 1:Nc]
     # TODO support ev (from ODEProblem callbacks) 
@@ -39,7 +37,9 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
     (; Nz, Nc, Np) = PEinfo
     z = c.z
     p = c.p
-    cv = c.cv
+    if Ncv >= 1
+        cv = c.cv
+    end
 
     # Check which type of initial condition
     if _check_x0SSpre(PEprob)

@@ -9,7 +9,9 @@ function _create_collocation(
     (; N, K, Np, Nc, Nz, Ncv, h, taus) = PEinfo
     z = c.z
     p = c.p
-    cv = c.cv
+    if Ncv >= 1
+        cv = c.cv
+    end
 
     # Get ODE RHS functions
     fs = _get_rhs_funcs(PEmodel, PEprob)
