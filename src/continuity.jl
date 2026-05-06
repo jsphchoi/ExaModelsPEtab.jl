@@ -57,7 +57,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
                 f(
                     ntuple(v -> zss[v,cidx], Nz)...,
                     ntuple(m -> p[m], Np)...,
-                    ntuple(m -> cv[m], Ncv)...
+                    ntuple(m -> cv[m,cidx], Ncv)...
                 )
                 for cidx in itr_ss2
             )
@@ -109,13 +109,13 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         end
         if !isempty(itr_z0_fp)
             # x0 = x0f(p)
-            # x0fs = _
-            # for x0f in x0fs
-            #     ExaModels.@add_con(c,
-            #         z[v,1,0,cidx] - x0f(ntuple(m -> p[m], Np))
-            #         for (v, cidx) in itr_z0_fp
-            #     )
-            # end
+            x0fs = _get_x0fp_funcs(PEmodel, PEprob)
+            for x0fidx in eachindex(x0fs)
+                ExaModels.@add_con(c,
+                    z[v,1,0,cidx] - x0f(ntuple(m -> p[m], Np))
+                    for (v, cidx) in itr_z0_fp
+                )
+            end
         end
     end
 

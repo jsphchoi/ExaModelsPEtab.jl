@@ -21,9 +21,9 @@ function _create_collocation(
     c_coll = [
         ExaModels.@add_con(c,
             -hi*f( # inputs of the ODE RHS function
-                ntuple(v -> z[v,i,k,cidx], Nz)...,
-                ntuple(m -> p[m], Np)...,
-                ntuple(m -> cv[m], Ncv)...
+                ntuple(v -> z[v,i,k,cidx], Nz)...,  # state vars
+                ntuple(m -> p[m], Np)...,           # unknown params
+                ntuple(m -> cv[m,cidx], Ncv)...     # condition-dep. vars
             )
             for (i,k,cidx,hi) in itr_coll
         )
@@ -70,12 +70,14 @@ function _create_collocation(
     end
     # Create constraints
     if !isempty(itr_cv_fixed)
+        # condition-dependent variable cvidx at condition cidx is a fixed value
         ExaModels.@add_con(c,
             cv[cvidx,cidx] - val
             for (cvidx, cidx, val) in itr_cv_fixed
         )
     end
     if !isempty(itr_cv_p)
+        # condition-dependent variable cvidx at condition cidx is an unknown parameter
         ExaModels.@add_con(c,
             cv[cvidx,cidx] - p[pidx]
             for (cvidx, cidx, pidx) in itr_cv_p
