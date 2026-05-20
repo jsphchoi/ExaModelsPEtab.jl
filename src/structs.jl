@@ -5,6 +5,7 @@ struct PEInfo{T <: Number}
     Nc::Int     # (cidx = 1,...,Nc) number of experimental conditions
     Ncv::Int    # (cv = 1,...,Ncv) number of condition-dependent variables
     Nm::Int     # number of data measurements
+    Ny::Int     # number of model observables
     N::Int      # (i = 1,...,N) number of intervals 
     K::Int      # (j/k = 0/1,...,K) number of interpolation points within each interval (k = 0,...,K)
     t_meas::Vector{T}
@@ -13,5 +14,5 @@ struct PEInfo{T <: Number}
     taus::Vector{Float64}
     L1::Vector{Float64}
 end
-# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, N, K, t_meas, t_vec_mesh, h, taus, L1)
-# (; Np, Nz, Nc, Ncv, Nm, N, K, t_meas, t_vec_mesh, h, taus, L1) = PEinfo
+# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1)
+# (; Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1) = PEinfo

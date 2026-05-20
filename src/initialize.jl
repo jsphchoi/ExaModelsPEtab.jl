@@ -1,3 +1,10 @@
+#######################################################
+# STATE AS OF: 05/20/26
+# _get_z_init is complete
+# _solve_conds is complete
+# TODO: verify _get_zss_init implementation
+#######################################################
+
 # get initial guess for z and a lot of other things
 function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     # Get unique t_meas
@@ -36,7 +43,7 @@ function _solve_conds(p_nominal, PEmodel::PEtabModel, PEprob::PEtabODEProblem, t
     for cid in Symbol.(_get_cids(PEmodel))
         odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = cid) # TODO LOOK! gets callbacks for each condition
         solver = PEprob.probinfo.solver.solver
-        sol = OrdinaryDiffEq.solve(
+        sol = ODE.solve(
             odesys, solver;
             tstops = tstops,
             callback = callbacks,
@@ -63,9 +70,9 @@ function _get_zss_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEI
     preeq_sols = Dict{Symbol, Any}()
     for preeq_cid in unique(preeq_cids)
         odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; cid = preeq_cid)
-        ssprob = SteadyStateProblem(odesys)
-        preeq_sols[preeq_cid] = solve(
-            ssprob, DynamicSS(PEprob.probinfo.solver.solver);
+        ssprob = SSDE.SteadyStateProblem(odesys)
+        preeq_sols[preeq_cid] = ODE.solve(
+            ssprob, SSDE.DynamicSS(PEprob.probinfo.solver.solver);
             callback = callbacks,
             abstol   = PEprob.probinfo.solver.abstol,
             reltol   = PEprob.probinfo.solver.reltol

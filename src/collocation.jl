@@ -1,4 +1,10 @@
-#
+#######################################################
+# STATE AS OF: 05/20/26
+# COMPLETE: >=1 experimental conditions, 
+# TODO: add u(t), u(t,p) functional dependence. t_ij index and just substitute explicitly probably
+#######################################################
+
+# (*) Main function for creating ExaModels collocation equations (*)
 function _create_collocation(
     c::ExaCore,
     PEmodel::PEtabModel,

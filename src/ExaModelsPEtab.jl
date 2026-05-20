@@ -13,11 +13,12 @@ module ExaModelsPEtab
     import ExaModels
 
     # LONG-TERM TODO TRIM DEPENDENCY: ONLY import the PEtab .yaml file parser
-    import PEtab
+    import PEtab # for parsing PEtab file as get symbolics
     import ModelingToolkitBase as MTK 
-    import OrdinaryDiffEq # used to simulate model at nominal guess to obtain good initial guesses for state variables
     import Symbolics
-
+    import OrdinaryDiffEq as ODE # for solving ode at nominal guess to obtain intiail guess for discretized
+    import SteadyStateDiffEq as SSDE # for solving steady-state pre-equilibration initial states
+    
     # Includes
     include("structs.jl")       # data structure for parameter estimation problem
     include("constants.jl")     # get collocation equation constants
@@ -31,6 +32,6 @@ module ExaModelsPEtab
     # Exports
     include("userfuncs.jl")     # user-end functions
     export petab_examodel
-    # TODO want to support plot(filename, result) or something similar using specified data visualization file
+    # TODO want to support plot(filename, result) or something similar using specified data visualization file in the future
 
 end

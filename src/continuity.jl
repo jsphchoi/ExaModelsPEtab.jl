@@ -1,4 +1,11 @@
-#
+#######################################################
+# STATE AS OF: 05/20/26
+# COMPLETE: x0fix, x0 = p
+# TODO: x0 = f(p): _get_x0fp_funcs
+# TODO: ev: _create_ev, intervene interval continuity
+#######################################################
+
+# (*) Main function for creating collocation continuity constraints (*)
 function _create_continuity(
     c::ExaCore,
     PEmodel::PEtabModel,
