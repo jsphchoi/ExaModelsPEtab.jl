@@ -13,7 +13,9 @@ function _create_objective(
         PEprob::PEtabODEProblem,
         PEinfo::PEInfo
     )
+    ###############################################
     # Unpack problem info
+    ###############################################
     (; Np, Ncv, Nz, Nm, N, K, t_meas, h, L1) = PEinfo
     z = c.z
     p = c.p
@@ -22,86 +24,57 @@ function _create_objective(
     if Ncv >= 1
         cv = c.cv
     end
-end
-
-function _create_objective(
-    c::ExaCore,
-    PEmodel::PEtabModel,
-    PEprob::PEtabODEProblem,
-    PEinfo::PEInfo
-)
-    # Unpack problem info
-    (; Np, Ncv, Nz, Nm, N, K, t_meas, h, L1) = PEinfo
-    z = c.z
-    p = c.p
-    if Ncv >= 1
-        cv = c.cv
-    end
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
 
-    # Create objective iterator (one per measurement)
-    itr_obj = [
-
-        for row in eachrow(measurements_df)
-    ]
-    # Create objective (sum of least-squared error)
+    ###############################################
+    # Objective function
+    ###############################################
+    # Create objective function (negative log-likelihood): min ∑ₘ(y - yₘ)²/σ²ₘ
+    itr_obj = [(midx, Float64(measurements_df[midx, :measurement])) for midx in 1:Nm]
     ExaModels.@add_obj(c,
-    
-        for () in itr_obj
+        (y[midx] - ymeas)^2/sigma[midx]
+        for (midx, ymeas) in itr_obj
     )
-
-
-
-
-    # 1. Parse observables: obsid -> observableformula: is single state variable? is function? -> zidx : ovfidx.
-    # :observableTransformation, :noiseDistribution, :noiseFormula
-
-    # for each measurement, create iterators
     
-
-
-    # Condition-dependent variable constraints
-    conditions_df = PEmodel.petab_tables[:conditions]
-    dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)
+    ###############################################
+    # Auxiliary variable constraints for y, sigma
+    ###############################################
+    
+    # Utility mappings
+    dict_cid_cidx   = _get_dict_cid_cidx(PEmodel)
+    dict_t_tidx     = _get_dict_t_tidx(h, t_meas)
+    dict_obsid_yidx = _get_dict_obsid_yidx(PEmodel) # TODO, verify claude
+    
     # Create iterators
-    itr_ = Tuple{Int, Int, Float64}[]
-    itr_ = Tuple{Int, Int, Int}[]
+    itr_y       =
+    itr_sigma   =
 
-    # Create constraints
-    if !isempty(itr_obj_z_square)
-        # for observableFormula = state variable, just use obsid -> state id
-        ExaModels.@add_obj(c,
-            
-            for () in itr_obj_z_square
-        )
-        ExaModels.@add_obj(c,
-            
-            for () in itr_obj_z_linear
-        )
-        # if error is not fixed,
+    # Create auxiliary variable constraints
+    if !isempty(itr_y_z)
+        # Observable 'y' is a state variable, 'z'
         ExaModels.@add_con(c,
-            # sigma[sidx] = sigmav[sixd](z,p,cv...)
+
         )
     end
-    if !isempty(itr_obj_ov_square)
-        # for observableFormula = function, created var ov. (meas_val - ov[meas_idx])
-        ExaModels.@add_obj(c,
-            
-            for () in itr_obj_ov_square
-        )
-        ExaModels.@add_obj(c,
-            
-            for () in itr_obj_ov_linear
-        )
+    if !isempty(itr_y_func)
+        # Observable 'y' is an arbitrary function
+        for () in itr_y_func
+            ExaModels.@add_con(c,
+                y[midx] - y_func(
+                    
+                )
+                for () in itr
+            )
+        end
+    end
+    if !isempty(itr_sigma_fix)
+        # Measurement error 'sigma' is a fixed value
         ExaModels.@add_con(c,
-            # ov[ovidx] = ovf[ovidx](... idk yet)
-        )
-        # if error is not fixed,
-        ExaModels.@add_con(c,
-            # sigma[sidx] = sigmav[sixd](z,p,cv...)
+            sigma[midx] - val
+            for (v, cidx, val) in itr_sigma_fix
         )
     end
-
+    
     return c
 end

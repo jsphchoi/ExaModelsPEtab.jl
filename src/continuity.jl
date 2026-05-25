@@ -1,7 +1,7 @@
 #######################################################
-# STATE AS OF: 05/20/26
-# TODO: verify implementation working
-# TODO: ev: _create_ev, intervene interval continuity
+# STATE AS OF: 05/25/26
+# TODO: verify implementation
+# TODO: support ev: _create_ev, intervene interval continuity. idea: create dict i=1:N -> f(t_event) to continuity constraint!
 #######################################################
 
 # (*) Main function for creating collocation continuity constraints (*)
@@ -18,13 +18,16 @@ end
 
 # Create cross-interval continuity constraints
 function _create_interval_continuity(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+    ###############################################################
     # Unpack problem info
+    ###############################################################
     (; Nz, N, Nc, L1) = PEinfo
     z = c.z
 
+    ###############################################################
+    # Interval continuity equations
+    ###############################################################
     itr_cont1 = [(v,i,cidx) for v in 1:Nz, i in 1:N-1, cidx in 1:Nc]
-    # TODO support ev (from ODEProblem callbacks) 
-    # idea: create dict i=1:N -> f(t_event) to continuity constraint!
     ExaModels.@add_con(c,
         -z[v,i+1,0,cidx]
         for (v,i,cidx) in itr_cont1
@@ -39,7 +42,9 @@ end
 
 # Create initial condition continuity constraints
 function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+    ###############################################################
     # Unpack problem info
+    ###############################################################
     (; Nz, Nc, Np, Ncv) = PEinfo
     z = c.z
     p = c.p
@@ -49,6 +54,9 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
 
     # Check which type of initial condition
     if _check_x0SSpre(PEprob)
+        ###############################################################
+        # Initial condition equations: steady-state pre-equilibration 
+        ###############################################################
         # if x0SSpre(p)...
         
         # Unpack steady state variable
@@ -78,6 +86,9 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         end
 
     else
+        ###############################################################
+        # Initial condition equations
+        ###############################################################
         # if x0fix, x0 = p, x0 = f(p)...
 
         # Obtain initial condition symbolic expressions
@@ -96,9 +107,9 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         )
         
         # Create iterators
-        itr_z0_fixed = Tuple{Int, Int, Float64}[]   # x0fixed
-        itr_z0_p = Tuple{Int, Int, Int}[]           # x0 = p
-        itr_z0_cv = Tuple{Int, Int, Int}[]          # x0 = cv
+        itr_z0_fix  = Tuple{Int, Int, Float64}[]   # x0fixed
+        itr_z0_p    = Tuple{Int, Int, Int}[]           # x0 = p
+        itr_z0_cv   = Tuple{Int, Int, Int}[]          # x0 = cv
         itr_z0_func = Tuple{Int, Any}[]             # x0 = f(p,cv)
 
         z_syms = _get_z_syms(PEprob)
@@ -109,7 +120,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
             val = dict_z0sym_expr[z_syms[v]]
             if Symbolics.value(val) isa Number
                 # if z0 is a numeric value...
-                append!(itr_z0_fixed, ((v, cidx, Float64(Symbolics.value(val))) for cidx in 1:Nc))
+                append!(itr_z0_fix, ((v, cidx, Float64(Symbolics.value(val))) for cidx in 1:Nc))
             elseif (pidx = findfirst(x -> isequal(x, val), p_syms)) !== nothing
                 # if z0 is an unknown parameter p...
                 append!(itr_z0_p, ((v, cidx, pidx) for cidx in 1:Nc))
@@ -128,11 +139,11 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         end
 
         # Create constraints
-        if !isempty(itr_z0_fixed)
+        if !isempty(itr_z0_fix)
             # Initial condition is a fixed value
             ExaModels.@add_con(c,
                 z[v,1,0,cidx] - val
-                for (v, cidx, val) in itr_z0_fixed
+                for (v, cidx, val) in itr_z0_fix
             )
         end
         if !isempty(itr_z0_p)

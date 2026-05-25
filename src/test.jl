@@ -34,7 +34,7 @@ include("objective.jl")     # create objective function
 # Boehm_JProteomeRes2014
 # Bruno_JExpBot2016
 # Schwen_PONE2014
-PEmodel, PEprob = load_petab("Schwen_PONE2014")
+PEmodel, PEprob = load_petab("Boehm_JProteomeRes2014")
 
 c = ExaModels.ExaCore(; concrete = Val(true))
 
