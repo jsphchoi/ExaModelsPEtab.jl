@@ -143,6 +143,8 @@ function _get_dict_obids_yidx(PEmodel)::Dict{String, Int64}
     )
 end
 
+
+# TODO: instead just loop and make function in iterator.
 # Returns ::Vector{(Function)} of observable variable equations, y
 # yf[yidx=1:Ny]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
 function _get_y_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
@@ -179,7 +181,7 @@ function _get_y_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     return [
         Symbolics.build_function(
             y_expr,
-            [_get_z_syms(PEprob); _get_p_syms(PEprob); _get_cv_syms(PEmodel)]...,
+            [_get_z_syms(PEprob); _get_p_syms(PEprob); _get_cv_syms(PEmodel)]..., # TODO: find observableParameter variables and correct mapping!
             expression = Val{false}
         )
         for y_expr in y_exprs
@@ -189,6 +191,43 @@ end
 # Returns ::Vector{(Function)} of observable variable noise equations, sigma
 # sigmaf[yidx=1:Ny]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
 function _get_sigma_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+    # Get symbolic observable variable expressions
+    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
+    observables_df = PEtable[:observables]
 
-    return
+    sigma_exprs_raw = [ # Vector of raw ::String in DataFrame column observableFormula
+        begin
+            idx = findfirst(==(obsid), observables_df.observableId)
+            observables_df[idx, :observableFormula]
+        end
+        for obsid in _get_obsids(PEmodel)
+    ]
+
+    y_exprs_sym = [ # Parse raw ::String as Symbolics.Num expression
+        Symbolics.parse_expr_to_symbolic(Meta.parse(raw_str), @__MODULE__)
+        for raw_str in y_exprs_raw
+    ]
+
+    # Substitute in fixed constant values
+    dict_all_val = Dict(PEprob.model_info.model.parametermap) # Mapping: symbolics of all parameters => nominal values
+    fixed_syms = setdiff( # Symbolics of fixed constants
+        keys(Dict(dict_all_val)), 
+        union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
+    )
+    dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)) # Mapping: symbolics of fixed constants => values
+    y_exprs = [ # Substitute fixed values
+        Symbolics.substitute(y_expr_sym, dict_fixed_val)
+        for y_expr_sym in y_exprs_sym
+    ]
+
+    # Convert expression into numeric function
+    return [
+        Symbolics.build_function(
+            y_expr,
+            [_get_z_syms(PEprob); _get_p_syms(PEprob); _get_cv_syms(PEmodel)]..., # TODO: find observableParameter variables and correct mapping!
+            expression = Val{false}
+        )
+        for y_expr in y_exprs
+    ]
+    # TODO: observableTransform: "lin" => keep, "log" => ..., "log10" => ...
 end

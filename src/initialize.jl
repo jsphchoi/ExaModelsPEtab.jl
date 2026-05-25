@@ -69,7 +69,7 @@ function _get_zss_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEI
     # Solve each unique pre-equilibration condition to steady state
     preeq_sols = Dict{Symbol, Any}()
     for preeq_cid in unique(preeq_cids)
-        odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; cid = preeq_cid)
+        odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = preeq_cid)
         ssprob = SSDE.SteadyStateProblem(odesys)
         preeq_sols[preeq_cid] = ODE.solve(
             ssprob, SSDE.DynamicSS(PEprob.probinfo.solver.solver);

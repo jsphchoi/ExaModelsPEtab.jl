@@ -34,7 +34,8 @@ include("objective.jl")     # create objective function
 # Boehm_JProteomeRes2014
 # Bruno_JExpBot2016
 # Schwen_PONE2014
-PEmodel, PEprob = load_petab("Boehm_JProteomeRes2014")
+# Isensee_JCB2018 x0SSpre INITIALIZATION NOT WORKING. PETAB ISSUE.
+PEmodel, PEprob = load_petab("Bruno_JExpBot2016")
 
 c = ExaModels.ExaCore(; concrete = Val(true))
 

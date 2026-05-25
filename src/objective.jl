@@ -24,8 +24,12 @@ function _create_objective(
     if Ncv >= 1
         cv = c.cv
     end
+
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
+    observables_df = PEtable[:observables] # :observableId, :observableName, :observableFormula, :noiseFormula, :observableTransformation, :noiseDistribution
+    
+    noiseParameters = measurements_df[!,:noiseParameters]
 
     ###############################################
     # Objective function
@@ -44,37 +48,72 @@ function _create_objective(
     # Utility mappings
     dict_cid_cidx   = _get_dict_cid_cidx(PEmodel)
     dict_t_tidx     = _get_dict_t_tidx(h, t_meas)
-    dict_obsid_yidx = _get_dict_obsid_yidx(PEmodel) # TODO, verify claude
+    dict_obsid_yidx = _get_dict_obsid_yidx(PEmodel)
     
     # Create iterators
     itr_y       =
-    itr_sigma   =
+    itr_sigma_fix   = Tuple{Int, Float64}[]
+    itr_sigma_func  = Tuple{Int, Any}[]
+
+    for midx in 1:Nm
+        # Iterator for obvservable variable, y
+        y_val = 
+
+        # Iterator for observable error, sigma
+        sigma_val = noiseParameter[midx]
+        if sigma_val isa Number
+            # If sigma is a numeric value...
+            push!(itr_sigma_fix, (midx, sigma_val))
+        elseif (pidx = findfirst(x -> isequal(x, val), p_syms)) !== nothing
+            # If z0 is an unknown parameter p...
+            append!(itr_z0_p, ((v, cidx, pidx) for cidx in 1:Nc))
+        else
+            # If sigma is an arbitrary function of TODO ???...
+
+        end
+    end
 
     # Create auxiliary variable constraints
     if !isempty(itr_y_z)
         # Observable 'y' is a state variable, 'z'
-        ExaModels.@add_con(c,
-
+        aux_y_z = ExaModels.@add_con(c,
+            -y[midx]
+            for (midx) in itr_y_z
+        )
+        ExaModels.@add_con!(c,
+            aux_y_z,
+            midx => z[v,i,j,cidx]
+            for (midx,i,j,cidx) in itr_y_z!
         )
     end
-    if !isempty(itr_y_func)
-        # Observable 'y' is an arbitrary function
-        for () in itr_y_func
-            ExaModels.@add_con(c,
-                y[midx] - y_func(
+    # if !isempty(itr_y_func)
+    #     # Observable 'y' is an arbitrary function
+    #     for () in itr_y_func
+    #         ExaModels.@add_con(c,
+    #             y[midx] - y_func(
                     
-                )
-                for () in itr
-            )
-        end
-    end
+    #             )
+    #             for () in itr
+    #         )
+    #     end
+    # end
     if !isempty(itr_sigma_fix)
         # Measurement error 'sigma' is a fixed value
         ExaModels.@add_con(c,
             sigma[midx] - val
-            for (v, cidx, val) in itr_sigma_fix
+            for (midx, val) in itr_sigma_fix
         )
     end
-    
+    # if !isempty(itr_sigma_func)
+    #     # Measurement error 'sigma' is an arbitrary function, f(...)
+    #     for () in itr_sigma_func
+    #         ExaModels.@add_con(c,
+    #             sigma[midx] - sigma_func(
+    #                 
+    #             )
+    #             for 
+    #         )
+    #     end
+    # end
     return c
 end

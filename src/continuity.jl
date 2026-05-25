@@ -103,7 +103,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)) # Mapping: symbolics of fixed constants => values
         dict_z0sym_expr = Dict( # substitute fixed constant into all z0 expressions
             z0sym => Symbolics.simplify(Symbolics.substitute(expr, dict_fixed_val))
-            for (z0sym, expr) in dict_z0_expr
+            for (z0sym, expr) in dict_z0sym_expr
         )
         
         # Create iterators

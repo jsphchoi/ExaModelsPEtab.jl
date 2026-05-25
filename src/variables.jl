@@ -108,9 +108,14 @@ end
 # y[1:Nm]
 function _create_y(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nm) = PEinfo
+    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
+    measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
+    ymeas = measurements_df[!,:measurement]
     ExaModels.@add_var(c,
         y,
-        1:Nm
+        1:Nm;
+        lvar = 0.0,
+        start = ymeas # TODO: Ask: should i even have a start guess for a fixed auxiliary variable?
     )
     return c
 end
@@ -123,7 +128,7 @@ function _create_sigma(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem,
         sigma,
         1:Nm;
         lvar = 1e-10, # avoid divide by 0
-        start = 1.0
+        start = 1.0 # TODO: Ask: should i even have a start guess for a fixed auxiliary variable?
     )
     return c
 end
