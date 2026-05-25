@@ -1,4 +1,29 @@
-#
+#######################################################
+# STATE AS OF: 05/20/26
+# COMPLETE: >=1 experimental conditions
+# NOTE: only supporting noiseDistribution = normal. Laplace noise nondifferentiable.
+# TODO automatically transform observable scale, {lin, log, log10}
+# TODO: turn objectiveFormula -> function
+#######################################################
+
+# (*) Main function for creating ExaModels objective function (*)
+function _create_objective(
+        c::ExaCore,
+        PEmodel::PEtabModel,
+        PEprob::PEtabODEProblem,
+        PEinfo::PEInfo
+    )
+    # Unpack problem info
+    (; Np, Ncv, Nz, Nm, N, K, t_meas, h, L1) = PEinfo
+    z = c.z
+    p = c.p
+    y = c.y
+    sigma = c.sigma
+    if Ncv >= 1
+        cv = c.cv
+    end
+end
+
 function _create_objective(
     c::ExaCore,
     PEmodel::PEtabModel,
@@ -6,7 +31,28 @@ function _create_objective(
     PEinfo::PEInfo
 )
     # Unpack problem info
-    (; Np, Nz, N, K, t_meas, h, L1) = PEinfo
+    (; Np, Ncv, Nz, Nm, N, K, t_meas, h, L1) = PEinfo
+    z = c.z
+    p = c.p
+    if Ncv >= 1
+        cv = c.cv
+    end
+    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
+    measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
+
+    # Create objective iterator (one per measurement)
+    itr_obj = [
+
+        for row in eachrow(measurements_df)
+    ]
+    # Create objective (sum of least-squared error)
+    ExaModels.@add_obj(c,
+    
+        for () in itr_obj
+    )
+
+
+
 
     # 1. Parse observables: obsid -> observableformula: is single state variable? is function? -> zidx : ovfidx.
     # :observableTransformation, :noiseDistribution, :noiseFormula

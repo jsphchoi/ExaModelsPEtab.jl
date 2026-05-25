@@ -17,7 +17,7 @@ function _create_variables(
 
     Ncv = length(_get_cv_syms(PEmodel)) # number of condition-dependent variables
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
-    Ny = length(eachrow(PEmodel.petab_tables[:observables])) # number of model observables
+    Ny = length(_get_obsids(PEmodel)) # number of model observables
     PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1)
 
     # OBJECTIVE FUNCTION VARIABLES
@@ -48,9 +48,10 @@ end
 # p[1:Np]
 function _create_p(c::ExaCore, PEprob::PEtabODEProblem)
     Np = PEprob.nparameters_estimate # number of unknown parameters to fit
-    p_LB = PEtab.transform_x(Array(PEprob.lower_bounds), PEprob.xnames, PEprob.model_info.xindices; to_xscale=false)
-    p_UB = PEtab.transform_x(Array(PEprob.upper_bounds), PEprob.xnames, PEprob.model_info.xindices; to_xscale=false)
-    p_init = Array(PEprob.xnominal)
+    (; lower_bounds, upper_bounds, xnames, xnominal, model_info) = PEprob
+    p_LB = PEtab.transform_x(Array(lower_bounds), xnames, model_info.xindices; to_xscale=false)
+    p_UB = PEtab.transform_x(Array(upper_bounds), xnames, model_info.xindices; to_xscale=false)
+    p_init = PEtab.transform_x(Array(xnominal),   xnames, model_info.xindices; to_xscale=false)
     ExaModels.@add_var(c,
         p,
         1:Np;
@@ -78,6 +79,7 @@ end
 # Creates ExaModels decision variables for condition-dependent variables
 # cv[1:Ncv,1:Nc]
 function _create_cv(c::ExaCore, PEinfo::PEInfo)
+    # Unpack problem info
     (; Nc, Ncv) = PEinfo
     ExaModels.@add_var(c,
         cv, 
@@ -91,7 +93,6 @@ end
 function _create_zss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     # Unpack problem info
     (; Nz, Nc) = PEinfo
-
     zss_init = _get_zss_init(PEmodel, PEprob, PEinfo)
     ExaModels.@add_var(c,
         zss,
@@ -103,27 +104,26 @@ function _create_zss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, P
     return c
 end
 
-# TODO
-# Creates ExaModels decision variables (auxiliary) for observable model variable
-# y[1:Ny]
+# Creates ExaModels (auxiliary) decision variables for observable model variable
+# y[1:Nm]
 function _create_y(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    (; Ny)
+    (; Nm) = PEinfo
     ExaModels.@add_var(c,
         y,
-        1:Ny
+        1:Nm
     )
+    return c
 end
 
-
-# TODO
-# Creates ExaModels decision variables (auxiliary) for standard deviation of error
+# Creates ExaModels (auxiliary) decision variables for standard deviation of error
 # sigma[1:Nm]
 function _create_sigma(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nm) = PEinfo
     ExaModels.@add_var(c,
         sigma,
         1:Nm;
-        lvar = 1e-10 # avoid divide by 0
+        lvar = 1e-10, # avoid divide by 0
+        start = 1.0
     )
     return c
 end

@@ -1,6 +1,5 @@
 #######################################################
 # STATE AS OF: 05/20/26
-# COMPLETE: >=1 experimental conditions, 
 # TODO: add u(t), u(t,p) functional dependence. t_ij index and just substitute explicitly probably
 #######################################################
 
@@ -89,6 +88,5 @@ function _create_collocation(
             for (cvidx, cidx, pidx) in itr_cv_p
         )
     end
-
     return c
 end

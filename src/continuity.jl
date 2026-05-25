@@ -1,7 +1,6 @@
 #######################################################
 # STATE AS OF: 05/20/26
-# COMPLETE: x0fix, x0 = p
-# TODO: x0 = f(p): _get_x0fp_funcs
+# TODO: verify implementation working
 # TODO: ev: _create_ev, intervene interval continuity
 #######################################################
 
@@ -41,7 +40,7 @@ end
 # Create initial condition continuity constraints
 function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     # Unpack problem info
-    (; Nz, Nc, Np) = PEinfo
+    (; Nz, Nc, Np, Ncv) = PEinfo
     z = c.z
     p = c.p
     if Ncv >= 1
@@ -51,76 +50,114 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
     # Check which type of initial condition
     if _check_x0SSpre(PEprob)
         # if x0SSpre(p)...
+        
+        # Unpack steady state variable
         zss = c.zss
+
+        # Create constraints: initial condition = steady-state 
         itr_ss1 = [(z,cidx) for v in 1:Nz, cidx in 1:Nc]
         ExaModels.@add_con(c,
+            # z[:,1,0,:] = zss[:,:]
             z[v,1,0,cidx] - zss[v,cidx]
             for (z,cidx) in itr_ss1
         )
+
+        # Create auxiliary variable constraints
         dict_cidx_sscidx = _get_dict_cidx_sscidx(PEmodel, PEprob)
         itr_ss2 = [dict_cidx_sscidx(cidx) for cidx in 1:Nc]
         for f in fs
             ExaModels.@add_con(c,
+                # rhs f(zss...) = 0
                 f(
-                    ntuple(v -> zss[v,cidx], Nz)...,
+                    ntuple(v -> zss[v,sscidx], Nz)...,
                     ntuple(m -> p[m], Np)...,
-                    ntuple(m -> cv[m,cidx], Ncv)...
+                    ntuple(m -> cv[m,sscidx], Ncv)...
                 )
-                for cidx in itr_ss2
+                for sscidx in itr_ss2
             )
         end
 
     else
         # if x0fix, x0 = p, x0 = f(p)...
-        conditions_df = PEmodel.petab_tables[:conditions]
-        dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)
+
+        # Obtain initial condition symbolic expressions
+        dict_z0sym_expr = Dict(PEprob.model_info.model.speciemap) # get mapping of initial condition: symbolic state variable => number/var(p?cv?)/expr
+
+        # Substitute fixed (numeric) constants (if any)
+        dict_all_val = Dict(PEprob.model_info.model.parametermap) # Mapping: symbolics of all parameters => nominal values
+        fixed_syms = setdiff( # Symbolics of fixed constants
+            keys(Dict(dict_all_val)), 
+            union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
+        )
+        dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)) # Mapping: symbolics of fixed constants => values
+        dict_z0sym_expr = Dict( # substitute fixed constant into all z0 expressions
+            z0sym => Symbolics.simplify(Symbolics.substitute(expr, dict_fixed_val))
+            for (z0sym, expr) in dict_z0_expr
+        )
+        
         # Create iterators
-        itr_z0_fixed = Tuple{Int, Int, Float64}[]
-        itr_z0_p = Tuple{Int, Int, Int}[]
-        # itr_z0_fp = Tuple{Int, Int, Int}[]
+        itr_z0_fixed = Tuple{Int, Int, Float64}[]   # x0fixed
+        itr_z0_p = Tuple{Int, Int, Int}[]           # x0 = p
+        itr_z0_cv = Tuple{Int, Int, Int}[]          # x0 = cv
+        itr_z0_func = Tuple{Int, Any}[]             # x0 = f(p,cv)
+
+        z_syms = _get_z_syms(PEprob)
+        p_syms = _get_p_syms(PEprob)
+        cv_syms = _get_cv_syms(PEmodel)
+
         for v in 1:Nz
-            for cidx in 1:Nc
-                val = conditions_df[cidx,cvidx+2]
-                if val isa Number
-                    push!(itr_cv_fixed, (cvidx, cidx, Float64(val)))
-                elseif val isa String || val isa Symbol
-                    str_val = String(val)
-                    parsed_val = tryparse(Float64, str_val)
-                    if parsed_val !== nothing
-                        push!(itr_cv_fixed, (cvidx, cidx, parsed_val))
-                    else
-                        if haskey(dict_pstr_pidx, str_val)
-                            pidx = dict_pstr_pidx[str_val]
-                            push!(itr_cv_p, (cvidx, cidx, pidx))
-                        else
-                            error("Condition variable '$str_val' not found in unknown parameter list.")
-                        end
-                    end
-                end
+            val = dict_z0sym_expr[z_syms[v]]
+            if Symbolics.value(val) isa Number
+                # if z0 is a numeric value...
+                append!(itr_z0_fixed, ((v, cidx, Float64(Symbolics.value(val))) for cidx in 1:Nc))
+            elseif (pidx = findfirst(x -> isequal(x, val), p_syms)) !== nothing
+                # if z0 is an unknown parameter p...
+                append!(itr_z0_p, ((v, cidx, pidx) for cidx in 1:Nc))
+            elseif (cvidx = findfirst(x -> isequal(x, val), cv_syms)) !== nothing
+                # if z0 is a condition-dependent variable cv...
+                append!(itr_z0_cv, ((v, cidx, cvidx) for cidx in 1:Nc))
+            else
+                # if z0 is some arbitrary function of [p,cv]...
+                z0_func = Symbolics.build_function(
+                    val,
+                    [p_syms; cv_syms]...,
+                    expression = Val{false}
+                )
+                push!(itr_z0_func, (v, z0_func))
             end
         end
+
         # Create constraints
         if !isempty(itr_z0_fixed)
-            # x0fix
+            # Initial condition is a fixed value
             ExaModels.@add_con(c,
                 z[v,1,0,cidx] - val
                 for (v, cidx, val) in itr_z0_fixed
             )
         end
         if !isempty(itr_z0_p)
-            # x0 = p
-            ExaModels.@add_con(c,
+            # Initial condition is an unknown parameter, p
+            ExaModels.@add_con(c, 
                 z[v,1,0,cidx] - p[pidx]
                 for (v, cidx, pidx) in itr_z0_p
             )
         end
-        if !isempty(itr_z0_fp)
-            # x0 = x0f(p)
-            x0fs = _get_x0fp_funcs(PEmodel, PEprob)
-            for x0fidx in eachindex(x0fs)
+        if !isempty(itr_z0_cv)
+            # Initial condition is a condition-dependent variable, cv
+            ExaModels.@add_con(c,
+                z[v,1,0,cidx] - cv[cvidx,cidx]
+                for (v, cidx, cvidx) in itr_z0_cv
+            )
+        end
+        if !isempty(itr_z0_func)
+            # Initial condition is some arbitrary function, f(p,cv)
+            for (v, z0_func) in itr_z0_func
                 ExaModels.@add_con(c,
-                    z[v,1,0,cidx] - x0f(ntuple(m -> p[m], Np))
-                    for (v, cidx) in itr_z0_fp
+                    z[v,1,0,cidx] - z0_func(
+                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> cv[m,cidx], Ncv)...
+                    )
+                    for cidx in 1:Nc
                 )
             end
         end
