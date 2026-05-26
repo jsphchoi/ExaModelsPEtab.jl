@@ -2,9 +2,21 @@ using ExaModelsPEtab
 using MadNLPGPU, CUDA
 
 function get_yaml_path(problem_name::String)
-    return joinpath(
-        pwd(), "examples", "Benchmark-Models", problem_name, "$(problem_name).yaml"
-    )
+    problem_dir = joinpath(pwd(), "examples", "Benchmark-Models", problem_name)
+    
+    # Check if the folder actually exists first
+    if !isdir(problem_dir)
+        return @error "$problem_name not found in ~/Benchmark-Models"
+    end
+    
+    # Look for any file ending with .yaml (case-insensitive)
+    yaml_files = filter(f -> endswith(lowercase(f), ".yaml"), readdir(problem_dir))
+    if isempty(yaml_files)
+        return @error "No .yaml file found in ~/Benchmark-Models/$problem_name"
+    else
+        # Return the absolute path to the first yaml file found
+        return joinpath(problem_dir, first(yaml_files))
+    end
 end
 
 function benchmark(problem_name::String)
@@ -39,7 +51,7 @@ end
 files = [
     "Alkan_SciSignal2018",
     "Armistead_CellDeathDis2024",
-    # "Bachmann_MSB2011",
+    "Bachmann_MSB2011",
     "Beer_MolBioSystems2014",
     "Bertozzi_PNAS2020",
     "Blasi_CellSystems2016",

@@ -1,8 +1,6 @@
 #######################################################
-# STATE AS OF: 05/20/26
-# COMPLETE: >=1 experimental conditions
-# NOTE: only supporting noiseDistribution = normal. Laplace noise nondifferentiable.
-# TODO automatically transform observable scale, {lin, log, log10}
+# STATE AS OF: 05/26/26
+# TODO: automatically transform observable scale, {lin, log, log10}
 # TODO: turn objectiveFormula -> function
 #######################################################
 
@@ -29,8 +27,6 @@ function _create_objective(
     measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
     observables_df = PEtable[:observables] # :observableId, :observableName, :observableFormula, :noiseFormula, :observableTransformation, :noiseDistribution
 
-
-
     ###############################################
     # Objective function
     ###############################################
@@ -44,7 +40,6 @@ function _create_objective(
     ###############################################
     # Auxiliary variable constraints for y, sigma
     ###############################################
-    
     # Parsed table values => ExaModels variable index mappings
     dict_obsid_obsexpr  = _get_dict_obsid_obsexpr(PEmodel)
     dict_cid_cidx       = _get_dict_cid_cidx(PEmodel)
@@ -61,10 +56,10 @@ function _create_objective(
     # Create iterators
     itr_y_z         = Int[]
     itr_y_z!        = Tuple{Int, Int, Int, Int, Int, Float64}[]
+    itr_y_func      = Tuple{Any}[]
+    itr_y_func      = Tuple{Any, Int, Int, Int, Int, Float64}[]
     itr_sigma_fix   = Tuple{Int, Float64}[]
     itr_sigma_func  = Tuple{Int, Any}[]
-
-
 
     for midx in 1:Nm
         # For every measurement...
@@ -83,7 +78,8 @@ function _create_objective(
             append!(itr_y_z!, (midx, zidx, idx, cidx, j, L1[j+1]) for j in 0:K)
         else
             # If observable expression is an abstract function...
-            # TODO ???
+            # TODO
+            # create 
         end
 
         # Iterator for observable error, sigma

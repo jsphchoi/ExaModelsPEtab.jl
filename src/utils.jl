@@ -1,6 +1,6 @@
 #######################################################
-# STATE AS OF: 05/25/26
-# TODO: create _get_sigma_funcs (measurement error), _get_y_funcs (model observable)
+# STATE AS OF: 05/26/26
+# TODO: OBJECTIVE UTILS
 #######################################################
 
 # Key: (!!!) := determines index -> variable ordering/mapping
@@ -171,7 +171,18 @@ function _get_dict_obids_yidx(PEmodel::PEtabModel)::Dict{String, Int64}
     )
 end
 
-# TODO: instead just loop and make function in iterator.
+# TODO verify gemini code
+function _get_obs_param_syms(expr, obsid::String)
+    vars = Symbolics.get_variables(expr)
+    matches = filter(vars) do v
+        s = string(v)
+        startswith(s, "observableParameter") && endswith(s, "_$(obsid)")
+    end
+    # Sort by index n so argument order matches the semicolon-delimited
+    # ordering in the measurement table's observableParameters column
+    sort(matches; by = v -> string(v))
+end
+
 # Returns ::Vector{(Function)} of observable variable equations, y
 # yf[yidx=1:Ny]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
 function _get_y_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
@@ -208,13 +219,19 @@ function _get_y_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     return [
         Symbolics.build_function(
             y_expr,
-            [_get_z_syms(PEprob); _get_p_syms(PEprob); _get_cv_syms(PEmodel)]..., # TODO: find observableParameter variables and correct mapping!
+            [
+                _get_z_syms(PEprob); 
+                _get_p_syms(PEprob); 
+                _get_cv_syms(PEmodel);
+                _get_obsp_syms()
+                # TODO: find observableParameter variables and correct mapping!
+            ]...,
             expression = Val{false}
         )
         for y_expr in y_exprs
     ]
 end
-# TODO: instead just loop and make function in iterator.
+# TODO: prob not like this?
 # Returns ::Vector{(Function)} of observable variable noise equations, sigma
 # sigmaf[yidx=1:Ny]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
 function _get_sigma_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)

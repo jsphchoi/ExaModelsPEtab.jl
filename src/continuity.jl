@@ -1,5 +1,5 @@
 #######################################################
-# STATE AS OF: 05/25/26
+# STATE AS OF: 05/26/26
 # TODO: verify implementation
 # TODO: support ev: _create_ev, intervene interval continuity. idea: create dict i=1:N -> f(t_event) to continuity constraint!
 #######################################################
@@ -175,9 +175,5 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         end
     end
 
-    display(itr_z0_fix)
-    display(itr_z0_p)
-    display(itr_z0_cv)
-    display(itr_z0_func)
     return c
 end
