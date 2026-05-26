@@ -82,8 +82,12 @@ function _create_objective(
             # create 
         end
 
+        
+    end
+
+    for yidx in 1:Ny
         # Iterator for observable error, sigma
-        sigma_val = row[:noiseParameters]
+        sigma_val = row[:noiseParameters] # TODO fix. SIGMA = INDEX WITH OBSID TO GET THE CORRECT NOISE FORMULA. A PRIORI CATEGORIZE NOISE
         if sigma_val isa Number
             # If sigma is a numeric value...
             push!(itr_sigma_fix, (midx, sigma_val))

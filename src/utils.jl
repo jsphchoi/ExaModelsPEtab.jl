@@ -223,7 +223,7 @@ function _get_y_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
                 _get_z_syms(PEprob); 
                 _get_p_syms(PEprob); 
                 _get_cv_syms(PEmodel);
-                _get_obsp_syms()
+                _get_obsp_syms() # TODO think this through
                 # TODO: find observableParameter variables and correct mapping!
             ]...,
             expression = Val{false}
