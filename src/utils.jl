@@ -48,7 +48,7 @@ end
 
 # Returns ::Vector{(Function)} of ODE RHS equations
 # f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
-function _get_rhs_funcs(PEmodel, PEprob)
+function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     # Get symbolic ODE RHS expressions
     sys = PEprob.model_info.model.sys # ODESystem from PEprob
     f_exprs_raw = [ # Vector of raw symbolic ODE RHS expressions
@@ -79,12 +79,12 @@ function _get_rhs_funcs(PEmodel, PEprob)
 end
 
 # Returns ::Dictionary{} of p::String => p[pidx] index
-function _get_dict_pstr_pidx(PEprob::PEtabODEProblem)
+function _get_dict_pstr_pidx(PEprob::PEtabODEProblem)::Dict{String, Int64}
     return Dict(pstr => pidx for (pidx,pstr) in enumerate(String.(PEprob.xnames)))
 end
 
 # Returns ::Dictionary{} of cidx => steady-state cidx
-function _get_dict_cidx_sscidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+function _get_dict_cidx_sscidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Dict{Int64, Int64}
     cids = _get_cids(PEmodel)
     sim_ids = PEprob.model_info.simulation_info.conditionids[:simulation]
     ssc_ids = PEprob.model_info.simulation_info.conditionids[:pre_equilibration]
@@ -140,7 +140,7 @@ function _get_dict_t_tidx(h,t_meas)::Dict{Float64, Int64}
 end
 
 # Returns dictionary: observableId (::String) => observableExpression (::Num)
-function _get_dict_obsid_obsexpr(PEmodel::PEtabModel)
+function _get_dict_obsid_obsexpr(PEmodel::PEtabModel)::Dict{String, Any}
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     observables_df = PEtable[:observables] # :observableId, :observableName, :observableFormula, :noiseFormula, :observableTransformation, :noiseDistribution
     return Dict(
@@ -170,7 +170,6 @@ function _get_dict_obids_yidx(PEmodel::PEtabModel)::Dict{String, Int64}
         obsid => yidx for (yidx, obsid) in enumerate(_get_obsids(PEmodel))
     )
 end
-
 
 # TODO: instead just loop and make function in iterator.
 # Returns ::Vector{(Function)} of observable variable equations, y
@@ -215,7 +214,7 @@ function _get_y_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
         for y_expr in y_exprs
     ]
 end
-
+# TODO: instead just loop and make function in iterator.
 # Returns ::Vector{(Function)} of observable variable noise equations, sigma
 # sigmaf[yidx=1:Ny]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
 function _get_sigma_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)

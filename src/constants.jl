@@ -3,7 +3,7 @@ function _eval_l(
         j::Int64,
         tau::Float64,
         taus::Vector{Float64}
-    )
+    )::Float64
     # j ∈ {0,...,K} : Index for the legendre basis polynomial at the interpolation point τⱼ.
     # tau ∈ [0,1]   : Evaluate the legendre basis polynomial at τ.
     # taus          : Vector of shifted Gauss-Legendre roots (including τ₀ = 0)
@@ -19,7 +19,7 @@ function _eval_dldtau(
         j::Int64,
         k::Int64,
         taus::Vector{Float64}
-    )
+    )::Float64
     # j ∈ {0,...,K} : Index for the legendre basis polynomial at the interpolation point τⱼ.
     # k ∈ {0,...,K} : Evaluate the legendre basis polynomial at τₖ.
     # taus          : Vector of shifted Gauss-Legendre roots (including τ₀ = 0)
@@ -81,7 +81,7 @@ end
 #  - τ[1] = 0 (left endpoint of the element)
 #  - τ[2:K+1] = K Gauss-Legendre nodes shifted from [-1,1] to (0,1)
 # K is the number of collocation points per finite element.
-function _taus(K::Int64)
+function _taus(K::Int64)::Vector{Float64}
     # K ∈ {1,...} : Number of interpolation points within each finite element
     @assert K >= 1 "Number of interpolation points must be a positive integer."
     nodes = _legendre_nodes(K)       # K nodes on [-1, 1], ascending

@@ -1,7 +1,5 @@
 #######################################################
-# STATE AS OF: 05/20/26
-# _get_z_init is complete
-# _solve_conds is complete
+# STATE AS OF: 05/26/26
 # TODO: verify _get_zss_init implementation
 #######################################################
 

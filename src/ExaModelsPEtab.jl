@@ -10,10 +10,10 @@
 module ExaModelsPEtab
 
     # Imports
-    import ExaModels
+    import ExaModels: ExaCore, ExaModels
 
     # LONG-TERM TODO TRIM DEPENDENCY: ONLY import the PEtab .yaml file parser
-    import PEtab # for parsing PEtab file as get symbolics
+    import PEtab: PEtabModel, PEtabODEProblem, PEtab
     import ModelingToolkitBase as MTK 
     import Symbolics
     import OrdinaryDiffEq as ODE # for solving ode at nominal guess to obtain intiail guess for discretized
