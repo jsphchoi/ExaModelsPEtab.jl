@@ -30,24 +30,36 @@ include("variables.jl")     # create decision variables
 include("collocation.jl")   # create collocation equality constraints
 include("continuity.jl")    # create continuity equality constraints
 include("objective.jl")     # create objective function
+include("userfuncs.jl")     # user-end functions
 
 # Boehm_JProteomeRes2014
 # Bruno_JExpBot2016
 # Schwen_PONE2014
 # Isensee_JCB2018 x0SSpre INITIALIZATION NOT WORKING. PETAB ISSUE.
-PEmodel, PEprob = load_petab("Bruno_JExpBot2016")
+# Crauste_CellSystems2017
+PEmodel, PEprob = load_petab("Crauste_CellSystems2017")
 
 c = ExaModels.ExaCore(; concrete = Val(true))
 
 K = 10
 # Create decision variables
 c, PEinfo = _create_variables(c, PEmodel, PEprob, K)
+c.nvar
 
 # Create constraints
 c = _create_collocation(c, PEmodel, PEprob, PEinfo)
+c.ncon
 c = _create_continuity(c, PEmodel, PEprob, PEinfo)
+c.ncon
 
 # Create objective
 c = _create_objective(c, PEmodel, PEprob, PEinfo)
+c.ncon
 
-return ExaModels.ExaModel(c)
+m = ExaModels.ExaModel(c)
+
+# or just
+filename = joinpath(pwd(), "examples", "Crauste_CellSystems2017", "Crauste_CellSystems2017", "Crauste_CellSystems2017.yaml")
+m = petab_examodel(filename)
+
+madnlp(m)

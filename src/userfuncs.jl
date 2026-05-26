@@ -24,7 +24,7 @@ function petab_examodel(
     )
     PEmodel = PEtab.PEtabModel(filename)    # TODO trim dependencies
     PEprob = PEtab.PEtabODEProblem(PEmodel) # TODO trim dependencies
-    return _build_petab_model(PEmodel, PEprob, backend, K)
+    return _build_petab_examodel(PEmodel, PEprob, backend, K)
 end
 
 function _build_petab_examodel(

@@ -28,12 +28,13 @@ function _create_interval_continuity(c::ExaCore, PEmodel::PEtabModel, PEprob::PE
     # Interval continuity equations
     ###############################################################
     itr_cont1 = [(v,i,cidx) for v in 1:Nz, i in 1:N-1, cidx in 1:Nc]
-    ExaModels.@add_con(c,
+    con_interval = ExaModels.@add_con(c,
         -z[v,i+1,0,cidx]
         for (v,i,cidx) in itr_cont1
     )
     itr_cont1! = [(v,i,cidx,j,L1[j+1]) for v in 1:Nz, i in 1:N-1, cidx in 1:Nc, j in 0:K]
-    ExaModels.@add_con(c,
+    ExaModels.@add_con!(c,
+        con_interval,
         (v,i,cidx) => L1j*z[v,i,j,cidx]
         for (v,i,cidx,j,L1j) in itr_cont1!
     )
@@ -174,5 +175,9 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         end
     end
 
+    display(itr_z0_fix)
+    display(itr_z0_p)
+    display(itr_z0_cv)
+    display(itr_z0_func)
     return c
 end

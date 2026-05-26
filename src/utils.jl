@@ -23,8 +23,11 @@ end
 function _get_cv_syms(PEmodel::PEtabModel)::Vector{Symbolics.Num}
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     conditions_df = PEtable[:conditions] # DataFrame of conditions
-    cond_var_strings = names(conditions_df)[3:end] # Variable names of condition-dependent (::String)
-    return Symbolics.Num.(Symbolics.variable.(cond_var_strings)) # Converts variable name (::String) into symbolic variable (::Symbolics.Num)
+    exclude = ["conditionId", "conditionName"] # Exclude non-cv columns
+    cv_strings = [ # Variable names of condition-dependent (::String)
+        string(str) for str in names(conditions_df) if !(str in exclude)
+    ]
+    return Symbolics.Num.(Symbolics.variable.(cv_strings)) # Converts variable name (::String) into symbolic variable (::Symbolics.Num)
 end
 
 # (!!!) Returns ::Vector{String} of conditionIds
@@ -136,8 +139,33 @@ function _get_dict_t_tidx(h,t_meas)::Dict{Float64, Int64}
     )
 end
 
+# Returns dictionary: observableId (::String) => observableExpression (::Num)
+function _get_dict_obsid_obsexpr(PEmodel::PEtabModel)
+    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
+    observables_df = PEtable[:observables] # :observableId, :observableName, :observableFormula, :noiseFormula, :observableTransformation, :noiseDistribution
+    return Dict(
+        obsid => begin
+            isempty(obsexpr) &&
+                error("Empty observableFormula for observableId = $obsid")
+
+            parsed = Meta.parse(obsexpr)
+            if parsed isa Symbol
+                # if the formula is a single variable, directly parse it as a Num
+                Symbolics.Num(Symbolics.variable(parsed))
+            else
+                # else the formula is a general expression so parse as an expression tree
+                Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
+            end
+        end
+        for (obsid, obsexpr) in zip(
+            observables_df.observableId,
+            observables_df.observableFormula
+        )
+    )
+end
+
 # Returns dictionary: observableId (::String) => yidx, i in [Ny] (::Int64) observable function index
-function _get_dict_obids_yidx(PEmodel)::Dict{String, Int64}
+function _get_dict_obids_yidx(PEmodel::PEtabModel)::Dict{String, Int64}
     return Dict(
         obsid => yidx for (yidx, obsid) in enumerate(_get_obsids(PEmodel))
     )
