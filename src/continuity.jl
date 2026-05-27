@@ -21,7 +21,7 @@ function _create_interval_continuity(c::ExaCore, PEmodel::PEtabModel, PEprob::PE
     ###############################################################
     # Unpack problem info
     ###############################################################
-    (; Nz, N, Nc, L1) = PEinfo
+    (; Nz, N, Nc, L1, K) = PEinfo
     z = c.z
 
     ###############################################################

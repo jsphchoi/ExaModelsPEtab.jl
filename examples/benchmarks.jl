@@ -24,26 +24,36 @@ function benchmark(problem_name::String)
     println("BENCHMARK: $problem_name")
     
     yaml_path = get_yaml_path(problem_name)
-    
     if !isfile(yaml_path)
         @warn "YAML file not found for $problem_name at path: $yaml_path"
         return
     end
 
+    model = nothing
     try
         println("MODEL COMPILATION TIME: ")
-        model = @time ExaModelsPEtab.petab_examodel(
+        @time model = ExaModelsPEtab.petab_examodel(
             yaml_path;
-            backend = nothing, # CUDA.CUDAbackend(),
+            backend = CUDA.CUDABackend(), # CUDA.CUDAbackend(),
             K = 10
         )
-        
-        println("            SOLVE TIME: ")
-        @time madnlp(model; tol = 1e-6)
-        
-        
     catch e
-        @error "Failed to benchmark $problem_name due to an error:" exception=(e, catch_backtrace())
+        @error "Compilation failed for $problem_name" exception=(e, catch_backtrace())
+        return (status = :compile_failed, term_status = "Compile Error", p_star = NaN)
+    end
+
+    try 
+        println("            SOLVE TIME: ")
+        @time res = madnlp(model; tol = 1e-6)
+        status = res.status
+        pstar = res.p
+        println("Termination Status: $term_status")
+        println("Optimal Objective (p*): $p_star")
+        return (status = :success, term_status = string(status), p_star = pstar)
+    
+    catch e
+        @error "Failed to solve $problem_name" exception=(e, catch_backtrace())
+        return (status = :solve_failed, term_status = "Solver Crash", p_star = NaN)
     end
     println("="^50)
 end
