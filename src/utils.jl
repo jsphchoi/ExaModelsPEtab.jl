@@ -133,33 +133,11 @@ end
 
 # Returns dictionary: time of measurement (::Float64) => interval index, i in [N] (::Int64)
 function _get_dict_t_tidx(h,t_meas)::Dict{Float64, Int64}
-    return Dict(
-        t_data => findfirst(x -> isapprox(x,t_data; rtol = 1e-10), cumsum(h)) 
-        for t_data in t_meas
-    )
-end
-
-# Returns dictionary: observableId (::String) => observableExpression (::Num)
-function _get_dict_obsid_obsexpr(PEmodel::PEtabModel)::Dict{String, Any}
-    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
-    observables_df = PEtable[:observables] # :observableId, :observableName, :observableFormula, :noiseFormula, :observableTransformation, :noiseDistribution
-    return Dict(
-        obsid => begin
-            isempty(obsexpr) &&
-                error("Empty observableFormula for observableId = $obsid")
-
-            parsed = Meta.parse(obsexpr)
-            if parsed isa Symbol
-                # if the formula is a single variable, directly parse it as a Num
-                Symbolics.Num(Symbolics.variable(parsed))
-            else
-                # else the formula is a general expression so parse as an expression tree
-                Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
-            end
-        end
-        for (obsid, obsexpr) in zip(
-            observables_df.observableId,
-            observables_df.observableFormula
+    return merge(
+        Dict(0.0 => 1),
+        Dict(
+            t_data => findfirst(x -> isapprox(x, t_data; rtol = 1e-10), cumsum(h))
+            for t_data in t_meas
         )
     )
 end
@@ -169,18 +147,6 @@ function _get_dict_obids_yidx(PEmodel::PEtabModel)::Dict{String, Int64}
     return Dict(
         obsid => yidx for (yidx, obsid) in enumerate(_get_obsids(PEmodel))
     )
-end
-
-# TODO verify gemini code
-function _get_obs_param_syms(expr, obsid::String)
-    vars = Symbolics.get_variables(expr)
-    matches = filter(vars) do v
-        s = string(v)
-        startswith(s, "observableParameter") && endswith(s, "_$(obsid)")
-    end
-    # Sort by index n so argument order matches the semicolon-delimited
-    # ordering in the measurement table's observableParameters column
-    sort(matches; by = v -> string(v))
 end
 
 # Returns ::Vector{(Function)} of observable variable equations, y

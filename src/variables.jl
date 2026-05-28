@@ -23,8 +23,8 @@ function _create_variables(
     # OBJECTIVE FUNCTION VARIABLES
     # Create auxiliary variables for model observables, y
     # Create auxiliary variables for measurement errors, sigma
-    c = _create_y(c, PEmodel, PEprob, PEinfo)
-    c = _create_sigma(c, PEmodel, PEprob, PEinfo)
+    c = _create_y(c, PEinfo)
+    c = _create_sigma(c, PEinfo)
 
     # If there are condition-dependent variables...
     if Ncv >= 1 
@@ -47,11 +47,11 @@ end
 # Creates ExaModels decision variables for unknown parameters
 # p[1:Np]
 function _create_p(c::ExaCore, PEprob::PEtabODEProblem)
-    Np = PEprob.nparameters_estimate # number of unknown parameters to fit
-    (; lower_bounds, upper_bounds, xnames, xnominal, model_info) = PEprob
-    p_LB = PEtab.transform_x(Array(lower_bounds), xnames, model_info.xindices; to_xscale=false)
-    p_UB = PEtab.transform_x(Array(upper_bounds), xnames, model_info.xindices; to_xscale=false)
-    p_init = PEtab.transform_x(Array(xnominal),   xnames, model_info.xindices; to_xscale=false)
+    (; lower_bounds, upper_bounds, xnames, xnominal, model_info, nparameters_estimate) = PEprob
+    Np = nparameters_estimate # number of unknown parameters to fit
+    p_LB    = PEtab.transform_x(Array(lower_bounds), xnames, model_info.xindices; to_xscale=false)
+    p_UB    = PEtab.transform_x(Array(upper_bounds), xnames, model_info.xindices; to_xscale=false)
+    p_init  = PEtab.transform_x(Array(xnominal),     xnames, model_info.xindices; to_xscale=false)
     ExaModels.@add_var(c,
         p,
         1:Np;
@@ -69,8 +69,6 @@ function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::
     ExaModels.@add_var(c,
         z,
         1:Nz, 1:N, 0:K, 1:Nc;
-        lvar = 0.0, # TODO find lower bounds for states, if at all
-        uvar = Inf, # TODO find upper bounds for states, if at all
         start = z_init
     )
     return c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1
@@ -79,11 +77,10 @@ end
 # Creates ExaModels decision variables for condition-dependent variables
 # cv[1:Ncv,1:Nc]
 function _create_cv(c::ExaCore, PEinfo::PEInfo)
-    # Unpack problem info
     (; Nc, Ncv) = PEinfo
     ExaModels.@add_var(c,
         cv, 
-        1:Ncv, 1:Nc # will either be fixed values or p
+        1:Ncv, 1:Nc
     )
     return c
 end
@@ -91,44 +88,33 @@ end
 # Creates ExaModels decision variables for steady-state pre-equilibrium state 
 # zss[1:Nz,1:Nc]
 function _create_zss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    # Unpack problem info
     (; Nz, Nc) = PEinfo
-    zss_init = _get_zss_init(PEmodel, PEprob, PEinfo)
     ExaModels.@add_var(c,
         zss,
         1:Nz, 1:Nc;
-        lvar = 0.0, # TODO find lower bounds for states, if at all
-        uvar = Inf, # TODO find upper bounds for states, if at all
-        start = zss_init
+        start = _get_zss_init(PEmodel, PEprob, PEinfo)
     )
     return c
 end
 
 # Creates ExaModels (auxiliary) decision variables for observable model variable
 # y[1:Nm]
-function _create_y(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+function _create_y(c::ExaCore, PEinfo::PEInfo)
     (; Nm) = PEinfo
-    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
-    measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
-    ymeas = measurements_df[!,:measurement]
     ExaModels.@add_var(c,
         y,
-        1:Nm;
-        lvar = 0.0,
-        start = ymeas # TODO: Ask: should i even have a start guess for a fixed auxiliary variable?
+        1:Nm
     )
     return c
 end
 
 # Creates ExaModels (auxiliary) decision variables for standard deviation of error
 # sigma[1:Nm]
-function _create_sigma(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+function _create_sigma(c::ExaCore, PEinfo::PEInfo)
     (; Nm) = PEinfo
     ExaModels.@add_var(c,
         sigma,
-        1:Nm;
-        lvar = 1e-10, # avoid divide by 0
-        start = 1.0 # TODO: Ask: should i even have a start guess for a fixed auxiliary variable?
+        1:Nm
     )
     return c
 end

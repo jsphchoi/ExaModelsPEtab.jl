@@ -10,18 +10,47 @@ begin
     # using TestEnv
     # TestEnv.activate()
     using CUDA, MadNLPGPU
-    function load_petab(problem_name::String)
-        # Dynamically build the path based on the folder structure
-        filename = joinpath(pwd(), "examples", problem_name, problem_name, "$(problem_name).yaml")
-        if !isfile(filename)
-            error("Could not find the YAML file at: $filename\nMake sure your Julia REPL is working in the project root directory.")
+    function get_yaml_path(problem_name::String)
+        cd()
+        problem_dir = joinpath(pwd(),
+            "OneDrive - Massachusetts Institute of Technology",
+            "Git","ExaModelsPEtab.jl",
+            "examples", 
+            "Benchmark-Models", 
+            problem_name
+        )
+        
+        # Check if the folder actually exists first
+        if !isdir(problem_dir)
+            return @error "$problem_name not found in ~/Benchmark-Models"
         end
-        PEmodel = PEtab.PEtabModel(filename)
+        
+        # Look for any file ending with .yaml (case-insensitive)
+        yaml_files = filter(f -> endswith(lowercase(f), ".yaml"), readdir(problem_dir))
+        if isempty(yaml_files)
+            return @error "No .yaml file found in ~/Benchmark-Models/$problem_name"
+        else
+            # Return the absolute path to the first yaml file found
+            return joinpath(problem_dir, first(yaml_files))
+        end
+    end
+
+    function load_petab(problem_name::String)
+        PEmodel = PEtab.PEtabModel(get_yaml_path(problem_name))
         PEprob = PEtab.PEtabODEProblem(PEmodel)
         return PEmodel, PEprob
     end
+    
 end
 
+cd()
+cd(
+    joinpath(
+        pwd(),
+        "OneDrive - Massachusetts Institute of Technology",
+        "Git","ExaModelsPEtab.jl", "src"
+    )
+)
 include("structs.jl")       # data structure for parameter estimation problem
 include("constants.jl")     # get collocation equation constants
 include("utils.jl")         # build helper functions
@@ -37,6 +66,7 @@ include("userfuncs.jl")     # user-end functions
 # Schwen_PONE2014
 # Isensee_JCB2018 x0SSpre INITIALIZATION NOT WORKING. PETAB ISSUE.
 # Crauste_CellSystems2017
+# Raia_CancerResearch2011 E(3)
 PEmodel, PEprob = load_petab("Crauste_CellSystems2017")
 
 c = ExaModels.ExaCore(; concrete = Val(true))
@@ -55,6 +85,9 @@ c.ncon
 # Create objective
 c = _create_objective(c, PEmodel, PEprob, PEinfo)
 c.ncon
+
+DoF = c.nvar - c.ncon
+check_sense = PEinfo.Np - DoF
 
 m = ExaModels.ExaModel(c)
 
