@@ -1,6 +1,6 @@
 #######################################################
-# STATE AS OF: 05/20/26
-# COMPLETE: >=1 experimental conditions
+# STATE AS OF: 05/28/26
+# TODO: BETTER INITIALIZATION OF y, sigma !!!
 # TODO: support u(t), u(t,p)
 #######################################################
 
@@ -69,7 +69,9 @@ function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::
     ExaModels.@add_var(c,
         z,
         1:Nz, 1:N, 0:K, 1:Nc;
-        start = z_init
+        start = z_init,
+        lvar = 0.0,     # TODO ?
+        uvar = Inf      # TODO ?
     )
     return c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1
 end
@@ -92,7 +94,9 @@ function _create_zss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, P
     ExaModels.@add_var(c,
         zss,
         1:Nz, 1:Nc;
-        start = _get_zss_init(PEmodel, PEprob, PEinfo)
+        start = _get_zss_init(PEmodel, PEprob, PEinfo),
+        lvar = 0.0,     # TODO ?
+        uvar = Inf      # TODO ?
     )
     return c
 end
@@ -103,7 +107,10 @@ function _create_y(c::ExaCore, PEinfo::PEInfo)
     (; Nm) = PEinfo
     ExaModels.@add_var(c,
         y,
-        1:Nm
+        1:Nm;
+        start = 10.0,    # TODO ?
+        lvar = 0.0,     # TODO ?
+        uvar = Inf      # TODO ?
     )
     return c
 end
@@ -114,7 +121,10 @@ function _create_sigma(c::ExaCore, PEinfo::PEInfo)
     (; Nm) = PEinfo
     ExaModels.@add_var(c,
         sigma,
-        1:Nm
+        1:Nm;
+        start = 10.0,    # TODO ?
+        lvar = 1e-10,     # TODO ?
+        uvar = Inf      # TODO ?
     )
     return c
 end

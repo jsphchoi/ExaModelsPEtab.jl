@@ -1,5 +1,7 @@
 #######################################################
-# STATE AS OF: 05/27/26
+# STATE AS OF: 05/28/26
+# TODO: verify implementation
+# TODO: resolve idx+1 issue for itr_y_func
 #######################################################
 
 # (*) Main function for creating ExaModels objective function (*)

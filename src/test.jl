@@ -71,7 +71,7 @@ PEmodel, PEprob = load_petab("Crauste_CellSystems2017")
 
 c = ExaModels.ExaCore(; concrete = Val(true))
 
-K = 10
+K = 2
 # Create decision variables
 c, PEinfo = _create_variables(c, PEmodel, PEprob, K)
 c.nvar
@@ -92,7 +92,6 @@ check_sense = PEinfo.Np - DoF
 m = ExaModels.ExaModel(c)
 
 # or just
-filename = joinpath(pwd(), "examples", "Crauste_CellSystems2017", "Crauste_CellSystems2017", "Crauste_CellSystems2017.yaml")
-m = petab_examodel(filename)
+m = petab_examodel(get_yaml_path("Crauste_CellSystems2017"))
 
 madnlp(m)
