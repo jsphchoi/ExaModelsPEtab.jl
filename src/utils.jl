@@ -45,36 +45,57 @@ function _get_obsids(PEmodel::PEtabModel)::Vector{String}
     return observables_df[!,:observableId]
 end
 
-# Returns ::Vector{(Function)} of ODE RHS equations
-# f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
+# Returns (::Vector{Function}, ::Bool) where bool = has_t (ODE depends on time after substitution)
+# Without time: f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
+# With time:    f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]; t]...)
 function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
-    # Get symbolic ODE RHS expressions
-    sys = PEprob.model_info.model.sys # ODESystem from PEprob
-    f_exprs_raw = [ # Vector of raw symbolic ODE RHS expressions
-        eqn.rhs for eqn in MTK.equations(sys)
-    ]
+    sys = PEprob.model_info.model.sys
+
+    f_exprs_raw = [eqn.rhs for eqn in MTK.equations(sys)]
 
     # Substitute in fixed constant values
-    dict_all_val = Dict(PEprob.model_info.model.parametermap) # Mapping: symbolics of all parameters => nominal values
-    fixed_syms = setdiff( # Symbolics of fixed constants
-        keys(Dict(dict_all_val)), 
-        union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
+    dict_all_val  = Dict(PEprob.model_info.model.parametermap)
+    fixed_syms    = setdiff(keys(Dict(dict_all_val)), union(_get_p_syms(PEprob), _get_cv_syms(PEmodel)))
+    dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms))
+
+    # Identify u(t,p) inputs: observed vars that appear in the ODE but are NOT state variables.
+    # get_variables returns Set{BasicSymbolic}; observed eq.lhs is also BasicSymbolic → isequal works.
+    # z_syms are Num-wrapped; isequal(BasicSymbolic, Num) = true for same variable.
+    z_syms  = _get_z_syms(PEprob)
+    p_syms  = _get_p_syms(PEprob)
+    cv_syms = _get_cv_syms(PEmodel)
+    ode_free = foldl(union, Symbolics.get_variables.(f_exprs_raw))  # Set{BasicSymbolic}
+    dict_utp = Dict(
+        eq.lhs => eq.rhs
+        for eq in MTK.observed(sys)
+        if  any(isequal(eq.lhs, v) for v in ode_free) &&
+           !any(isequal(eq.lhs, z) for z in z_syms)
     )
-    dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)) # Mapping: symbolics of fixed constants => values
-    f_exprs = [ # Substitute fixed values
-        Symbolics.substitute(f_expr_raw, dict_fixed_val)
-        for f_expr_raw in f_exprs_raw
+
+    f_exprs = [
+        Symbolics.substitute(Symbolics.substitute(f_raw, dict_utp), dict_fixed_val)
+        for f_raw in f_exprs_raw
     ]
 
-    # Convert symbolic RHS expression into numeric function
-    return [ 
-        Symbolics.build_function(
-            f_expr,
-            [_get_z_syms(PEprob); _get_p_syms(PEprob); _get_cv_syms(PEmodel)]...,
-            expression = Val{false}
-        )
+    # Detect time-dependence: check if MTK's independent variable 't' is a free variable
+    # after substituting u(t,p) inputs. Use string comparison — robust across Symbolics versions.
+    all_free = foldl(union, Symbolics.get_variables.(f_exprs))
+    t_basic  = nothing
+    for v in all_free
+        if string(v) == "t"
+            t_basic = v
+            break
+        end
+    end
+    has_t = t_basic !== nothing
+    t_sym = has_t ? Symbolics.Num(t_basic) : nothing
+
+    all_syms = has_t ? [z_syms; p_syms; cv_syms; [t_sym]] : [z_syms; p_syms; cv_syms]
+
+    return [
+        Symbolics.build_function(f_expr, all_syms..., expression = Val{false})
         for f_expr in f_exprs
-    ]
+    ], has_t
 end
 
 # Returns ::Dictionary{} of p::String => p[pidx] index

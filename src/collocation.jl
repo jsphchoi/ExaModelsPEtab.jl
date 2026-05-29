@@ -1,6 +1,5 @@
 #######################################################
-# STATE AS OF: 05/25/26
-# TODO: add u(t), u(t,p) functional dependence. t_ij index and just substitute explicitly probably
+# STATE AS OF: 05/29/26
 #######################################################
 
 # (*) Main function for creating ExaModels collocation equations (*)
@@ -23,28 +22,46 @@ function _create_collocation(
     ########################################################################
     # Lagrange collocation equations
     ########################################################################
-    # Get ODE RHS functions
-    fs = _get_rhs_funcs(PEmodel, PEprob)
+    # Get ODE RHS functions (and whether they depend on time t)
+    fs, has_t = _get_rhs_funcs(PEmodel, PEprob)
 
     # Create constraint: hᵢf(...) = (...)
-    itr_coll = [(i,k,cidx,h[i]) for i in 1:N, k in 1:K, cidx in 1:Nc]
-    c_coll = [
-        ExaModels.@add_con(c,
-            -hi*f( # inputs of the ODE RHS function
-                ntuple(v -> z[v,i,k,cidx], Nz)...,  # state vars
-                ntuple(m -> p[m], Np)...,           # unknown params
-                ntuple(m -> cv[m,cidx], Ncv)...     # condition-dep. vars
+    if has_t
+        # t_ij = start of interval i + tau_k * h_i  (collocation time)
+        h_cum    = cumsum(h) .- h  # start time of each interval
+        itr_coll = [(i,k,cidx,h[i],h_cum[i] + taus[k+1]*h[i]) for i in 1:N, k in 1:K, cidx in 1:Nc]
+        c_coll   = [
+            ExaModels.@add_con(c,
+                -hi*f(
+                    ntuple(v -> z[v,i,k,cidx], Nz)...,  # state vars
+                    ntuple(m -> p[m], Np)...,            # unknown params
+                    ntuple(m -> cv[m,cidx], Ncv)...,     # condition-dep. vars
+                    t_ij                                  # time at collocation point
+                )
+                for (i,k,cidx,hi,t_ij) in itr_coll
             )
-            for (i,k,cidx,hi) in itr_coll
-        )
-        for f in fs
-    ]
-    
+            for f in fs
+        ]
+    else
+        itr_coll = [(i,k,cidx,h[i]) for i in 1:N, k in 1:K, cidx in 1:Nc]
+        c_coll   = [
+            ExaModels.@add_con(c,
+                -hi*f(
+                    ntuple(v -> z[v,i,k,cidx], Nz)...,  # state vars
+                    ntuple(m -> p[m], Np)...,            # unknown params
+                    ntuple(m -> cv[m,cidx], Ncv)...      # condition-dep. vars
+                )
+                for (i,k,cidx,hi) in itr_coll
+            )
+            for f in fs
+        ]
+    end
+
     # Constraint augmentation: (...) = ∑dlⱼdτ(τₖ)*zᵢⱼ
-    DLDTAU = [_eval_dldtau(j,k,taus) for j in 0:K, k in 1:K]
+    DLDTAU  = [_eval_dldtau(j,k,taus) for j in 0:K, k in 1:K]
     itr_coll! = [(i,j,k,cidx,DLDTAU[j+1,k]) for i in 1:N, j in 0:K, k in 1:K, cidx in 1:Nc]
     for v in eachindex(c_coll)
-        ExaModels.@add_con!(c, 
+        ExaModels.@add_con!(c,
             c_coll[v],
             (i,k,cidx) => z[v,i,j,cidx]*DLDTAU
             for (i,j,k,cidx,DLDTAU) in itr_coll!
