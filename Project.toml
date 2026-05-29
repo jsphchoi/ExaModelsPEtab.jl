@@ -4,7 +4,9 @@ version = "0.1.0-DEV"
 authors = ["Joseph Choi <jsphchoi@mit.edu> and contributors"]
 
 [deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+MadNLPGPU = "d72a61cc-809d-412f-99be-fd81f4b8a598"
 ModelingToolkitBase = "7771a370-6774-4173-bd38-47e70ca0b839"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
