@@ -1,7 +1,5 @@
 #######################################################
-# STATE AS OF: 05/28/26
-# TODO: BETTER INITIALIZATION OF y, sigma !!!
-# TODO: support u(t), u(t,p)
+# STATE AS OF: 05/30/26
 #######################################################
 
 # (*) Main function for creating ExaModels decision variables (*)
@@ -22,24 +20,19 @@ function _create_variables(
 
     # OBJECTIVE FUNCTION VARIABLES
     # Create auxiliary variables for model observables, y
-    # Create auxiliary variables for measurement errors, sigma
     c = _create_y(c, PEinfo)
+    # Create auxiliary variables for measurement errors, sigma
     c = _create_sigma(c, PEinfo)
 
     # If there are condition-dependent variables...
-    if Ncv >= 1 
-        c = _create_cv(c, PEinfo)
+    if Ncv >= 1
+        c = _create_cv(c, PEmodel, PEprob, PEinfo)
     end
 
     # If initial conditions are steady-state equilibrium...
     if _check_x0SSpre(PEprob) 
         c = _create_zss(c, PEmodel, PEprob, PEinfo)
     end
-
-    # # If there are time-dependent input functions u(t) or u(t,p)...
-    # if _check_ut(PEprob)
-    #     c = _create_utp(c, PEmodel, PEprob, PEinfo) # TODO +u(t), +u(t,p)
-    # end
     
     return c, PEinfo
 end
@@ -70,19 +63,49 @@ function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::
         z,
         1:Nz, 1:N, 0:K, 1:Nc;
         start = z_init,
-        lvar = 0.0,     # TODO ?
-        uvar = Inf      # TODO ?
+        lvar = -Inf,    # unbounded: state sign/range is model-dependent (not assumed >= 0)
+        uvar = Inf
     )
     return c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1
 end
 
 # Creates ExaModels decision variables for condition-dependent variables
 # cv[1:Ncv,1:Nc]
-function _create_cv(c::ExaCore, PEinfo::PEInfo)
+# Each cv entry is either a fixed numeric value or exactly equal to an unknown
+# parameter (see the cv equality constraints in collocation.jl). We initialize the
+# start accordingly — numeric literal, or the parameter's own initial guess — so cv
+# (and any observable/noise formula that references it) is warm-started consistently.
+function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nc, Ncv) = PEinfo
+    conditions_df  = PEmodel.petab_tables[:conditions]
+    cv_cols        = _get_cv_colnames(PEmodel)          # cv column names, aligned 1:Ncv
+    dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)        # parameter name => p decision-var index
+    p0             = _var_starts(c, c.p)                # p initial guesses (c.p created before cv)
+
+    cv_init = zeros(Float64, Ncv, Nc)
+    for cidx in 1:Nc
+        for cvidx in 1:Ncv
+            val = conditions_df[cidx, cv_cols[cvidx]]
+            if val isa Number
+                cv_init[cvidx, cidx] = Float64(val)
+            elseif val isa String || val isa Symbol
+                str_val    = String(val)
+                parsed_val = tryparse(Float64, str_val)
+                if parsed_val !== nothing
+                    cv_init[cvidx, cidx] = parsed_val
+                elseif haskey(dict_pstr_pidx, str_val)
+                    cv_init[cvidx, cidx] = p0[dict_pstr_pidx[str_val]] # cv = p => use p's start
+                else
+                    error("Condition variable '$str_val' not found in unknown parameter list.")
+                end
+            end
+        end
+    end
+
     ExaModels.@add_var(c,
-        cv, 
-        1:Ncv, 1:Nc
+        cv,
+        1:Ncv, 1:Nc;
+        start = cv_init
     )
     return c
 end
@@ -95,8 +118,8 @@ function _create_zss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, P
         zss,
         1:Nz, 1:Nc;
         start = _get_zss_init(PEmodel, PEprob, PEinfo),
-        lvar = 0.0,     # TODO ?
-        uvar = Inf      # TODO ?
+        lvar = -Inf,    # unbounded: same state quantities as z (sign/range model-dependent)
+        uvar = Inf
     )
     return c
 end
@@ -107,10 +130,7 @@ function _create_y(c::ExaCore, PEinfo::PEInfo)
     (; Nm) = PEinfo
     ExaModels.@add_var(c,
         y,
-        1:Nm;
-        start = 10.0,    # TODO ?
-        lvar = 0.0,     # TODO ?
-        uvar = Inf      # TODO ?
+        1:Nm # bounds? set_start! added later
     )
     return c
 end
@@ -121,19 +141,8 @@ function _create_sigma(c::ExaCore, PEinfo::PEInfo)
     (; Nm) = PEinfo
     ExaModels.@add_var(c,
         sigma,
-        1:Nm;
-        start = 10.0,    # TODO ?
-        lvar = 1e-10,     # TODO ?
-        uvar = Inf      # TODO ?
+        1:Nm # bounds? set_start! added later
     )
-    return c
-end
-
-# TODO
-# Creates ExaModels decision variables for time-dependent input functions u(t) or u(t,p)
-# utp[1:Nz,1:Nc]
-function _create_utp(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    
     return c
 end
 

@@ -1,5 +1,5 @@
 #######################################################
-# STATE AS OF: 05/29/26
+# STATE AS OF: 05/30/26
 #######################################################
 
 # (*) Main function for creating ExaModels collocation equations (*)
@@ -73,6 +73,7 @@ function _create_collocation(
     ########################################################################
     # Unpack DataFrame: row = experimental condition, col = condition-dependent variable
     conditions_df = PEmodel.petab_tables[:conditions]
+    cv_cols = _get_cv_colnames(PEmodel) # cv column names, aligned 1:Ncv (no positional offset)
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob) # string of unknown parameter, p => index of decision variable, p
 
     # Create iterators
@@ -80,7 +81,7 @@ function _create_collocation(
     itr_cv_p    = Tuple{Int, Int, Int}[]
     for cidx in 1:Nc
         for cvidx in 1:Ncv
-            val = conditions_df[cidx,cvidx+2] # obtain DataFrame value
+            val = conditions_df[cidx, cv_cols[cvidx]] # obtain DataFrame value by column name
             if val isa Number
                 # If the value is a numeric value...
                 push!(itr_cv_fix, (cvidx, cidx, Float64(val)))

@@ -4,6 +4,12 @@
 
 # Key: (!!!) := determines index -> variable ordering/mapping
 
+# Reads the numeric start (initial-guess) values of a variable handle back out of the
+# ExaCore start buffer (c.x0). Returns a host Vector{Float64} in the variable's own
+# column-major index order, so it can be reshaped to the variable's dimensions.
+# (ExaModels' get_start is only defined on a built ::ExaModel, not on ::ExaCore.)
+_var_starts(c::ExaCore, v) = Array(view(c.x0, (v.offset + 1):(v.offset + v.length)))
+
 # (!!!) Returns ::Vector{Symbolics.Num} of state variables
 # z[1:Nz,i,k,cidx]
 function _get_z_syms(PEprob::PEtabODEProblem)::Vector{Symbolics.Num}
@@ -17,15 +23,20 @@ function _get_p_syms(PEprob::PEtabODEProblem)::Vector{Symbolics.Num}
     return Symbolics.Num.(Symbolics.variable.(PEprob.xnames)) # Converts variable name (::String) into symbolic variable (::Symbolics.Num)
 end
 
+# (!!!) Returns ::Vector{String} of condition-dependent variable column names, cv
+# These are all conditions-table columns except the metadata columns. This is the
+# single source of truth for both the cv count/order and column lookups, so we never
+# assume a fixed positional offset (conditionName is optional in PEtab).
+function _get_cv_colnames(PEmodel::PEtabModel)::Vector{String}
+    conditions_df = PEmodel.petab_tables[:conditions] # DataFrame of conditions
+    exclude = ["conditionId", "conditionName"] # Exclude non-cv (metadata) columns
+    return [string(str) for str in names(conditions_df) if !(str in exclude)]
+end
+
 # (!!!) Returns ::Vector{Symbolics.Num} of condition-dependent variables, cv
 # cv[1:Ncv,cidx]
 function _get_cv_syms(PEmodel::PEtabModel)::Vector{Symbolics.Num}
-    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
-    conditions_df = PEtable[:conditions] # DataFrame of conditions
-    exclude = ["conditionId", "conditionName"] # Exclude non-cv columns
-    cv_strings = [ # Variable names of condition-dependent (::String)
-        string(str) for str in names(conditions_df) if !(str in exclude)
-    ]
+    cv_strings = _get_cv_colnames(PEmodel) # Variable names of condition-dependent (::String)
     return Symbolics.Num.(Symbolics.variable.(cv_strings)) # Converts variable name (::String) into symbolic variable (::Symbolics.Num)
 end
 
@@ -151,10 +162,13 @@ function _get_dict_cid_cidx(PEmodel::PEtabModel)::Dict{String, Int64}
     )
 end
 
-# Returns dictionary: time of measurement (::Float64) => interval index, i in [N] (::Int64)
+# Returns dictionary: measurement time (::Float64) => mesh point index k in 0:N (::Int64)
+# where T_k = cumsum(h)[k] is the right endpoint of interval k (T_0 = 0). A measurement
+# at time T_k corresponds to the state at that mesh point; consumers map k to a z node:
+# k=0 -> initial node z[·,1,0,·]; 1<=k<=N-1 -> z[·,k+1,0,·]; k=N -> L1 endpoint of interval N.
 function _get_dict_t_tidx(h,t_meas)::Dict{Float64, Int64}
     return merge(
-        Dict(0.0 => 1),
+        Dict(0.0 => 0),   # t = T_0 = 0 -> initial-condition mesh point
         Dict(
             t_data => findfirst(x -> isapprox(x, t_data; rtol = 1e-10), cumsum(h))
             for t_data in t_meas

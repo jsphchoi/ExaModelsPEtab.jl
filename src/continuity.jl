@@ -1,7 +1,7 @@
 #######################################################
-# STATE AS OF: 05/26/26
-# TODO: verify implementation
+# STATE AS OF: 05/30/26
 # TODO: support ev: _create_ev, intervene interval continuity. idea: create dict i=1:N -> f(t_event) to continuity constraint!
+# TODO: for ssX0pre, need to also account for time-dependent function or nah?
 #######################################################
 
 # (*) Main function for creating collocation continuity constraints (*)

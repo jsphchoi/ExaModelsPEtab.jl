@@ -43,8 +43,16 @@ function _build_petab_examodel(
     c = _create_collocation(c, PEmodel, PEprob, PEinfo)
     c = _create_continuity(c, PEmodel, PEprob, PEinfo)
 
-    # Create objective
-    c = _create_objective(c, PEmodel, PEprob, PEinfo)
+    # Create objective (also returns feasible initial guesses for the auxiliary
+    # observable (y) and noise (sigma) variables, evaluated at the z/p starts)
+    c, y0, sigma0 = _create_objective(c, PEmodel, PEprob, PEinfo)
 
-    return ExaModels.ExaModel(c)
+    model = ExaModels.ExaModel(c)
+
+    # Warm-start y and sigma with values consistent with the z/p initial guesses.
+    # set_start! requires a built ::ExaModel (not the ::ExaCore), so it happens here.
+    ExaModels.set_start!(model, c.y, y0)
+    ExaModels.set_start!(model, c.sigma, sigma0)
+
+    return model
 end

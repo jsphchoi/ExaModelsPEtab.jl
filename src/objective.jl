@@ -1,7 +1,7 @@
 #######################################################
-# STATE AS OF: 05/29/26
+# STATE AS OF: 05/30/26
 # TODO: verify implementation
-# TODO: resolve idx+1 issue for itr_y_func
+# TODO: y0 initial guess just idx+1, if idx=N then use weighted sum.
 #######################################################
 
 # (*) Main function for creating ExaModels objective function (*)
@@ -14,7 +14,7 @@ function _create_objective(
     ###############################################
     # Unpack problem info
     ###############################################
-    (; Np, Ncv, Nz, Nm, Ny, N, K, t_meas, h, L1) = PEinfo
+    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, h, L1) = PEinfo
     z = c.z
     p = c.p
     y = c.y
@@ -22,6 +22,17 @@ function _create_objective(
     if Ncv >= 1
         cv = c.cv
     end
+
+    # ---- Warm-start support -------------------------------------------------
+    # y and sigma are auxiliary variables defined entirely by z, p (and cv), which
+    # already carry good PEtab initial guesses. We evaluate their defining formulas
+    # at the initial point here so y/sigma can be given matching (feasible) starts
+    # via set_start! after the model is built — critical for the IPM solver.
+    z0  = reshape(_var_starts(c, z), Nz, N, K + 1, Nc) # z0[v, i, j+1, cidx]
+    p0  = _var_starts(c, p)                            # p0[m]
+    cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, Nc) : zeros(Float64, 0, Nc)
+    y0     = zeros(Float64, Nm) # computed observable values at the initial guess
+    sigma0 = zeros(Float64, Nm) # computed noise (std) values at the initial guess
 
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
@@ -69,19 +80,24 @@ function _create_objective(
     # Helper: normalize a raw table cell to String (handle missing/nothing)
     _safe_str(v) = (ismissing(v) || isnothing(v)) ? "" : strip(string(v))
 
+    # Some PEtab models omit these columns entirely when no row uses them
+    has_obs_params_col   = :observableParameters in propertynames(measurements_df)
+    has_noise_params_col = :noiseParameters      in propertynames(measurements_df)
+
     ###############################################
     # Observable formula (y) constraints
     # Group measurements by (obsId, observableParameters) so that each unique
     # formula gets its own compiled ExaModels constraint.
     ###############################################
-    itr_y_z  = Int[]
-    itr_y_z! = Tuple{Int, Int, Int, Int, Int, Float64}[]
+    itr_y_z    = Int[]
+    itr_y_z!   = Tuple{Int, Int, Int, Int, Int, Float64}[]
+    itr_y_z_ic = Tuple{Int, Int, Int}[]  # state observable at t=0 -> initial-condition node
 
     obs_y_groups = Dict{Tuple{String,String}, Vector{Int}}()
     for midx in 1:Nm
         row     = measurements_df[midx, :]
         obs_id  = string(row[:observableId])
-        obs_key = _safe_str(row[:observableParameters])
+        obs_key = has_obs_params_col ? _safe_str(row[:observableParameters]) : ""
         push!(get!(obs_y_groups, (obs_id, obs_key), Int[]), midx)
     end
 
@@ -100,17 +116,26 @@ function _create_objective(
         parsed = Meta.parse(obs_expr_sub)
 
         if parsed isa Symbol
-            # Observable is a single state variable: y[midx] = z[zidx, i, j, cidx]
+            # Observable is a single state variable: y[midx] = state at the measurement time.
             obs_sym = Symbolics.Num(Symbolics.variable(parsed))
             zidx    = findfirst(x -> isequal(x, obs_sym), z_syms)
-            append!(itr_y_z, group_midxs)
             for midx in group_midxs
                 row  = measurements_df[midx, :]
                 cid  = string(row[:simulationConditionId])
                 time = Float64(row[:time])
                 cidx = dict_cid_cidx[cid]
                 idx  = dict_t_tidx[time]
-                append!(itr_y_z!, [(midx, zidx, idx, cidx, j, L1[j+1]) for j in 0:K])
+                if idx == 0
+                    # t = 0: state is the initial-condition node z[zidx,1,0,cidx] directly
+                    # (the L1 interval-interpolation has no interval 0 to extrapolate).
+                    push!(itr_y_z_ic, (midx, zidx, cidx))
+                    y0[midx] = z0[zidx, 1, 1, cidx]
+                else
+                    # y[midx] = Σ_j L1[j+1] * z[zidx, idx, j, cidx] (τ=1 endpoint of interval idx)
+                    push!(itr_y_z, midx)
+                    append!(itr_y_z!, [(midx, zidx, idx, cidx, j, L1[j+1]) for j in 0:K])
+                    y0[midx] = sum(L1[j+1] * z0[zidx, idx, j+1, cidx] for j in 0:K)
+                end
             end
         else
             # Observable is an arbitrary expression: compile obs_func for this group
@@ -122,24 +147,51 @@ function _create_objective(
                 expression = Val{false}
             )
 
-            itr_y_func = Tuple{Int, Int, Int}[]
+            itr_y_func   = Tuple{Int, Int, Int}[]  # idx < N : state = z[·,idx+1,0,·] (one node)
+            itr_y_func_N = Tuple{Int, Int}[]       # idx = N : state = L1 endpoint of interval N
             for midx in group_midxs
                 row  = measurements_df[midx, :]
                 cid  = string(row[:simulationConditionId])
                 time = Float64(row[:time])
                 cidx = dict_cid_cidx[cid]
                 idx  = dict_t_tidx[time]
-                push!(itr_y_func, (midx, idx, cidx))
+                # warm start: evaluate obs_func at the initial guess, mirroring the constraint
+                if idx == N
+                    push!(itr_y_func_N, (midx, cidx))
+                    zatt = ntuple(v -> sum(L1[jj+1] * z0[v, N, jj+1, cidx] for jj in 0:K), Nz)
+                else
+                    push!(itr_y_func, (midx, idx, cidx))
+                    zatt = ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+                end
+                y0[midx] = obs_func(
+                    zatt...,
+                    ntuple(m -> p0[m], Np)...,
+                    ntuple(m -> cv0[m, cidx], Ncv)...
+                )
             end
 
-            ExaModels.@add_con(c,
-                y[midx] - obs_func(
-                    ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
-                    ntuple(m -> p[m], Np)...,
-                    ntuple(m -> cv[m,cidx], Ncv)
+            # idx < N: single-node kernel (state = node 0 of the next interval, by continuity)
+            if !isempty(itr_y_func)
+                ExaModels.@add_con(c,
+                    y[midx] - obs_func(
+                        ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
+                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> cv[m,cidx], Ncv)...
+                    )
+                    for (midx, idx, cidx) in itr_y_func
                 )
-                for (midx, idx, cidx) in itr_y_func
-            )
+            end
+            # idx == N: final-time group; the L1 (τ=1) endpoint sum is inlined here only.
+            if !isempty(itr_y_func_N)
+                ExaModels.@add_con(c,
+                    y[midx] - obs_func(
+                        ntuple(v -> sum(L1[jj+1]*z[v,N,jj,cidx] for jj in 0:K), Nz)...,
+                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> cv[m,cidx], Ncv)...
+                    )
+                    for (midx, cidx) in itr_y_func_N
+                )
+            end
         end
     end
 
@@ -155,7 +207,7 @@ function _create_objective(
     for midx in 1:Nm
         row        = measurements_df[midx, :]
         obs_id     = string(row[:observableId])
-        noise_key  = _safe_str(row[:noiseParameters])
+        noise_key  = has_noise_params_col ? _safe_str(row[:noiseParameters]) : ""
         push!(get!(obs_sigma_groups, (obs_id, noise_key), Int[]), midx)
     end
 
@@ -175,6 +227,7 @@ function _create_objective(
         if sigma_val !== nothing
             for midx in group_midxs
                 push!(itr_sigma_fix, (midx, sigma_val))
+                sigma0[midx] = sigma_val # warm start
             end
             continue
         end
@@ -194,6 +247,7 @@ function _create_objective(
             pidx = findfirst(pv -> isequal(pv, only(sigma_p_vars)), p_syms)
             for midx in group_midxs
                 push!(itr_sigma_p, (midx, pidx))
+                sigma0[midx] = p0[pidx] # warm start
             end
         else
             # Case C: sigma is a general expression — compile sigma_func for this group
@@ -203,24 +257,51 @@ function _create_objective(
                 expression = Val{false}
             )
 
-            itr_sigma_func = Tuple{Int, Int, Int}[]
+            itr_sigma_func   = Tuple{Int, Int, Int}[]  # idx < N : one node
+            itr_sigma_func_N = Tuple{Int, Int}[]       # idx = N : L1 endpoint of interval N
             for midx in group_midxs
                 row  = measurements_df[midx, :]
                 cid  = string(row[:simulationConditionId])
                 time = Float64(row[:time])
                 cidx = dict_cid_cidx[cid]
                 idx  = dict_t_tidx[time]
-                push!(itr_sigma_func, (midx, idx, cidx))
+                # warm start: evaluate sigma_func at the initial guess, mirroring the constraint
+                if idx == N
+                    push!(itr_sigma_func_N, (midx, cidx))
+                    zatt = ntuple(v -> sum(L1[jj+1] * z0[v, N, jj+1, cidx] for jj in 0:K), Nz)
+                else
+                    push!(itr_sigma_func, (midx, idx, cidx))
+                    zatt = ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+                end
+                sigma0[midx] = sigma_func(
+                    zatt...,
+                    ntuple(m -> p0[m], Np)...,
+                    ntuple(m -> cv0[m, cidx], Ncv)...
+                )
             end
 
-            ExaModels.@add_con(c,
-                sigma[midx] - sigma_func(
-                    ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
-                    ntuple(m -> p[m], Np)...,
-                    ntuple(m -> cv[m,cidx], Ncv)
+            # idx < N: single-node kernel
+            if !isempty(itr_sigma_func)
+                ExaModels.@add_con(c,
+                    sigma[midx] - sigma_func(
+                        ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
+                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> cv[m,cidx], Ncv)...
+                    )
+                    for (midx, idx, cidx) in itr_sigma_func
                 )
-                for (midx, idx, cidx) in itr_sigma_func
-            )
+            end
+            # idx == N: final-time group; L1 (τ=1) endpoint sum inlined here only.
+            if !isempty(itr_sigma_func_N)
+                ExaModels.@add_con(c,
+                    sigma[midx] - sigma_func(
+                        ntuple(v -> sum(L1[jj+1]*z[v,N,jj,cidx] for jj in 0:K), Nz)...,
+                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> cv[m,cidx], Ncv)...
+                    )
+                    for (midx, cidx) in itr_sigma_func_N
+                )
+            end
         end
     end
 
@@ -240,6 +321,14 @@ function _create_objective(
         )
     end
 
+    if !isempty(itr_y_z_ic)
+        # t=0 state observables: y[midx] = z[zidx, 1, 0, cidx] (initial-condition node)
+        ExaModels.@add_con(c,
+            y[midx] - z[zidx,1,0,cidx]
+            for (midx, zidx, cidx) in itr_y_z_ic
+        )
+    end
+
     if !isempty(itr_sigma_fix)
         ExaModels.@add_con(c,
             sigma[midx] - val
@@ -254,5 +343,5 @@ function _create_objective(
         )
     end
 
-    return c
+    return c, y0, sigma0
 end

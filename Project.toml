@@ -5,6 +5,7 @@ authors = ["Joseph Choi <jsphchoi@mit.edu> and contributors"]
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 MadNLPGPU = "d72a61cc-809d-412f-99be-fd81f4b8a598"
 ModelingToolkitBase = "7771a370-6774-4173-bd38-47e70ca0b839"
@@ -16,6 +17,7 @@ Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 
 [compat]
 CUDA = "5"
+CUDSS = "0.6.5"
 ExaModels = "0.11"
 MadNLP = "0.9"
 MadNLPGPU = "0.9"
