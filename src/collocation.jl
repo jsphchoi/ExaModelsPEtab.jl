@@ -12,7 +12,7 @@ function _create_collocation(
     ########################################################################
     # Unpack problem info
     ########################################################################
-    (; N, K, Np, Nc, Nz, Ncv, h, taus) = PEinfo
+    (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale) = PEinfo
     z = c.z
     p = c.p
     if Ncv >= 1
@@ -33,10 +33,10 @@ function _create_collocation(
         c_coll   = [
             ExaModels.@add_con(c,
                 -hi*f(
-                    ntuple(v -> z[v,i,k,cidx], Nz)...,  # state vars
-                    ntuple(m -> p[m], Np)...,            # unknown params
-                    ntuple(m -> cv[m,cidx], Ncv)...,     # condition-dep. vars
-                    t_ij                                  # time at collocation point
+                    ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
+                    ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
+                    ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
+                    t_ij                                        # time at collocation point
                 )
                 for (i,k,cidx,hi,t_ij) in itr_coll
             )
@@ -47,9 +47,9 @@ function _create_collocation(
         c_coll   = [
             ExaModels.@add_con(c,
                 -hi*f(
-                    ntuple(v -> z[v,i,k,cidx], Nz)...,  # state vars
-                    ntuple(m -> p[m], Np)...,            # unknown params
-                    ntuple(m -> cv[m,cidx], Ncv)...      # condition-dep. vars
+                    ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
+                    ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
+                    ntuple(m -> cv[m,cidx], Ncv)...            # condition-dep. vars
                 )
                 for (i,k,cidx,hi) in itr_coll
             )
@@ -112,11 +112,21 @@ function _create_collocation(
         )
     end
     if !isempty(itr_cv_p)
-        # Condition-dependent variable 'cvidx' at condition 'cidx' is an unknown parameter, p
-        ExaModels.@add_con(c,
-            cv[cvidx,cidx] - p[pidx]
-            for (cvidx, cidx, pidx) in itr_cv_p
-        )
+        # Condition-dependent variable 'cvidx' at condition 'cidx' equals the PHYSICAL
+        # value of unknown parameter p[pidx]. pidx is a per-entry data index here (not a
+        # literal), so the scale can't be branched inside the kernel — partition by scale
+        # and emit one fixed-form constraint per scale group (see _p_phys docstring).
+        for sc in (:log10, :log, :lin)
+            grp = [t for t in itr_cv_p if pscale[t[3]] === sc]
+            isempty(grp) && continue
+            if sc === :log10
+                ExaModels.@add_con(c, cv[cvidx,cidx] - exp(log(10.0)*p[pidx]) for (cvidx,cidx,pidx) in grp)
+            elseif sc === :log
+                ExaModels.@add_con(c, cv[cvidx,cidx] - exp(p[pidx])           for (cvidx,cidx,pidx) in grp)
+            else
+                ExaModels.@add_con(c, cv[cvidx,cidx] - p[pidx]                for (cvidx,cidx,pidx) in grp)
+            end
+        end
     end
 
     return c

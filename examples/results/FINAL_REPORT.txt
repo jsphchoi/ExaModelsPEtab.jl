@@ -1,0 +1,57 @@
+====================================================================================================================================
+FINAL BENCHMARK REPORT   —   ExaModelsPEtab (MadNLP/CUDA, K=5, tol=1e-6, 10-min limits)  vs  PEtab.jl (Optim.IPNewton)
+====================================================================================================================================
+Model                              | EXA-cmp    t(s)     | MadNLP-slv   t(s)     term-status           | PEtcmp   PEtslv   t(s)     | objectives  exa | petab
+------------------------------------------------------------------------------------------------------------------------------------
+Alkan_SciSignal2018                | error               | skipped                                     | -        -        -        | 
+Armistead_CellDeathDis2024         | ok         89.85    | ok           77.23    INFEASIBLE_PROBLEM_DETECTED | -        -        -        | -276.1564797066763
+Bachmann_MSB2011                   | timeout    600.0    | skipped                                     | -        -        -        | 
+Beer_MolBioSystems2014             | ok         144.58   | ok           601.77   MAXIMUM_WALLTIME_EXCEEDED | -        -        -        | -17745.964685908828
+Bertozzi_PNAS2020                  | ok         78.38    | ok           27.81    RESTORATION_FAILED    | -        -        -        | NaN
+Blasi_CellSystems2016              | timeout    600.0    | skipped                                     | -        -        -        | 
+Boehm_JProteomeRes2014             | ok         148.99   | ok           190.2    SOLVE_SUCCEEDED       | ok       ok       254.09   | 138.2208331853914 | 138.2219977274927
+Borghans_BiophysChem1997           | ok         85.11    | ok           91.85    RESTORATION_FAILED    | -        -        -        | -90.61237582497625
+Brannmark_JBC2010                  | error               | skipped                                     | -        -        -        | 
+Bruno_JExpBot2016                  | ok         0.32     | ok           0.37     SOLVE_SUCCEEDED       | ok       ok       3.33     | -46.70593506697921 | -46.68818146399535
+Chen_MSB2009                       | timeout    600.0    | skipped                                     | -        -        -        | 
+Crauste_CellSystems2017            | ok         73.37    | ok           30.3     SOLVE_SUCCEEDED       | ok       ok       264.18   | 190.96392209065235 | 190.96397756850553
+Elowitz_Nature2000                 | ok         93.14    | ok           601.59   MAXIMUM_WALLTIME_EXCEEDED | -        -        -        | NaN
+Fiedler_BMCSystBiol2016            | timeout    600.0    | skipped                                     | -        -        -        | 
+Froehlich_CellSystems2018          | timeout    600.0    | skipped                                     | -        -        -        | 
+Fujita_SciSignal2010               | error               | skipped                                     | -        -        -        | 
+Giordano_Nature2020                | error               | skipped                                     | -        -        -        | 
+Isensee_JCB2018                    | error               | skipped                                     | -        -        -        | 
+Lang_PLOSComputBiol2024            | timeout    600.0    | skipped                                     | -        -        -        | 
+Laske_PLOSComputBiol2019           | error               | skipped                                     | -        -        -        | 
+Liu_IFACPapersOnLine2025           | ok         155.49   | ok           115.7    SOLVE_SUCCEEDED       | ok       ok       196.12   | 723.3574913510402 | 723.3574912908861
+Lucarelli_CellSystems2018          | timeout    600.0    | skipped                                     | -        -        -        | 
+Okuonghae_ChaosSolitonsFractals2020 | error               | skipped                                     | -        -        -        | 
+Oliveira_NatCommun2021             | error               | skipped                                     | -        -        -        | 
+Perelson_Science1996               | ok         74.85    | ok           30.83    SOLVE_SUCCEEDED       | ok       ok       182.97   | 223.51471462092073 | 227.5607757006313
+Rahman_MBS2016                     | error               | skipped                                     | -        -        -        | 
+Raia_CancerResearch2011            | error               | skipped                                     | -        -        -        | 
+Raimundez_PCB2020                  | error               | skipped                                     | -        -        -        | 
+SalazarCavazos_MBoC2020            | timeout    600.0    | skipped                                     | -        -        -        | 
+Schwen_PONE2014                    | ok         203.64   | ok           79.76    INVALID_NUMBER_JACOBIAN | -        -        -        | NaN
+Smith_BMCSystBiol2013              | timeout    600.0    | skipped                                     | -        -        -        | 
+Sneyd_PNAS2002                     | ok         116.11   | ok           144.02   SOLVE_SUCCEEDED       | ok       ok       213.21   | -320.9876447518596 | -319.791791777273
+Weber_BMC2015                      | error               | skipped                                     | -        -        -        | 
+Zhao_QuantBiol2020                 | error               | skipped                                     | -        -        -        | 
+Zheng_PNAS2012                     | error               | skipped                                     | -        -        -        | 
+------------------------------------------------------------------------------------------------------------------------------------
+Totals: 35 models | MadNLP optimal=6  restoration_failed=2  compile_timeout=9  compile_error=14  solve_timeout=0  solve_error=0
+====================================================================================================================================
+
+PEtab.jl comparison (models MadNLP solved to optimality):
+Model                              |  exaCmp(s)  petCmp(s) |  exaSlv(s)  petSlv(s) | exa objective          petab objective       
+----------------------------------------------------------------------------------------------------------------------------
+Boehm_JProteomeRes2014             |     148.99      18.78 |      190.2     254.09 | 138.2208331853914      138.2219977274927     
+Bruno_JExpBot2016                  |       0.32       0.12 |       0.37       3.33 | -46.70593506697921     -46.68818146399535    
+Crauste_CellSystems2017            |      73.37      15.01 |       30.3     264.18 | 190.96392209065235     190.96397756850553    
+Liu_IFACPapersOnLine2025           |     155.49       16.2 |      115.7     196.12 | 723.3574913510402      723.3574912908861     
+Perelson_Science1996               |      74.85      13.69 |      30.83     182.97 | 223.51471462092073     227.5607757006313     
+Sneyd_PNAS2002                     |     116.11      16.39 |     144.02     213.21 | -320.9876447518596     -319.791791777273     
+----------------------------------------------------------------------------------------------------------------------------
+Note: Bruno_JExpBot2016 is the JIT-warmup model; its ExaModels compile/solve
+      times are artificially low (cached double-build). Representative warm
+      figures from isolated runs: compile ~4 s, solve ~20 s.

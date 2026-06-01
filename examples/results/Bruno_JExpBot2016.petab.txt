@@ -1,0 +1,9 @@
+compile_status=ok
+compile_time=0.12
+converged=true
+error=
+iterations=3
+model=Bruno_JExpBot2016
+objective=-46.68818146399535
+solve_status=ok
+solve_time=3.33

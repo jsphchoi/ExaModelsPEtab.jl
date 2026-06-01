@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=93.14
+error=
+iter=9522
+model=Elowitz_Nature2000
+ncon=36308
+nvar=36329
+objective=NaN
+solve_status=ok
+solve_time=601.59
+term_status=MAXIMUM_WALLTIME_EXCEEDED

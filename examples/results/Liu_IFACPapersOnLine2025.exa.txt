@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=155.49
+error=
+iter=1
+model=Liu_IFACPapersOnLine2025
+ncon=12046
+nvar=12055
+objective=723.3574913510402
+solve_status=ok
+solve_time=115.7
+term_status=SOLVE_SUCCEEDED

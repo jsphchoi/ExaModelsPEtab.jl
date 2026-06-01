@@ -16,11 +16,12 @@ function _create_variables(
     Ncv = length(_get_cv_syms(PEmodel)) # number of condition-dependent variables
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
     Ny = length(_get_obsids(PEmodel)) # number of model observables
-    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1)
+    pscale = _get_pscale(PEprob) # per-parameter estimation scale (:log10/:log/:lin), aligned 1:Np
+    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale)
 
     # OBJECTIVE FUNCTION VARIABLES
     # Create auxiliary variables for model observables, y
-    c = _create_y(c, PEinfo)
+    c = _create_y(c, PEmodel, PEinfo)
     # Create auxiliary variables for measurement errors, sigma
     c = _create_sigma(c, PEinfo)
 
@@ -39,18 +40,28 @@ end
 
 # Creates ExaModels decision variables for unknown parameters
 # p[1:Np]
+# The decision variable p := θ lives on PEtab's per-parameter ESTIMATION scale
+# (log10/log/lin from the parameter file), matching how PEtab optimizes. This
+# nondimensionalizes parameters spanning many orders of magnitude (e.g. a log10
+# parameter on [1e-10, 1e3] becomes a θ-box [-10, 3]), which is essential for the
+# IPM's conditioning. The physical parameter that enters the ODE RHS / observable /
+# noise formulas is recovered on the fly via _p_phys (10^θ / exp(θ) / θ).
+#
+# start and bounds come straight from PEtab — they are ALREADY on the estimation
+# scale (get_x, lower_bounds, upper_bounds), so NO transform is applied here.
 function _create_p(c::ExaCore, PEprob::PEtabODEProblem)
-    (; lower_bounds, upper_bounds, xnames, xnominal, model_info, nparameters_estimate) = PEprob
-    Np = nparameters_estimate # number of unknown parameters to fit
-    p_LB    = PEtab.transform_x(Array(lower_bounds), xnames, model_info.xindices; to_xscale=false)
-    p_UB    = PEtab.transform_x(Array(upper_bounds), xnames, model_info.xindices; to_xscale=false)
-    p_init  = PEtab.transform_x(Array(xnominal),     xnames, model_info.xindices; to_xscale=false)
+    (; lower_bounds, upper_bounds, nparameters_estimate) = PEprob
+    Np = nparameters_estimate  # number of unknown parameters to fit
+    θ_LB   = Array(lower_bounds)        # estimation scale
+    θ_UB   = Array(upper_bounds)        # estimation scale
+    θ_init = Array(PEtab.get_x(PEprob)) # estimation-scale nominal (the ODE-solve point)
+    @assert all(θ_LB .<= θ_init .<= θ_UB) "Nominal θ values fall outside estimation-scale bounds!"
     ExaModels.@add_var(c,
         p,
         1:Np;
-        lvar = p_LB,
-        uvar = p_UB,
-        start = p_init
+        lvar  = θ_LB,
+        uvar  = θ_UB,
+        start = θ_init
     )
     return c, Np
 end
@@ -76,11 +87,13 @@ end
 # start accordingly — numeric literal, or the parameter's own initial guess — so cv
 # (and any observable/noise formula that references it) is warm-started consistently.
 function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    (; Nc, Ncv) = PEinfo
+    (; Np, Nc, Ncv, pscale) = PEinfo
     conditions_df  = PEmodel.petab_tables[:conditions]
     cv_cols        = _get_cv_colnames(PEmodel)          # cv column names, aligned 1:Ncv
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)        # parameter name => p decision-var index
-    p0             = _var_starts(c, c.p)                # p initial guesses (c.p created before cv)
+    θ0             = _var_starts(c, c.p)                # p (= θ, estimation scale) initial guesses
+    # physical parameter starts (cv == p means cv equals the PHYSICAL parameter value)
+    p0             = [_p_phys_val(θ0, m, pscale) for m in 1:Np]
 
     cv_init = zeros(Float64, Ncv, Nc)
     for cidx in 1:Nc
@@ -126,11 +139,17 @@ end
 
 # Creates ExaModels (auxiliary) decision variables for observable model variable
 # y[1:Nm]
-function _create_y(c::ExaCore, PEinfo::PEInfo)
+# For log/log10-transformed observables the NLL contains log(y[midx]), so those y
+# need a positivity bound (the true observable is positive); the IPM barrier then
+# keeps y strictly > 0. lin observables stay unbounded.
+function _create_y(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
     (; Nm) = PEinfo
+    transforms = _get_meas_transforms(PEmodel)
+    y_LB = [t === :log || t === :log10 ? 0.0 : -Inf for t in transforms]
     ExaModels.@add_var(c,
         y,
-        1:Nm # bounds? set_start! added later
+        1:Nm;
+        lvar = y_LB # set_start! added later
     )
     return c
 end

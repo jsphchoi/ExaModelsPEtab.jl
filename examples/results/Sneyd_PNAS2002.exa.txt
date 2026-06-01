@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=116.11
+error=
+iter=25
+model=Sneyd_PNAS2002
+ncon=33984
+nvar=33999
+objective=-320.9876447518596
+solve_status=ok
+solve_time=144.02
+term_status=SOLVE_SUCCEEDED

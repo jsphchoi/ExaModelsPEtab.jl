@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=0.32
+error=
+iter=9
+model=Bruno_JExpBot2016
+ncon=11560
+nvar=11573
+objective=-46.70593506697921
+solve_status=ok
+solve_time=0.37
+term_status=SOLVE_SUCCEEDED

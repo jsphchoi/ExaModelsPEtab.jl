@@ -14,7 +14,7 @@ function _create_objective(
     ###############################################
     # Unpack problem info
     ###############################################
-    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, h, L1) = PEinfo
+    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, h, L1, pscale) = PEinfo
     z = c.z
     p = c.p
     y = c.y
@@ -29,7 +29,8 @@ function _create_objective(
     # at the initial point here so y/sigma can be given matching (feasible) starts
     # via set_start! after the model is built — critical for the IPM solver.
     z0  = reshape(_var_starts(c, z), Nz, N, K + 1, Nc) # z0[v, i, j+1, cidx]
-    p0  = _var_starts(c, p)                            # p0[m]
+    θ0  = _var_starts(c, p)                            # decision var p := θ (estimation scale)
+    p0  = [_p_phys_val(θ0, m, pscale) for m in 1:Np]   # PHYSICAL parameter starts (10^θ)
     cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, Nc) : zeros(Float64, 0, Nc)
     y0     = zeros(Float64, Nm) # computed observable values at the initial guess
     sigma0 = zeros(Float64, Nm) # computed noise (std) values at the initial guess
@@ -41,12 +42,55 @@ function _create_objective(
     ###############################################
     # Objective function
     ###############################################
-    # Create objective function (negative log-likelihood): min ∑ₘ(y - yₘ)²/σ²ₘ
-    itr_obj = [(midx, Float64(measurements_df[midx, :measurement])) for midx in 1:Nm]
-    ExaModels.@add_obj(c,
-        (y[midx] - ymeas)^2/sigma[midx]
-        for (midx, ymeas) in itr_obj
-    )
+    # Objective: Gaussian negative log-likelihood, matching PEtab.jl. The noise acts on
+    # the observable's PEtab `observableTransformation` scale (lin/log/log10), so the
+    # residual is taken in transformed space, with the change-of-variables Jacobian:
+    #   lin   : 0.5(y-ymeas)²/σ²            + log σ + 0.5log2π
+    #   log   : 0.5(ln y - ln ymeas)²/σ²    + log σ + 0.5log2π + ln ymeas
+    #   log10 : 0.5(log10 y - log10 ymeas)²/σ² + log σ + 0.5log2π + ln ymeas + ln(ln10)
+    # (= -logpdf(Normal/LogNormal/Log10Normal(transform(y), σ), ymeas)). y[midx],
+    # sigma[midx] are the aux observable / noise-std vars bound to z,p by the constraints
+    # below; ymeas is data so all the trailing terms are per-measurement constants.
+    _assert_normal_noise(PEmodel)
+    transforms = _get_meas_transforms(PEmodel)
+    HALF_LOG2PI = 0.5 * log(2π)
+    LN10        = log(10.0)
+    itr_obj_lin   = Tuple{Int, Float64, Float64}[]  # (midx, ymeas,     const)
+    itr_obj_log   = Tuple{Int, Float64, Float64}[]  # (midx, ln(ymeas), const)
+    itr_obj_log10 = Tuple{Int, Float64, Float64}[]  # (midx, log10(ymeas), const)
+    for midx in 1:Nm
+        ymeas = Float64(measurements_df[midx, :measurement])
+        tr    = transforms[midx]
+        if tr === :lin
+            push!(itr_obj_lin, (midx, ymeas, HALF_LOG2PI))
+        elseif tr === :log
+            @assert ymeas > 0 "log-transformed observable needs ymeas>0 (midx=$midx)"
+            push!(itr_obj_log, (midx, log(ymeas), HALF_LOG2PI + log(ymeas)))
+        elseif tr === :log10
+            @assert ymeas > 0 "log10-transformed observable needs ymeas>0 (midx=$midx)"
+            push!(itr_obj_log10, (midx, log10(ymeas), HALF_LOG2PI + log(ymeas) + log(LN10)))
+        else
+            error("Unsupported observableTransformation '$tr' (midx=$midx)")
+        end
+    end
+    if !isempty(itr_obj_lin)
+        ExaModels.@add_obj(c,
+            0.5*(y[midx] - ymeas)^2/sigma[midx]^2 + log(sigma[midx]) + cst
+            for (midx, ymeas, cst) in itr_obj_lin
+        )
+    end
+    if !isempty(itr_obj_log)
+        ExaModels.@add_obj(c,
+            0.5*(log(y[midx]) - lnym)^2/sigma[midx]^2 + log(sigma[midx]) + cst
+            for (midx, lnym, cst) in itr_obj_log
+        )
+    end
+    if !isempty(itr_obj_log10)
+        ExaModels.@add_obj(c,
+            0.5*(log(y[midx])/LN10 - l10ym)^2/sigma[midx]^2 + log(sigma[midx]) + cst
+            for (midx, l10ym, cst) in itr_obj_log10
+        )
+    end
 
     ###############################################
     # Auxiliary variable constraints for y, sigma
@@ -89,8 +133,8 @@ function _create_objective(
     # Group measurements by (obsId, observableParameters) so that each unique
     # formula gets its own compiled ExaModels constraint.
     ###############################################
-    itr_y_z    = Int[]
-    itr_y_z!   = Tuple{Int, Int, Int, Int, Int, Float64}[]
+    itr_y_z    = Int[]                                       # midx values (row p holds -y[itr_y_z[p]])
+    itr_y_z!   = Tuple{Int, Int, Int, Int, Int, Float64}[]   # (pos, zidx, idx, cidx, j, L1) — pos indexes into itr_y_z
     itr_y_z_ic = Tuple{Int, Int, Int}[]  # state observable at t=0 -> initial-condition node
 
     obs_y_groups = Dict{Tuple{String,String}, Vector{Int}}()
@@ -133,7 +177,8 @@ function _create_objective(
                 else
                     # y[midx] = Σ_j L1[j+1] * z[zidx, idx, j, cidx] (τ=1 endpoint of interval idx)
                     push!(itr_y_z, midx)
-                    append!(itr_y_z!, [(midx, zidx, idx, cidx, j, L1[j+1]) for j in 0:K])
+                    pos = length(itr_y_z)   # this midx's row position in con_y_z
+                    append!(itr_y_z!, [(pos, zidx, idx, cidx, j, L1[j+1]) for j in 0:K])
                     y0[midx] = sum(L1[j+1] * z0[zidx, idx, j+1, cidx] for j in 0:K)
                 end
             end
@@ -175,7 +220,7 @@ function _create_objective(
                 ExaModels.@add_con(c,
                     y[midx] - obs_func(
                         ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
-                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
                         ntuple(m -> cv[m,cidx], Ncv)...
                     )
                     for (midx, idx, cidx) in itr_y_func
@@ -186,7 +231,7 @@ function _create_objective(
                 ExaModels.@add_con(c,
                     y[midx] - obs_func(
                         ntuple(v -> sum(L1[jj+1]*z[v,N,jj,cidx] for jj in 0:K), Nz)...,
-                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
                         ntuple(m -> cv[m,cidx], Ncv)...
                     )
                     for (midx, cidx) in itr_y_func_N
@@ -285,7 +330,7 @@ function _create_objective(
                 ExaModels.@add_con(c,
                     sigma[midx] - sigma_func(
                         ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
-                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
                         ntuple(m -> cv[m,cidx], Ncv)...
                     )
                     for (midx, idx, cidx) in itr_sigma_func
@@ -296,7 +341,7 @@ function _create_objective(
                 ExaModels.@add_con(c,
                     sigma[midx] - sigma_func(
                         ntuple(v -> sum(L1[jj+1]*z[v,N,jj,cidx] for jj in 0:K), Nz)...,
-                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
                         ntuple(m -> cv[m,cidx], Ncv)...
                     )
                     for (midx, cidx) in itr_sigma_func_N
@@ -310,14 +355,18 @@ function _create_objective(
     ###############################################
     if !isempty(itr_y_z)
         # y[midx] = Σ_{j=0}^{K} L_j(1) * z[zidx, i, j, cidx]
+        # NOTE: @add_con! indexes the base constraint by ROW POSITION (offset0 = o0 + key),
+        # NOT by the loop value. Base row p holds -y[itr_y_z[p]], so the augmentation must be
+        # keyed by that position p — keying by midx would mis-attach terms whenever itr_y_z
+        # is not the contiguous identity 1:Nm (e.g. multi-observable / multi-condition models).
         con_y_z = ExaModels.@add_con(c,
             -y[midx]
             for midx in itr_y_z
         )
         ExaModels.@add_con!(c,
             con_y_z,
-            midx => L1j*z[v,i,j,cidx]
-            for (midx, v, i, cidx, j, L1j) in itr_y_z!
+            pos => L1j*z[v,i,j,cidx]
+            for (pos, v, i, cidx, j, L1j) in itr_y_z!
         )
     end
 
@@ -337,10 +386,19 @@ function _create_objective(
     end
 
     if !isempty(itr_sigma_p)
-        ExaModels.@add_con(c,
-            sigma[midx] - p[pidx]
-            for (midx, pidx) in itr_sigma_p
-        )
+        # sigma[midx] equals the PHYSICAL value of p[pidx]. pidx is a per-entry data
+        # index, so partition by scale and emit one fixed-form constraint per scale.
+        for sc in (:log10, :log, :lin)
+            grp = [t for t in itr_sigma_p if pscale[t[2]] === sc]
+            isempty(grp) && continue
+            if sc === :log10
+                ExaModels.@add_con(c, sigma[midx] - exp(log(10.0)*p[pidx]) for (midx,pidx) in grp)
+            elseif sc === :log
+                ExaModels.@add_con(c, sigma[midx] - exp(p[pidx])           for (midx,pidx) in grp)
+            else
+                ExaModels.@add_con(c, sigma[midx] - p[pidx]                for (midx,pidx) in grp)
+            end
+        end
     end
 
     return c, y0, sigma0

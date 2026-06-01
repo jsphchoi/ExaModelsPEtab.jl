@@ -23,6 +23,69 @@ function _get_p_syms(PEprob::PEtabODEProblem)::Vector{Symbolics.Num}
     return Symbolics.Num.(Symbolics.variable.(PEprob.xnames)) # Converts variable name (::String) into symbolic variable (::Symbolics.Num)
 end
 
+# (!!!) Returns ::Vector{Symbol} of per-parameter PEtab estimation scales, aligned
+# to PEprob.xnames (== decision-variable index 1:Np). Each entry is :log10, :log, or :lin.
+function _get_pscale(PEprob::PEtabODEProblem)::Vector{Symbol}
+    xscale = PEprob.model_info.xindices.xscale # Dict{Symbol,Symbol}: param name => scale
+    return Symbol[xscale[Symbol(name)] for name in PEprob.xnames]
+end
+
+# Normalize a raw observableTransformation / noiseDistribution cell to a Symbol,
+# defaulting blanks to the PEtab default.
+function _norm_cell(v, default::Symbol)::Symbol
+    s = (ismissing(v) || isnothing(v)) ? "" : lowercase(strip(string(v)))
+    return isempty(s) ? default : Symbol(s)
+end
+
+# (!!!) Returns ::Vector{Symbol} of per-measurement observable transformations
+# (:lin/:log/:log10), aligned to measurement row index 1:Nm. The Gaussian noise acts
+# on this scale, so the NLL residual is taken in transformed space (see _create_objective).
+function _get_meas_transforms(PEmodel::PEtabModel)::Vector{Symbol}
+    measurements_df = PEmodel.petab_tables[:measurements]
+    observables_df  = PEmodel.petab_tables[:observables]
+    has_tr  = :observableTransformation in propertynames(observables_df)
+    dict_tr = Dict(
+        string(observables_df[i, :observableId]) =>
+            (has_tr ? _norm_cell(observables_df[i, :observableTransformation], :lin) : :lin)
+        for i in 1:size(observables_df, 1)
+    )
+    Nm = size(measurements_df, 1)
+    return Symbol[get(dict_tr, string(measurements_df[midx, :observableId]), :lin) for midx in 1:Nm]
+end
+
+# Guard: this formulation only supports Gaussian (:normal) noise. Error early on
+# anything else (e.g. :laplace) rather than silently emitting the wrong likelihood.
+function _assert_normal_noise(PEmodel::PEtabModel)
+    observables_df = PEmodel.petab_tables[:observables]
+    :noiseDistribution in propertynames(observables_df) || return nothing
+    for i in 1:size(observables_df, 1)
+        dist = _norm_cell(observables_df[i, :noiseDistribution], :normal)
+        dist === :normal || error("Unsupported noiseDistribution '$dist' for observable " *
+                                   "$(observables_df[i, :observableId]); only :normal is supported.")
+    end
+    return nothing
+end
+
+# Physical parameter value of p[m] as an ExaModels expression, where the decision
+# variable p[m] := θ lives on PEtab's estimation scale. The native ODE RHS and all
+# observable/noise formulas use physical parameters, so this inverse-transform is
+# applied wherever p enters such a formula. (10^θ via exp(log(10)·θ) keeps it a
+# single SIMD-friendly exp node.)
+@inline function _p_phys(p, m::Integer, pscale::Vector{Symbol})
+    s = pscale[m]
+    return s === :log10 ? exp(log(10.0) * p[m]) :
+           s === :log   ? exp(p[m])             :
+                          p[m]                      # :lin
+end
+
+# Numeric physical value from an estimation-scale vector θ (for warm-start computations).
+@inline function _p_phys_val(θ, m::Integer, pscale::Vector{Symbol})
+    s = pscale[m]
+    return s === :log10 ? exp10(θ[m]) :
+           s === :log   ? exp(θ[m])   :
+                          θ[m]            # :lin
+end
+
 # (!!!) Returns ::Vector{String} of condition-dependent variable column names, cv
 # These are all conditions-table columns except the metadata columns. This is the
 # single source of truth for both the cv count/order and column lookups, so we never

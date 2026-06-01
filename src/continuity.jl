@@ -46,7 +46,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
     ###############################################################
     # Unpack problem info
     ###############################################################
-    (; Nz, Nc, Np, Ncv) = PEinfo
+    (; Nz, Nc, Np, Ncv, pscale) = PEinfo
     z = c.z
     p = c.p
     if Ncv >= 1
@@ -79,7 +79,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
                 # rhs f(zss...) = 0
                 f(
                     ntuple(v -> zss[v,sscidx], Nz)...,
-                    ntuple(m -> p[m], Np)...,
+                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
                     ntuple(m -> cv[m,sscidx], Ncv)...
                 )
                 for sscidx in itr_ss2
@@ -148,11 +148,19 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
             )
         end
         if !isempty(itr_z0_p)
-            # Initial condition is an unknown parameter, p
-            ExaModels.@add_con(c, 
-                z[v,1,0,cidx] - p[pidx]
-                for (v, cidx, pidx) in itr_z0_p
-            )
+            # Initial condition is the PHYSICAL value of unknown parameter p[pidx].
+            # pidx is a per-entry data index, so partition by scale (see _p_phys).
+            for sc in (:log10, :log, :lin)
+                grp = [t for t in itr_z0_p if pscale[t[3]] === sc]
+                isempty(grp) && continue
+                if sc === :log10
+                    ExaModels.@add_con(c, z[v,1,0,cidx] - exp(log(10.0)*p[pidx]) for (v,cidx,pidx) in grp)
+                elseif sc === :log
+                    ExaModels.@add_con(c, z[v,1,0,cidx] - exp(p[pidx])           for (v,cidx,pidx) in grp)
+                else
+                    ExaModels.@add_con(c, z[v,1,0,cidx] - p[pidx]                for (v,cidx,pidx) in grp)
+                end
+            end
         end
         if !isempty(itr_z0_cv)
             # Initial condition is a condition-dependent variable, cv
@@ -166,7 +174,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
             for (v, z0_func) in itr_z0_func
                 ExaModels.@add_con(c,
                     z[v,1,0,cidx] - z0_func(
-                        ntuple(m -> p[m], Np)...,
+                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
                         ntuple(m -> cv[m,cidx], Ncv)...
                     )
                     for cidx in 1:Nc

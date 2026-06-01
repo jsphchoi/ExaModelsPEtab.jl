@@ -1,0 +1,11 @@
+compile_status=error
+compile_time=
+error=UndefVarError: `__u_model` not defined in `PEtab` Suggestion: check for spelling errors or missing imports.
+iter=
+model=Alkan_SciSignal2018
+ncon=
+nvar=
+objective=
+solve_status=skipped
+solve_time=
+term_status=

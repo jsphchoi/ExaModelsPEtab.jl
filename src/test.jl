@@ -43,23 +43,20 @@ begin
     
 end
 
-cd()
-cd(
-    joinpath(
-        pwd(),
-        "OneDrive - Massachusetts Institute of Technology",
-        "Git","ExaModelsPEtab.jl", "src"
-    )
-)
-include("structs.jl")       # data structure for parameter estimation problem
-include("constants.jl")     # get collocation equation constants
-include("utils.jl")         # build helper functions
-include("initialize.jl")    # get good initial conditions
-include("variables.jl")     # create decision variables
-include("collocation.jl")   # create collocation equality constraints
-include("continuity.jl")    # create continuity equality constraints
-include("objective.jl")     # create objective function
-include("userfuncs.jl")     # user-end functions
+using ExaModelsPEtab
+
+function load_petab(filename::String)
+    dir = joinpath(pwd(), "examples", "Benchmark-Models", filename)
+    yaml = filter(f -> endswith(lowercase(f), ".yaml"), readdir(dir))
+    PEmodel = PEtab.PEtabModel(joinpath(dir, first(yaml)))
+    PEprob = PEtab.PEtabODEProblem(PEmodel)
+    return PEmodel, PEprob
+end
+
+jls = ["structs.jl","constants.jl","utils.jl","initialize.jl","variables.jl","collocation.jl","continuity.jl","objective.jl","userfuncs.jl"]
+for jl in jls
+    include(joinpath("src", jl))
+end
 
 # Boehm_JProteomeRes2014
 # Bruno_JExpBot2016
@@ -69,27 +66,28 @@ include("userfuncs.jl")     # user-end functions
 # Raia_CancerResearch2011 E(3)
 PEmodel, PEprob = load_petab("Crauste_CellSystems2017")
 
-c = ExaModels.ExaCore(; concrete = Val(true))
+c = ExaModels.ExaCore(; backend = CUDA.CUDABackend(), concrete = Val(true))
 
-K = 2
-# Create decision variables
-c, PEinfo = _create_variables(c, PEmodel, PEprob, K)
+c, PEinfo = _create_variables(c, PEmodel, PEprob, 5)
 c.nvar
 
-# Create constraints
 c = _create_collocation(c, PEmodel, PEprob, PEinfo)
 c.ncon
 c = _create_continuity(c, PEmodel, PEprob, PEinfo)
 c.ncon
 
-# Create objective
-c = _create_objective(c, PEmodel, PEprob, PEinfo)
+c, y0, sigma0 = _create_objective(c, PEmodel, PEprob, PEinfo)
 c.ncon
 
 DoF = c.nvar - c.ncon
 check_sense = PEinfo.Np - DoF
 
 m = ExaModels.ExaModel(c)
+
+ExaModels.set_start!(model, c.y, y0)
+ExaModels.set_start!(model, c.sigma, sigma0)
+
+madnlp(m)
 
 # or just
 m = petab_examodel(get_yaml_path("Crauste_CellSystems2017"))

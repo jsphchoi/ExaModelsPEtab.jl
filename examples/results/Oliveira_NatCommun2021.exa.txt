@@ -1,0 +1,11 @@
+compile_status=error
+compile_time=
+error=UndefVarError: `sd_cumulative_cases` not defined in `Symbolics` Suggestion: check for spelling errors or missing imports.
+iter=
+model=Oliveira_NatCommun2021
+ncon=
+nvar=
+objective=
+solve_status=skipped
+solve_time=
+term_status=

@@ -30,7 +30,11 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
         sol[cid](t) 
         for t in t_vec_mesh, cid in Symbol.(_get_cids(PEmodel))
     ]
-    z_init = permutedims(reshape(stack(sol_at_mesh), Nz, N, K+1, Nc), (1, 2, 3, 4))
+    # t_vec_mesh orders nodes with j (collocation index) varying fastest within each
+    # interval i, so the flattened mesh dimension reshapes as (K+1, N) — K+1 fastest —
+    # NOT (N, K+1). Reshape to that layout, then permute to the (Nz, N, K+1, Nc) order
+    # used everywhere else. (The previous identity permutedims left i and j transposed.)
+    z_init = permutedims(reshape(stack(sol_at_mesh), Nz, K+1, N, Nc), (1, 3, 2, 4))
 
     return z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1
 end

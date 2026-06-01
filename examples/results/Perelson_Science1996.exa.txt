@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=74.85
+error=
+iter=39
+model=Perelson_Science1996
+ncon=3824
+nvar=3827
+objective=223.51471462092073
+solve_status=ok
+solve_time=30.83
+term_status=SOLVE_SUCCEEDED

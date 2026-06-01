@@ -1,0 +1,9 @@
+compile_status=ok
+compile_time=13.69
+converged=true
+error=
+iterations=17
+model=Perelson_Science1996
+objective=227.5607757006313
+solve_status=ok
+solve_time=182.97

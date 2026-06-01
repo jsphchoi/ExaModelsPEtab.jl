@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=148.99
+error=
+iter=6
+model=Boehm_JProteomeRes2014
+ncon=10848
+nvar=10857
+objective=138.2208331853914
+solve_status=ok
+solve_time=190.2
+term_status=SOLVE_SUCCEEDED
