@@ -1,5 +1,6 @@
 #######################################################
-# STATE AS OF: 05/28/26
+# STATE AS OF: 6/01/26
+# TODO: handle event callbacks
 #######################################################
 
 # Key: (!!!) := determines index -> variable ordering/mapping
@@ -177,17 +178,18 @@ function _get_dict_pstr_pidx(PEprob::PEtabODEProblem)::Dict{String, Int64}
     return Dict(pstr => pidx for (pidx,pstr) in enumerate(String.(PEprob.xnames)))
 end
 
-# Returns ::Dictionary{} of cidx => steady-state cidx
-function _get_dict_cidx_sscidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Dict{Int64, Int64}
+# Returns a Vector mapping each canonical condition index cidx (1:Nc) to the canonical
+# index of its pre-equilibration condition (sscidx). Conditions that are not simulation
+# conditions map to themselves.
+function _get_dict_cidx_sscidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{Int64}
     cids = _get_cids(PEmodel)
     sim_ids = PEprob.model_info.simulation_info.conditionids[:simulation]
     ssc_ids = PEprob.model_info.simulation_info.conditionids[:pre_equilibration]
     dict_cid_cidx = Dict(cids[i] => i for i in eachindex(cids))
-    dict_cidx_sscidx = map(eachindex(cids)) do cidx
+    return map(eachindex(cids)) do cidx
         sim_idx = findfirst(==(Symbol(cids[cidx])), sim_ids)
-        dict_cid_cidx[string(ssc_ids[sim_idx])]
+        sim_idx === nothing ? cidx : dict_cid_cidx[string(ssc_ids[sim_idx])]
     end
-    return dict_cidx_sscidx
 end
 
 ####################################################

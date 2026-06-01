@@ -42,8 +42,21 @@ end
 # Returns ::Dict{(condition id)::Symbol, (solution)}
 function _solve_conds(p_nominal, PEmodel::PEtabModel, PEprob::PEtabODEProblem, tstops)
     sols = Dict{Symbol, Any}()
+    si        = PEprob.model_info.simulation_info
+    has_preeq = si.has_pre_equilibration
+    sim_ids   = si.conditionids[:simulation]
+    preeq_ids = si.conditionids[:pre_equilibration]
     for cid in Symbol.(_get_cids(PEmodel))
-        odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = cid) # TODO LOOK! gets callbacks for each condition
+        # For pre-equilibration models PEtab keys a simulation by the pair
+        # (pre_eq_id => simulation_id); passing a plain condition id errors. The
+        # returned ODEProblem's u0 is the pre-equilibrated steady state.
+        cond_arg = cid
+        if has_preeq
+            pos = findfirst(==(cid), sim_ids)
+            pos === nothing && continue        # condition not simulated (pre-eq only)
+            cond_arg = preeq_ids[pos] => sim_ids[pos]
+        end
+        odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
         solver = PEprob.probinfo.solver.solver
         sol = ODE.solve(
             odesys, solver;
@@ -57,35 +70,30 @@ function _solve_conds(p_nominal, PEmodel::PEtabModel, PEprob::PEtabODEProblem, t
     return sols
 end
 
-# get initial guess for zss by solving steady-state model for each condition
+# Get the start value for the steady-state pre-equilibration variable zss.
+#
+# zss is indexed by SIMULATION condition (zss[:, cidx]); the continuity constraints
+# set z[:,1,0,cidx] = zss[:,cidx] and enforce the steady-state residual f(zss)=0 under
+# the pre-equilibration condition's inputs. PEtab's get_odeproblem(condition =
+# pre_eq_id => sim_id) internally pre-equilibrates (solve_pre_equilibrium!!) and returns
+# an ODEProblem whose u0 is exactly that steady-state initial condition — so we read u0
+# directly rather than re-solving a SteadyStateProblem.
 function _get_zss_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    # Unpack problem info
     (; Nz, Nc) = PEinfo
 
-    cids       = Symbol.(_get_cids(PEmodel))
-    sim_cids   = PEprob.model_info.simulation_info.conditionids[:simulation]
-    preeq_cids = PEprob.model_info.simulation_info.conditionids[:pre_equilibration]
-
+    si        = PEprob.model_info.simulation_info
+    cids      = Symbol.(_get_cids(PEmodel))
+    sim_ids   = si.conditionids[:simulation]
+    preeq_ids = si.conditionids[:pre_equilibration]
     p_nominal = PEtab.get_x(PEprob)
 
-    # Solve each unique pre-equilibration condition to steady state
-    preeq_sols = Dict{Symbol, Any}()
-    for preeq_cid in unique(preeq_cids)
-        odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = preeq_cid)
-        ssprob = SSDE.SteadyStateProblem(odesys)
-        preeq_sols[preeq_cid] = ODE.solve(
-            ssprob, SSDE.DynamicSS(PEprob.probinfo.solver.solver);
-            callback = callbacks,
-            abstol   = PEprob.probinfo.solver.abstol,
-            reltol   = PEprob.probinfo.solver.reltol
-        )
-    end
-
-    # Map each cidx to the steady-state of its pre-equilibration condition
     zss_inits = zeros(Nz, Nc)
     for (cidx, cid) in enumerate(cids)
-        sim_pos = findfirst(==(cid), sim_cids)
-        zss_inits[:, cidx] = preeq_sols[preeq_cids[sim_pos]].u
+        pos = findfirst(==(cid), sim_ids)
+        pos === nothing && continue   # condition not simulated (pre-eq only)
+        oprob, _ = PEtab.get_odeproblem(p_nominal, PEprob;
+                                        condition = preeq_ids[pos] => sim_ids[pos])
+        zss_inits[:, cidx] = oprob.u0[1:Nz]
     end
     return zss_inits
 end

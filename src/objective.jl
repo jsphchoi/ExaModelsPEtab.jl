@@ -4,6 +4,32 @@
 # TODO: y0 initial guess just idx+1, if idx=N then use weighted sum.
 #######################################################
 
+# Reduce a noise (σ) expression so that its dependence on model states enters ONLY through
+# the observable. Every PEtab benchmark noise form (c | θ | β·y | α+β·y | √(α²+(β·y)²)) is a
+# function of the observable y and parameters, and the observable is affine in the states.
+# We solve O = Y (the observable placeholder) for ONE observable-state and substitute it into
+# σ; if σ's state dependence is genuinely only through O, every other state cancels. This is
+# robust to Symbolics flattening `β*(state*param)` into one product (which defeats a direct
+# substitute(O => Y)) and cancels any observableParameter coefficients that ride along.
+# Returns (reduced_expr, ok) where ok=true means no model state remains in reduced_expr.
+function _reduce_sigma_to_obs(sigma_expr, obs_expr, Y_sym, z_syms)
+    has_z(e) = any(zv -> any(isequal(v, zv) for v in Symbolics.get_variables(e)), z_syms)
+    obs_states = [zv for zv in z_syms
+                  if any(isequal(v, zv) for v in Symbolics.get_variables(obs_expr))]
+    isempty(obs_states) && return (sigma_expr, !has_z(sigma_expr))  # σ has no state via obs
+    # require the observable affine in its states: each ∂O/∂sᵢ must itself be state-free
+    coeffs = [Symbolics.expand_derivatives(Symbolics.Differential(s)(obs_expr)) for s in obs_states]
+    any(has_z, coeffs) && return (sigma_expr, false)               # observable nonlinear in states
+    a0     = Symbolics.substitute(obs_expr, Dict(s => 0 for s in obs_states))  # O at states=0
+    s1, b1 = obs_states[1], coeffs[1]
+    rest   = length(obs_states) > 1 ?
+             sum(coeffs[i] * obs_states[i] for i in 2:length(obs_states)) : 0
+    s1_sol  = (Y_sym - a0 - rest) / b1                              # solve O = Y for s₁
+    reduced = Symbolics.expand(Symbolics.substitute(sigma_expr, Dict(s1 => s1_sol)))
+    has_z(reduced) && (reduced = Symbolics.expand(Symbolics.simplify(reduced)))
+    return (reduced, !has_z(reduced))
+end
+
 # (*) Main function for creating ExaModels objective function (*)
 function _create_objective(
         c::ExaCore,
@@ -256,6 +282,11 @@ function _create_objective(
         push!(get!(obs_sigma_groups, (obs_id, noise_key), Int[]), midx)
     end
 
+    # Placeholder symbol standing in for the observable inside a noise formula, plus a
+    # memo of each observable's (fixed-value-substituted) symbolic expression by obs_id.
+    Y_sym = Symbolics.Num(Symbolics.variable(:__sigma_obs_Y__))
+    dict_obsid_obssym = Dict{String, Any}()
+
     for ((obs_id, noise_params_str), group_midxs) in obs_sigma_groups
         sigma_expr_raw = string(dict_obsid_obsrow[obs_id][:noiseFormula])
 
@@ -295,57 +326,108 @@ function _create_objective(
                 sigma0[midx] = p0[pidx] # warm start
             end
         else
-            # Case C: sigma is a general expression — compile sigma_func for this group
-            sigma_func = Symbolics.build_function(
-                sigma_expr_final,
-                [z_syms; p_syms; cv_syms]...,
-                expression = Val{false}
+            # σ couples to model states ONLY through the observable y (true for every PEtab
+            # benchmark noise form: c | θ | β·y | α+β·y | sqrt(α²+(β·y)²)). Reduce σ to a
+            # function of the observable placeholder Y_sym and parameters (see
+            # _reduce_sigma_to_obs); if it succeeds, σ = σ_fun(y, p, cv) and the constraint
+            # references the existing y[midx] variable directly — sparser than re-deriving
+            # the state expression, and σ never couples to z. Otherwise warn and fall back to
+            # a general state-dependent expression compiled over (z, p, cv).
+            obs_sym = get!(dict_obsid_obssym, obs_id) do
+                obs_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
+                op = Meta.parse(obs_raw)
+                s  = op isa Symbol ? Symbolics.Num(Symbolics.variable(op)) :
+                                     Symbolics.parse_expr_to_symbolic(op, @__MODULE__)
+                Symbolics.substitute(s, dict_fixed_val)
+            end
+            sigma_reduced, reduced_ok = _reduce_sigma_to_obs(sigma_expr_final, obs_sym, Y_sym, z_syms)
+            # Conforming iff the reduction left no state AND only Y / parameters / cv remain
+            # (a stray symbol, e.g. an unreduced observableParameter, routes to the fallback).
+            allowed    = [Y_sym; p_syms; cv_syms]
+            conforming = reduced_ok && all(
+                rv -> any(isequal(rv, a) for a in allowed),
+                Symbolics.get_variables(sigma_reduced)
             )
 
-            itr_sigma_func   = Tuple{Int, Int, Int}[]  # idx < N : one node
-            itr_sigma_func_N = Tuple{Int, Int}[]       # idx = N : L1 endpoint of interval N
-            for midx in group_midxs
-                row  = measurements_df[midx, :]
-                cid  = string(row[:simulationConditionId])
-                time = Float64(row[:time])
-                cidx = dict_cid_cidx[cid]
-                idx  = dict_t_tidx[time]
-                # warm start: evaluate sigma_func at the initial guess, mirroring the constraint
-                if idx == N
-                    push!(itr_sigma_func_N, (midx, cidx))
-                    zatt = ntuple(v -> sum(L1[jj+1] * z0[v, N, jj+1, cidx] for jj in 0:K), Nz)
-                else
-                    push!(itr_sigma_func, (midx, idx, cidx))
-                    zatt = ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+            if conforming
+                # Expected form: σ as a function of the observable y and parameters/cv.
+                sigma_fun = Symbolics.build_function(
+                    sigma_reduced,
+                    [Y_sym; p_syms; cv_syms]...,
+                    expression = Val{false}
+                )
+                itr_sigma_obs = Tuple{Int, Int}[]  # (midx, cidx)
+                for midx in group_midxs
+                    cidx = dict_cid_cidx[string(measurements_df[midx, :simulationConditionId])]
+                    push!(itr_sigma_obs, (midx, cidx))
+                    # warm start: σ at the initial guess, reusing the already-computed y0[midx]
+                    sigma0[midx] = sigma_fun(y0[midx], p0..., cv0[:, cidx]...)
                 end
-                sigma0[midx] = sigma_func(
-                    zatt...,
-                    ntuple(m -> p0[m], Np)...,
-                    ntuple(m -> cv0[m, cidx], Ncv)...
+                ExaModels.@add_con(c,
+                    sigma[midx] - sigma_fun(
+                        y[midx],
+                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                        ntuple(m -> cv[m,cidx], Ncv)...
+                    )
+                    for (midx, cidx) in itr_sigma_obs
                 )
-            end
+            else
+                @warn "Noise model for observable '$obs_id' references model states " *
+                      "outside the observable formula; it does not follow an expected " *
+                      "PEtab noise form (σ as a function of parameters and the observable " *
+                      "y). Falling back to a general state-dependent expression."
+                # Fallback: general expression compiled over (z, p, cv).
+                sigma_func = Symbolics.build_function(
+                    sigma_expr_final,
+                    [z_syms; p_syms; cv_syms]...,
+                    expression = Val{false}
+                )
 
-            # idx < N: single-node kernel
-            if !isempty(itr_sigma_func)
-                ExaModels.@add_con(c,
-                    sigma[midx] - sigma_func(
-                        ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
-                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                        ntuple(m -> cv[m,cidx], Ncv)...
+                itr_sigma_func   = Tuple{Int, Int, Int}[]  # idx < N : one node
+                itr_sigma_func_N = Tuple{Int, Int}[]       # idx = N : L1 endpoint of interval N
+                for midx in group_midxs
+                    row  = measurements_df[midx, :]
+                    cid  = string(row[:simulationConditionId])
+                    time = Float64(row[:time])
+                    cidx = dict_cid_cidx[cid]
+                    idx  = dict_t_tidx[time]
+                    # warm start: evaluate sigma_func at the initial guess, mirroring the constraint
+                    if idx == N
+                        push!(itr_sigma_func_N, (midx, cidx))
+                        zatt = ntuple(v -> sum(L1[jj+1] * z0[v, N, jj+1, cidx] for jj in 0:K), Nz)
+                    else
+                        push!(itr_sigma_func, (midx, idx, cidx))
+                        zatt = ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+                    end
+                    sigma0[midx] = sigma_func(
+                        zatt...,
+                        ntuple(m -> p0[m], Np)...,
+                        ntuple(m -> cv0[m, cidx], Ncv)...
                     )
-                    for (midx, idx, cidx) in itr_sigma_func
-                )
-            end
-            # idx == N: final-time group; L1 (τ=1) endpoint sum inlined here only.
-            if !isempty(itr_sigma_func_N)
-                ExaModels.@add_con(c,
-                    sigma[midx] - sigma_func(
-                        ntuple(v -> sum(L1[jj+1]*z[v,N,jj,cidx] for jj in 0:K), Nz)...,
-                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                        ntuple(m -> cv[m,cidx], Ncv)...
+                end
+
+                # idx < N: single-node kernel
+                if !isempty(itr_sigma_func)
+                    ExaModels.@add_con(c,
+                        sigma[midx] - sigma_func(
+                            ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
+                            ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                            ntuple(m -> cv[m,cidx], Ncv)...
+                        )
+                        for (midx, idx, cidx) in itr_sigma_func
                     )
-                    for (midx, cidx) in itr_sigma_func_N
-                )
+                end
+                # idx == N: final-time group; L1 (τ=1) endpoint sum inlined here only.
+                if !isempty(itr_sigma_func_N)
+                    ExaModels.@add_con(c,
+                        sigma[midx] - sigma_func(
+                            ntuple(v -> sum(L1[jj+1]*z[v,N,jj,cidx] for jj in 0:K), Nz)...,
+                            ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                            ntuple(m -> cv[m,cidx], Ncv)...
+                        )
+                        for (midx, cidx) in itr_sigma_func_N
+                    )
+                end
             end
         end
     end
