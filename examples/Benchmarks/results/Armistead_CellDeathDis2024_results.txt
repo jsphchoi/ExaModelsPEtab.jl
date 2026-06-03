@@ -1,13 +1,3 @@
-exa_compile_status=ok
-exa_compile_time=85.98
-exa_iter=0
-exa_ncon=2862
-exa_nvar=2876
-exa_objective=-301.916181842916
-exa_solve_limit=29.1
-exa_solve_status=ok
-exa_solve_time=30.93
-exa_term_status=MAXIMUM_WALLTIME_EXCEEDED
 petab_compile_status=ok
 petab_compile_time=80.28
 petab_has_events=false

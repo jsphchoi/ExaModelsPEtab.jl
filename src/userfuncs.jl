@@ -19,7 +19,7 @@ julia> madnlp(m)
 """
 function petab_examodel(
         filename::String;
-        backend = nothing, 
+        backend = nothing,
         K = 10
     )
     PEmodel = PEtab.PEtabModel(filename)    # TODO trim dependencies

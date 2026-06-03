@@ -1,0 +1,7 @@
+#### exa instance 0 (GPU 0) attempt 1 ####
+
+[1185640] signal 15: Terminated
+in expression starting at /home/jsphchoi/.julia/dev/ExaModelsPEtab/examples/Benchmarks/benchmark_examodels.jl:314
+operator new at /workspace/srcdir/gcc-14.2.0/libstdc++-v3/libsupc++/new_op.cc:43
+unknown function (ip: (nil)) at (unknown file)
+Allocations: 164158619 (Pool: 164156963; Big: 1656); GC: 36

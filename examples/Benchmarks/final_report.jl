@@ -2,12 +2,14 @@
 # formatted benchmark table comparing ExaModelsPEtab (MadNLP/GPU) vs PEtab.jl
 # (Optim.IPNewton). Also writes the same report to Benchmarks/final_report.txt.
 # Run from the repo root:
-#   julia --project=. examples/Benchmarks/final_report.jl
+#   julia --project=. examples/Benchmarks/final_report.jl          # first-run times (default)
+#   julia --project=. examples/Benchmarks/final_report.jl --sgm    # SGM (n=3) rerun times
 
 using Printf
 
 const RESULTDIR  = joinpath(@__DIR__, "results")
 const REPORT_TXT = joinpath(@__DIR__, "final_report.txt")
+const USE_SGM    = "--sgm" in ARGS
 
 const ALL_MODELS = [
     "Alkan_SciSignal2018", "Armistead_CellDeathDis2024", "Bachmann_MSB2011",
@@ -46,8 +48,7 @@ function center_str(s, n)
 end
 
 function pct_exa_str(d)
-    ct = fparse(g(d, "exa_compile_time"))
-    pt = fparse(g(d, "exa_presolve_time"))
+    ct = fparse(g(d, "exa_compile_time")); pt = fparse(g(d, "exa_presolve_time"))
     (ct === nothing || pt === nothing || ct <= 0.0) && return "-"
     @sprintf("%4.0f%%", 100.0 * (ct - pt) / ct)
 end
@@ -94,6 +95,11 @@ fmt_cmp(d, pfx) = begin
     (cs == "ok" && !isempty(t)) ? t : "-"
 end
 fmt_slv(d, pfx) = begin
+    # --sgm: show SGM solve time for exa (GPU-kernel-free, comparable to petab_solve_time)
+    if USE_SGM && pfx == "exa_"
+        s = g(d, "exa_sgm_status"); t = g(d, "exa_sgm_solve_time")
+        return (s == "ok" && !isempty(t)) ? t : "-"
+    end
     ss = g(d, pfx * "solve_status"); t = g(d, pfx * "solve_time")
     (ss == "ok" && !isempty(t)) ? t : "-"
 end
@@ -113,10 +119,11 @@ const W_PETAB_INNER = W_CTIME + 1 + W_STIME + 1 + W_STAT                # 27
 # ─── build report string ──────────────────────────────────────────────────────
 buf = IOBuffer()
 
+timing_label = USE_SGM ? "ExaModels + MadNLPGPU  [solve=SGM n=3]" : "ExaModels + MadNLPGPU"
 major_hdr = @sprintf("%-*s | %s | %s | %*s",
     W_NAME, "",
-    center_str("ExaModels + MadNLPGPU", W_EXA_INNER),
-    center_str("PEtab + IPNewton",       W_PETAB_INNER),
+    center_str(timing_label,              W_EXA_INNER),
+    center_str("PEtab + IPNewton",        W_PETAB_INNER),
     W_GAP, "")
 
 sub_hdr = @sprintf("%-*s | %*s %*s %*s %*s | %*s %*s %*s | %*s",
@@ -179,10 +186,11 @@ println(buf, "  MadNLP (Status): 0=SOLVE_SUCCEEDED  1=WALLTIME_EXCEEDED  2=RESTO
 println(buf, "                   3=INVALID_NUMBER_JACOBIAN  4=MAX_ITER_EXCEEDED  5=other")
 println(buf, "                   E=exception  T=process_timeout  -=compile_failed/not_run")
 println(buf, "  PEtab  (Status): 0=converged  1=ran_not_converged  E=error  T=timeout  -=compile_failed/not_run")
-println(buf, "  EXA(%)         : fraction of petab_examodel() time spent on ExaModels build")
+println(buf, "  EXA(%)         : fraction of compile time spent on ExaModels build")
 println(buf, "                   (remainder = PEtab setup + ODE presolve at nominal θ)")
 println(buf, "                   '-' for results from earlier benchmarks (presolve not tracked then)")
 println(buf, "  rel.gap(%)     : (ExaModels_obj - PEtab_obj) / |PEtab_obj| × 100%  (negative = ExaModels lower)")
+USE_SGM && println(buf, "  Timing mode    : SGM geometric mean over $(g(Dict("exa_sgm_n"=>"3"), "exa_sgm_n")) reruns (exa_sgm_* keys)")
 
 # ─── output ───────────────────────────────────────────────────────────────────
 report = String(take!(buf))

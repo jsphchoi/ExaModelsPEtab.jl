@@ -1,6 +1,3 @@
-exa_compile_status=error
-exa_error=UndefVarError: `D_rib` not defined in `Symbolics` Suggestion: check for spelling errors or missing imports.
-exa_solve_status=skipped
 petab_compile_status=ok
 petab_compile_time=198.85
 petab_has_events=false

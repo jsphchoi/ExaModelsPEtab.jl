@@ -6,7 +6,7 @@ struct PEInfo{T <: Number}
     Ncv::Int    # (cv = 1,...,Ncv) number of condition-dependent variables
     Nm::Int     # number of data measurements
     Ny::Int     # number of model observables
-    N::Int      # (i = 1,...,N) number of intervals 
+    N::Int      # (i = 1,...,N) number of intervals
     K::Int      # (j/k = 0/1,...,K) number of interpolation points within each interval (k = 0,...,K)
     t_meas::Vector{T}
     t_vec_mesh::Vector{Float64}

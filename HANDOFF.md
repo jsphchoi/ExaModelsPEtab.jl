@@ -15,11 +15,12 @@ models from compiling.
 - Fides.jl deliberately NOT added (wraps a Python pkg; heavy/fragile).
 
 ## Git state
-- Last commit: `b9c551f` "testing petab: 29/35, 20/20 w/o event callbacks".
-- **UNCOMMITTED working-tree changes (this session's core fixes):**
-  `src/utils.jl`, `src/initialize.jl`, `src/objective.jl`, `src/collocation.jl`, `src/variables.jl`.
-- Committed earlier: x0SSpre fix + sigma improvements (`f7a9e4d`), benchmark scripts + phase-1 results.
-- `examples/results2/*` and the new `examples/*.jl|*.sh` are staged (from an earlier `git add -A`).
+- Last commit: `7cbda66` "clean up repo, organized benchmark and results".
+- **UNCOMMITTED working-tree changes:** `src/structs.jl`, `src/userfuncs.jl`.
+- Prior committed fixes: x0SSpre (`f7a9e4d`), condition-id indexing (`9f887c6`), benchmark
+  scripts / results logging (`3649560`), repo cleanup + Benchmarks reorganization (`7cbda66`).
+- The core src fixes (assignment-rule substitution, condition alignment, mesh extension) were
+  applied but may not all be committed — check `git diff src/` before the next run.
 
 ---
 
@@ -119,33 +120,62 @@ compile; only Laske's compile time is a concern (29 assignment rules → large s
 
 ---
 
-## Benchmark infrastructure (examples/)
-Two-phase pipeline, results in `examples/results2/`, key=value `.txt` files per model.
-- `bench2_petab.jl <model>` — PHASE 1 worker (one process per model; run in parallel). Builds
-  PEtabODEProblem, triggers its nllh/grad/**hess** JIT during the COMPILE phase (so the solve is
-  JIT-free and `time_limit` governs it), solves with **Optim.IPNewton()** on the default problem
-  (size-auto Hessian: ForwardDiff small / GaussNewton medium), 1-hr wall cap, records compile/solve
-  status+time, objective, `optimum_found` (= Optim `res.converged::Bool`), `has_events`.
-- `run_petab.sh [P]` — runs phase 1 over all 35 models, P-way parallel (default 12), resumable.
-- `bench2_exa.jl <gpu_id> <ninst> <idx>` — PHASE 2 worker: single long-lived **warmed** resumable
-  process pinned to a GPU; for each model the PEtab phase RAN, builds the ExaModel (K=5, 30-min
-  compile watchdog) and solves with MadNLP/cuDSS. MadNLP wall = **2× PEtab solve time if PEtab
-  converged, else 1 hr**.
-- `run_exa.sh` — launches 2 instances (one per GPU), each with a restart wrapper (resume after a
-  watchdog SIGKILL on a compile timeout).
-- `master2.sh` — phase1 → phase2 → `report2.jl` → `results2/FINAL_REPORT2.txt`.
-- `report2.jl` — combined report: per-model PEtab & ExaModels comp/solve status+time, relative
-  objective gap, and proportions of PEtab/ExaModels optima found (overall + no-event subset).
-- (Older single-GPU harness: `benchmarks.jl`, `compare.jl`, `run_all.sh`, `report.jl`, `master.sh`.)
+## Benchmark infrastructure (examples/Benchmarks/)
+All benchmark code in `examples/Benchmarks/`. Results in `examples/Benchmarks/results/`,
+combined key=value `{ModelName}_results.txt` per model (petab_* and exa_* keys coexist).
 
-### Critical harness gotchas (do not regress)
-- **Run MadNLP/GPU at `-t 1`** and enforce timeouts with an **external `bash -c "sleep N; kill -9 <pid>"`
-  watchdog**, NOT a Julia watchdog thread. A busy Julia watchdog thread STARVES cuDSS and makes the
-  GPU solve hang (a 20 s solve became 690 s). `-t 1` + external killer is the proven config.
-- Per-model JIT: a fresh process JITs ~5 min of generic pipeline. Phase 2 uses ONE warmed process +
-  a JIT warmup so per-model compile times are real. Phase-1 workers absorb the Hessian JIT in the
-  COMPILE phase.
-- Resumable: per-model result files; `compiling`/`solving` sentinels convert to `timeout` on restart.
+### Scripts
+- `benchmark_petab.jl / .sh` — one Julia process per model; builds PEtabODEProblem (JITs
+  nllh/grad/hess in compile phase), solves with Optim.IPNewton(), 1-hr cap. Writes `petab_*` keys.
+  Run from repo root: `bash examples/Benchmarks/benchmark_petab.sh`.
+- `benchmark_examodels.jl / .sh` — two long-lived Julia processes (one per GPU), strided over
+  19 models. Warmup model: **Crauste** (excluded from ALL_MODELS — pre-warms generic JIT only;
+  timing of the warmup model is invalid). K=6, compile deadline 4 hr. Writes `exa_*` keys.
+  Run from repo root: `bash examples/Benchmarks/benchmark_examodels.sh` (**no trailing `&`** —
+  the script uses `wait` internally; the harness must track the outer process to report true completion).
+- `final_report.jl` — prints/writes `results/final_report.txt`.
+  `--sgm` flag swaps exa Solve(s) column to SGM times (fair comparison with PEtab).
+
+### Per-model sequence (examodels)
+1. **Warmup** (Crauste, once per process) — pre-compiles generic Julia pipeline.
+2. **Compile** — Phase 1: PEtab setup + ODE presolve at nominal θ (`exa_presolve_time`).
+   Phase 2: Symbolics code-gen + ExaModels build (`exa_compile_time` = Phase1+2 total).
+3. **First solve** — MadNLP/cuDSS; includes GPU kernel JIT on first call (`exa_solve_time`).
+4. **SGM solves** — `madnlp(model)` called N_SGM_RERUNS=3 more times on the same in-memory
+   model (no recompile; GPU kernels cached; `model.meta.x0` not mutated so all runs share
+   the same warm start). Geometric mean → `exa_sgm_solve_time`.
+   If resuming after a restart, model is rebuilt silently (untimed) then one priming solve
+   warms the GPU kernels before the 3 timed runs.
+
+### Result keys
+- `exa_compile_time` / `exa_presolve_time` — cold first-run build (comparable to `petab_compile_time`)
+- `exa_solve_time` — first solve; **inflated by GPU kernel JIT**, not directly comparable
+- `exa_sgm_solve_time` / `exa_sgm_n` — kernel-cached solve SGM; **comparable to `petab_solve_time`**
+- `exa_compile_status`, `exa_solve_status`, `exa_sgm_status`, `exa_term_status`, `exa_objective`,
+  `exa_iter`, `exa_nvar`, `exa_ncon`, `exa_error`
+- `%EXA` = (exa_compile_time − exa_presolve_time) / exa_compile_time × 100
+
+### Models benchmarked (19)
+petab_optimum_found=true AND petab_has_events=false, Crauste excluded (warmup):
+Armistead, Bachmann, Bertozzi, Blasi, Boehm, Borghans, Bruno, Elowitz, Fiedler,
+Laske, Lucarelli, Okuonghae, Perelson, Rahman, SalazarCavazos, Schwen, Sneyd, Zhao, Zheng.
+
+### Critical harness notes
+- **Run julia at `-t 1`**; enforce timeouts with external `bash -c "sleep N; kill -9 <pid>"`.
+  A Julia watchdog thread starves cuDSS (20 s solve → 690 s observed).
+- **Launch without trailing `&`** when using `run_in_background`; the script uses `wait` so
+  the outer process only exits when both GPU instances finish.
+- Resumable: `compiling`/`solving`/`exa_sgm_status=running` sentinels → `timeout`/`interrupted`
+  on restart; `exa_finished()` re-queues anything not in a terminal state.
+- To re-run from scratch: strip `exa_*` keys, keep `petab_*`:
+  `grep "^petab_" file > tmp && mv tmp file`
+
+## Scratch / exploratory test files (examples/scratch_tests/)
+- `gpu_run.jl` — end-to-end GPU solve sanity check
+- `sigma_constraints.jl` — debug sigma constraint construction
+- `stage_build.jl` — step through model build stages manually
+- `verify_models.jl` — objective-consistency check (our obj vs PEtab @ nominal θ); main validation tool
+- `warm_start.jl` — test warm-start initialization from ODE solution
 
 ## PEtab optimizer findings (from PEtab.jl docs)
 `docs/.../optimizers.md`: small (<10 ODE,<20 par) → `Optim.IPNewton()` + exact Hessian; medium →
