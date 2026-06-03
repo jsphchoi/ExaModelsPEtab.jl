@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=233.23
+error=
+has_events=false
+iters=7
+model=Lucarelli_CellSystems2018
+objective=1681.6057822263722
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=2675.98

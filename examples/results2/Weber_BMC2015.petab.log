@@ -1,0 +1,27 @@
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 3.530267280993361 > 2, ndz = 2.0941422750428295e8, ndzprev = 5.931965226308789e7
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 6.446270442948462 > 2, ndz = 9.747486858413423e8, ndzprev = 1.5121126152993074e8
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 4.559267063899042 > 2, ndz = 4.913905583890786e7, ndzprev = 1.0777841076255051e7
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 2.4139772195034634 > 2, ndz = 4.1176808223359264e7, ndzprev = 1.70576623054583e7
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 2.315017434039443 > 2, ndz = 5.0639876430318244e7, ndzprev = 2.1874511908948086e7
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 3.209956683705578 > 2, ndz = 5.7157821832677886e7, ndzprev = 1.7806415308599997e7
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 2.0121565500598697 > 2, ndz = 4.0608557959550016e7, ndzprev = 2.0181609606042705e7
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 2.1574629648054646 > 2, ndz = 2.408664293402159e7, ndzprev = 1.1164336689410308e7
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101

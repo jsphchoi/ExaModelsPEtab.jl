@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=235.9
+error=
+has_events=false
+iters=5
+model=Rahman_MBS2016
+objective=21.153486354615318
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=14.23

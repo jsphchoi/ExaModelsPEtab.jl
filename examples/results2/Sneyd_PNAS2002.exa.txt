@@ -1,0 +1,12 @@
+compile_status=ok
+compile_time=94.87
+error=
+iter=0
+model=Sneyd_PNAS2002
+ncon=33984
+nvar=33999
+objective=-319.7917770390357
+solve_limit=71.7
+solve_status=ok
+solve_time=143.99
+term_status=MAXIMUM_WALLTIME_EXCEEDED

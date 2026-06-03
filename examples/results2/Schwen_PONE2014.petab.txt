@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=277.88
+error=
+has_events=false
+iters=4
+model=Schwen_PONE2014
+objective=956.5184339082019
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=207.16

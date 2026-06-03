@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=294.06
+error=
+has_events=false
+iters=97
+model=Borghans_BiophysChem1997
+objective=-106.04999561737061
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=1975.9

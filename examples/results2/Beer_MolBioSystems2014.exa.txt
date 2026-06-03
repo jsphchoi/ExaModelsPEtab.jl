@@ -1,0 +1,12 @@
+compile_status=ok
+compile_time=145.38
+error=
+iter=6671
+model=Beer_MolBioSystems2014
+ncon=598842
+nvar=598914
+objective=-15513.553281240245
+solve_limit=849.5
+solve_status=ok
+solve_time=851.03
+term_status=MAXIMUM_WALLTIME_EXCEEDED

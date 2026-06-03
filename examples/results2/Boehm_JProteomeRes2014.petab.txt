@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=274.54
+error=
+has_events=false
+iters=0
+model=Boehm_JProteomeRes2014
+objective=138.2219977274927
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=10.21

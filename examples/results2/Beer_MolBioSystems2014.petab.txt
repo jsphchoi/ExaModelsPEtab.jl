@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=346.12
+error=
+has_events=true
+iters=53
+model=Beer_MolBioSystems2014
+objective=-59439.866843833275
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=424.77

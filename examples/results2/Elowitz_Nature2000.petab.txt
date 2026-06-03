@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=258.96
+error=
+has_events=false
+iters=4
+model=Elowitz_Nature2000
+objective=-63.20275043554767
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=50.25

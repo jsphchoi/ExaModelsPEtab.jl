@@ -1,0 +1,435 @@
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196
+┌ Warning: Verbosity toggle: dt_epsilon 
+│  Initial timestep too small (near machine epsilon), using default: dt = 0.0
+└ @ OrdinaryDiffEqCore ~/.julia/packages/OrdinaryDiffEqCore/rnOL4/src/initdt.jl:196

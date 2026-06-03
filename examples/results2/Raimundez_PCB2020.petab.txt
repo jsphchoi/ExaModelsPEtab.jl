@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=215.81
+error=
+has_events=true
+iters=5
+model=Raimundez_PCB2020
+objective=70525.38436451924
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=182.71

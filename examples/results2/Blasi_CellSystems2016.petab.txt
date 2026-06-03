@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=132.86
+error=
+has_events=false
+iters=21
+model=Blasi_CellSystems2016
+objective=-1090.5608159562705
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=18.81

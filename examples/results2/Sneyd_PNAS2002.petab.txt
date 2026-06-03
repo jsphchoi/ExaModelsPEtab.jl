@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=211.21
+error=
+has_events=false
+iters=5
+model=Sneyd_PNAS2002
+objective=-319.791791777273
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=35.85

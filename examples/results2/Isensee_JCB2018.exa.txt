@@ -1,0 +1,12 @@
+compile_status=error
+compile_time=
+error=MethodError: Cannot `convert` an object of type Nothing to an object of type Int64 The function `convert` exists, but no method is defined for this combination of argument types.  Closest candidates are:   convert(::Type{Int64}, !Matched::SymbolicUtils.BasicSymbolicImpl.var"typeof(BasicSymbolicImpl)"{T} where T)    @ SymbolicUtils ~/.julia/packages/SymbolicUtils/rXhQG/src/despecialize.jl:35   convert(::Type{T}, !Matched::CuPtr) where T<:Integer    @ CUDA ~/.julia/packages/CUDA/bjncr/src/pointer.jl:42   convert(::Type{T}, !Matched::CuArrayPtr) where T<:Integer    @ CUDA ~/.julia/packages/CUDA/bjncr/src/pointer.jl:167   ... 
+iter=
+model=Isensee_JCB2018
+ncon=
+nvar=
+objective=
+solve_limit=
+solve_status=skipped
+solve_time=
+term_status=

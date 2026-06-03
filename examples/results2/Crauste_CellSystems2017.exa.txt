@@ -1,0 +1,12 @@
+compile_status=ok
+compile_time=73.75
+error=
+iter=11
+model=Crauste_CellSystems2017
+ncon=13962
+nvar=13974
+objective=190.96392202551587
+solve_limit=40.8
+solve_status=ok
+solve_time=30.45
+term_status=SOLVE_SUCCEEDED

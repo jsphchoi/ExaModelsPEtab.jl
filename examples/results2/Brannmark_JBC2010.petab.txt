@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=307.17
+error=
+has_events=true
+iters=4
+model=Brannmark_JBC2010
+objective=141.88929766387372
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=79.12

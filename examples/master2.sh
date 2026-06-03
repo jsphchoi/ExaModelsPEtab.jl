@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 RD=examples/results2
 mkdir -p "$RD"
 
-echo "[master2] $(date) PHASE 1: PEtab/Ipopt (LBFGS) ..."
+echo "[master2] $(date) PHASE 1: PEtab/Optim.IPNewton ..."
 bash examples/run_petab.sh 12
 echo "[master2] $(date) PHASE 1 complete"
 

@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=191.43
+error=
+has_events=false
+iters=17
+model=Perelson_Science1996
+objective=227.5607757006313
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=13.53

@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=1261.71
+error=
+has_events=true
+iters=7
+model=Smith_BMCSystBiol2013
+objective=32791.221003191924
+opt_status=false
+optimum_found=false
+solve_status=ok
+solve_time=4191.82

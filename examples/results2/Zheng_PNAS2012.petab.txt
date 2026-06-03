@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=179.45
+error=
+has_events=false
+iters=4
+model=Zheng_PNAS2012
+objective=-278.3387955460912
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=23.4

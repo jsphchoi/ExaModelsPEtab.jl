@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=642.82
+error=
+has_events=false
+iters=0
+model=Fiedler_BMCSystBiol2016
+objective=-58.5838727407676
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=10.21

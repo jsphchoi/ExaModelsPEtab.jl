@@ -1,0 +1,11 @@
+compile_status=compiling
+compile_time=
+error=
+has_events=
+iters=
+model=Froehlich_CellSystems2018
+objective=
+opt_status=
+optimum_found=
+solve_status=skipped
+solve_time=

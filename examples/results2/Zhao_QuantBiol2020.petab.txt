@@ -1,0 +1,11 @@
+compile_status=ok
+compile_time=117.36
+error=
+has_events=false
+iters=389
+model=Zhao_QuantBiol2020
+objective=503.1633273557346
+opt_status=true
+optimum_found=true
+solve_status=ok
+solve_time=162.76
