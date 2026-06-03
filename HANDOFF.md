@@ -1,4 +1,4 @@
-# ExaModelsPEtab — Session Handoff (2026-06-03)
+# ExaModelsPEtab — Session Handoff (2026-06-03, updated end-of-session)
 
 Package: `~/.julia/dev/ExaModelsPEtab` — builds an ExaModels orthogonal-collocation NLP from a
 PEtab parameter-estimation problem and solves it with MadNLP on the GPU (CUDA/cuDSS).
@@ -16,11 +16,12 @@ models from compiling.
 
 ## Git state
 - Last commit: `7cbda66` "clean up repo, organized benchmark and results".
-- **UNCOMMITTED working-tree changes:** `src/structs.jl`, `src/userfuncs.jl`.
-- Prior committed fixes: x0SSpre (`f7a9e4d`), condition-id indexing (`9f887c6`), benchmark
-  scripts / results logging (`3649560`), repo cleanup + Benchmarks reorganization (`7cbda66`).
-- The core src fixes (assignment-rule substitution, condition alignment, mesh extension) were
-  applied but may not all be committed — check `git diff src/` before the next run.
+- **UNCOMMITTED working-tree changes:** `src/structs.jl`, `src/userfuncs.jl` (whitespace only).
+- The core src fixes (assignment-rule substitution, condition-id alignment, mesh extension,
+  x0SSpre) are all committed — confirmed working via objective-consistency checks.
+- `examples/Benchmarks/benchmark_examodels.jl` and `final_report.jl` have significant
+  uncommitted changes from this session (K=6, SGM solve-only reruns, Crauste warmup,
+  19-model list) — commit these before the next benchmark run.
 
 ---
 
@@ -199,6 +200,20 @@ assignment-rule/alignment/mesh fixes. Key takeaways still relevant:
   pre-eq dilution resets), so for the "no-event subset" exclude all of those.
 
 ---
+
+## Benchmark run status (end of session 2026-06-03)
+No results yet — all 19 model result files have `exa_*` keys cleared (only `petab_*` remain).
+The benchmark processes were killed mid-warmup (SIGTERM during LLVM JIT of Crauste/CSV.File).
+**To start the benchmark in a new session:**
+```bash
+# From repo root — no trailing &, harness must track the outer process
+bash examples/Benchmarks/benchmark_examodels.sh
+```
+Commit `examples/Benchmarks/benchmark_examodels.jl` and `final_report.jl` first.
+Expected: warmup (Crauste, ~5 min compile + solve), then 19 models sequentially per GPU.
+Fast models (Bruno, Perelson, ~1 min) first; slow ones (Laske, Blasi, Fiedler, Lucarelli,
+Bachmann) may approach the 4-hr compile limit or fail. Results appear in
+`examples/Benchmarks/results/` as each model finishes.
 
 ## OUTSTANDING / NEXT STEPS
 1. **Verify Option A** (mesh extension): re-run the objective check on Zhao (expect match) +
