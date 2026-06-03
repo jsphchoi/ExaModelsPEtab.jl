@@ -1,0 +1,12 @@
+exa_compile_status=error
+exa_error=UndefVarError: `pY1173` not defined in `Symbolics` Suggestion: check for spelling errors or missing imports.
+exa_solve_status=skipped
+petab_compile_status=ok
+petab_compile_time=460.84
+petab_has_events=false
+petab_iter=31
+petab_objective=366.8616012732746
+petab_opt_status=true
+petab_optimum_found=true
+petab_solve_status=ok
+petab_solve_time=595.52

@@ -1,0 +1,59 @@
+===================================================================================================
+                 |        ExaModels + MadNLPGPU        |       PEtab + IPNewton       |            
+Model            | Compile(s) EXA(%)   Solve(s) Status | Compile(s)   Solve(s) Status |  rel.gap(%)
+---------------------------------------------------------------------------------------------------
+Alkan            |          -      -          -      - |          -          -      - |           -
+Armistead        |      85.98      -      30.93      1 |      80.28      14.53      0 |   +1.18e-07
+Bachmann         |    1104.44      -          -      E |     143.38      82.58      0 |           -
+Beer             |     145.38      -     851.03      1 |     346.12     424.77      0 |   +7.39e+01
+Bertozzi         |       82.4      -      71.04      2 |     214.86      110.6      0 |   +1.67e+02
+Blasi            |          -      -          -      - |     132.86      18.81      0 |           -
+Boehm            |     155.13      -          -      T |     274.54      10.21      0 |           -
+Borghans         |      84.51      -    3953.25      1 |     294.06     1975.9      0 |           -
+Brannmark        |     180.78      -     160.25      1 |     307.17      79.12      0 |   +1.27e+00
+Bruno            |       0.16      -       0.31      0 |       4.96       3.34      0 |   -3.80e-02
+Chen             |          -      -          -      - |          -          -      - |           -
+Crauste          |      73.75      -      30.45      0 |     261.37      20.41      0 |   -2.91e-05
+Elowitz          |      88.45      -     102.01      1 |     258.96      50.25      0 |           -
+Fiedler          |          -      -          -      - |     642.82      10.21      0 |           -
+Froehlich        |          -      -          -      - |          -          -      - |           -
+Fujita           |          -      -          -      - |     317.65      10.28      0 |           -
+Giordano         |          -      -          -      - |     239.16      54.38      0 |           -
+Isensee          |          -      -          -      - |     251.73    1238.06      0 |           -
+Lang             |          -      -          -      - |          -          -      - |           -
+Laske            |          -      -          -      - |     198.85      53.86      0 |           -
+Liu              |     146.33      -      53.54      1 |     249.71      12.49      0 |   +1.56e-09
+Lucarelli        |          -      -          -      - |     233.23    2675.98      0 |           -
+Okuonghae        |          -      -          -      - |     207.59      34.58      0 |           -
+Oliveira         |          -      -          -      - |      319.3      32.24      0 |           -
+Perelson         |      69.19      -      25.74      0 |     191.43      13.53      0 |   -1.80e+00
+Rahman           |          -      -          -      - |      235.9      14.23      0 |           -
+Raia             |          -      -          -      - |          -          -      - |           -
+Raimundez        |          -      -          -      - |     215.81     182.71      0 |           -
+SalazarCavazos   |          -      -          -      - |     460.84     595.52      0 |           -
+Schwen           |      200.9      -      75.78      3 |     277.88     207.16      0 |           -
+Smith            |          -      -          -      - |    1261.71    4191.82      1 |           -
+Sneyd            |      94.87      -     143.99      1 |     211.21      35.85      0 |   +4.61e-06
+Weber            |          -      -          -      - |          -          -      - |           -
+Zhao             |          -      -          -      - |     117.36     162.76      0 |           -
+Zheng            |          -      -          -      - |     179.45       23.4      0 |           -
+---------------------------------------------------------------------------------------------------
+
+SUMMARY
+  ExaModels solved :  3 / 28  (of PEtab-solved)
+  PEtab solved     : 28 / 35
+  Total models     : 35
+
+RELATIVE OBJECTIVE GAP  (exa_obj - petab_obj) / |petab_obj| × 100%  [negative = ExaModels lower]:
+  n=9  median=+1.18e-07%  max_abs=+1.67e+02%  (|gap|<1%: 5)
+===================================================================================================
+
+STATUS KEY
+  MadNLP (Status): 0=SOLVE_SUCCEEDED  1=WALLTIME_EXCEEDED  2=RESTORATION_FAILED
+                   3=INVALID_NUMBER_JACOBIAN  4=MAX_ITER_EXCEEDED  5=other
+                   E=exception  T=process_timeout  -=compile_failed/not_run
+  PEtab  (Status): 0=converged  1=ran_not_converged  E=error  T=timeout  -=compile_failed/not_run
+  EXA(%)         : fraction of petab_examodel() time spent on ExaModels build
+                   (remainder = PEtab setup + ODE presolve at nominal θ)
+                   '-' for results from earlier benchmarks (presolve not tracked then)
+  rel.gap(%)     : (ExaModels_obj - PEtab_obj) / |PEtab_obj| × 100%  (negative = ExaModels lower)

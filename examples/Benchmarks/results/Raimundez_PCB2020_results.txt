@@ -1,0 +1,12 @@
+exa_compile_status=error
+exa_error=KeyError: key :model1_data1 not found
+exa_solve_status=skipped
+petab_compile_status=ok
+petab_compile_time=215.81
+petab_has_events=true
+petab_iter=5
+petab_objective=70525.38436451924
+petab_opt_status=true
+petab_optimum_found=true
+petab_solve_status=ok
+petab_solve_time=182.71

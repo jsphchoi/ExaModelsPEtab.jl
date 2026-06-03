@@ -1,9 +1,0 @@
-compile_status=ok
-compile_time=18.78
-converged=true
-error=
-iterations=0
-model=Boehm_JProteomeRes2014
-objective=138.2219977274927
-solve_status=ok
-solve_time=254.09

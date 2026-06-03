@@ -1,0 +1,12 @@
+exa_compile_status=error
+exa_error=UndefVarError: `total_pop` not defined in `Symbolics` Suggestion: check for spelling errors or missing imports.
+exa_solve_status=skipped
+petab_compile_status=ok
+petab_compile_time=207.59
+petab_has_events=false
+petab_iter=56
+petab_objective=446.5099354469762
+petab_opt_status=true
+petab_optimum_found=true
+petab_solve_status=ok
+petab_solve_time=34.58

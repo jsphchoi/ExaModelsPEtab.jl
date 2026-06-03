@@ -1,0 +1,12 @@
+exa_compile_status=error
+exa_error=UndefVarError: `gamma_2` not defined in `Symbolics` Suggestion: check for spelling errors or missing imports.
+exa_solve_status=skipped
+petab_compile_status=ok
+petab_compile_time=117.36
+petab_has_events=false
+petab_iter=389
+petab_objective=503.1633273557346
+petab_opt_status=true
+petab_optimum_found=true
+petab_solve_status=ok
+petab_solve_time=162.76

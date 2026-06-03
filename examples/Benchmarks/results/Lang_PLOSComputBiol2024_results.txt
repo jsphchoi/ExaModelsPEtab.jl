@@ -1,0 +1,2 @@
+petab_compile_status=compiling
+petab_solve_status=skipped

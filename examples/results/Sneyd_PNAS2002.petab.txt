@@ -1,9 +1,0 @@
-compile_status=ok
-compile_time=16.39
-converged=true
-error=
-iterations=5
-model=Sneyd_PNAS2002
-objective=-319.791791777273
-solve_status=ok
-solve_time=213.21
