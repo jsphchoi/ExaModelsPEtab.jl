@@ -114,13 +114,9 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         # Obtain initial condition symbolic expressions
         dict_z0sym_expr = Dict(PEprob.model_info.model.speciemap) # get mapping of initial condition: symbolic state variable => number/var(p?cv?)/expr
 
-        # Substitute fixed (numeric) constants (if any)
-        dict_all_val = Dict(PEprob.model_info.model.parametermap) # Mapping: symbolics of all parameters => nominal values
-        fixed_syms = setdiff( # Symbolics of fixed constants
-            keys(Dict(dict_all_val)), 
-            union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
-        )
-        dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)) # Mapping: symbolics of fixed constants => values
+        # Substitute fixed constants (initialAssignment-defined params resolved to the constants
+        # PEtab freezes them at — see _resolve_fixed_vals).
+        dict_fixed_val = _resolve_fixed_vals(PEmodel, PEprob)
         dict_z0sym_expr = Dict( # substitute fixed constant into all z0 expressions
             z0sym => Symbolics.simplify(Symbolics.substitute(expr, dict_fixed_val))
             for (z0sym, expr) in dict_z0sym_expr
@@ -136,7 +132,24 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         p_syms = _get_p_syms(PEprob)
         cv_syms = _get_cv_syms(PEmodel)
 
+        # A conditions-table column whose header matches a state ID overrides that state's
+        # initial value PER CONDITION (PEtab spec). This override is NOT reflected in the
+        # SBML/MTK speciemap (which holds the single condition-independent default), so we
+        # detect it here by name and route the state to its cv variable — cv[cvidx,cidx]
+        # already carries the correct per-condition value (numeric or parameter; built in
+        # _create_cv and constrained in collocation.jl). This takes priority over the
+        # speciemap default, which would otherwise force every condition to the same
+        # (wrong) initial state. (Ncv >= 1 here, so `cv` is defined above.)
+        cv_cols    = _get_cv_colnames(PEmodel)
+        state_name(s) = String(split(string(s), "(")[1])   # strip the MTK "(t)"
+
         for v in 1:Nz
+            ov_cvidx = findfirst(==(state_name(z_syms[v])), cv_cols)
+            if ov_cvidx !== nothing
+                # initial value overridden by a conditions-table column => use that cv
+                append!(itr_z0_cv, ((v, cidx, ov_cvidx) for cidx in 1:Nc))
+                continue
+            end
             val = dict_z0sym_expr[z_syms[v]]
             if Symbolics.value(val) isa Number
                 # if z0 is a numeric value...

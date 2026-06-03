@@ -1,10 +1,31 @@
-# ExaModelsPEtab — Session Handoff (2026-06-03, updated end-of-session)
+# ExaModelsPEtab — Session Handoff (2026-06-03, constraint-debug session)
 
 Package: `~/.julia/dev/ExaModelsPEtab` — builds an ExaModels orthogonal-collocation NLP from a
 PEtab parameter-estimation problem and solves it with MadNLP on the GPU (CUDA/cuDSS).
 Goal of recent work: **benchmark ExaModelsPEtab (MadNLP/CUDA) vs PEtab.jl (Optim.IPNewton)**
 across the 35 Benchmark-Models, and along the way fix the model features that prevented several
 models from compiling.
+
+## TL;DR of THIS session — two real constraint-generation bugs found + fixed
+Debugged the four "problem models". The two convergence-quality ones turned out to be genuine
+constraint-generation bugs (NOT scaling/hardware), and crucially were **invisible to the nominal-θ
+objective check** (it only uses warm-start z at measurement nodes + observable formulas — never the
+ODE RHS or the IC/continuity constraints). Lesson: always also check the **warm-start constraint
+violation** ‖c(x₀)‖∞, split by block.
+- **Armistead** (was: drifted to wrong −288.33 vs PEtab −301.92) → **FIXED** (`src/continuity.jl`):
+  IC constraints ignored conditions-table initial-state overrides. Now SOLVE_SUCCEEDED −306.13,
+  PEtab nllh@θ*=−300.88 (≈ PEtab −301.92; −306 vs −301 is K=6 discretization, not a bug).
+- **Bertozzi** (was: garbage 1.166e12, MadNLP stall) → **FIXED** (`src/utils.jl` + `src/continuity.jl`):
+  a parameter defined by an SBML initialAssignment (`beta_N=R0_*gamma_/N_`) was re-evaluated with
+  per-condition cv values (4.86e-9) instead of PEtab's frozen-at-default constant (0.01), so the RHS
+  was off ~2.6e6× → warm start 100% collocation-infeasible. Now SOLVE_SUCCEEDED 5.708e9 = PEtab
+  nllh@θ* exactly (genuine local min; PEtab's 1.94e9 is a different/better local min → multistart
+  concern, not a bug).
+- **Bachmann** (GPU OOM) and **Fiedler** (sm_70 kernel-param overflow) — **deferred, untouched**.
+
+⚠️ Src is changed but **UNCOMMITTED**. The live benchmark process was launched BEFORE these edits, so
+it still runs the buggy code — its Armistead/Bertozzi rows will be stale (pre-fix). After committing,
+**re-run Armistead + Bertozzi** (strip their `exa_*` keys, re-benchmark).
 
 ## Environment
 - Julia 1.12.6; project env at the package root (`julia --project=.`).
@@ -15,19 +36,17 @@ models from compiling.
 - Fides.jl deliberately NOT added (wraps a Python pkg; heavy/fragile).
 
 ## Git state
-- Last commit: `7cbda66` "clean up repo, organized benchmark and results".
-- **UNCOMMITTED working-tree changes:** `src/structs.jl`, `src/userfuncs.jl` (whitespace only).
-- The core src fixes (assignment-rule substitution, condition-id alignment, mesh extension,
-  x0SSpre) are all committed — confirmed working via objective-consistency checks.
-- `examples/Benchmarks/benchmark_examodels.jl` and `final_report.jl` have significant
-  uncommitted changes from this session (K=6, SGM solve-only reruns, Crauste warmup,
-  19-model list) — commit these before the next benchmark run.
+- Last commit: `3cf5fdb` "edit handoff" (benchmark scripts committed in `20c28af`).
+- **UNCOMMITTED this session**: `src/continuity.jl` + `src/utils.jl` (the two constraint bug fixes
+  below, #5 and #6) and this HANDOFF.md. Both fixes are validated (see below) but not yet committed.
+- Prior src fixes (assignment-rule substitution, condition-id alignment, Option A mesh extension,
+  x0SSpre) and the benchmark scripts (K=6, SGM reruns, Crauste warmup, 19-model list) are committed.
 
 ---
 
-## Fixes implemented this session (all validated by the objective check below unless noted)
+## Fixes implemented (#1–#4 COMMITTED; #5–#6 are THIS session, validated but UNCOMMITTED; kept as implementation reference)
 
-### 1. x0SSpre (steady-state pre-equilibration) — COMMITTED (f7a9e4d) + refined
+### 1. x0SSpre (steady-state pre-equilibration)
 - `initialize.jl _solve_conds` / `_get_zss_init`: pre-eq models reject plain condition ids in
   `PEtab.get_odeproblem`; must pass the documented **Pair `pre_eq_id => sim_id`**. That call
   internally pre-equilibrates and returns an ODEProblem whose **`u0` IS the steady-state initial
@@ -38,7 +57,7 @@ models from compiling.
   `itr_ss1` to `(v,cidx)`; constraint `z[v,1,0,cidx]=zss[v,cidx]`; residual
   `f(zss[:,cidx]; cv[:,sscidx])=0` evaluated under the PRE-EQ condition's cv; `has_t`→pass t=0.
 
-### 2. SBML assignment-rule substitution — UNCOMMITTED
+### 2. SBML assignment-rule substitution
 Several models referenced SBML assignment rules (`MTK.observed`, e.g. `total_pop = Σstates`,
 `gamma_2 = f(Trigger…)`, `pY1173 = Σspecies/c1`) in the ODE RHS or observable formulas; these
 symbols leaked into `build_function` unbound → `UndefVarError: <sym> not defined in Symbolics`.
@@ -56,7 +75,7 @@ symbols leaked into `build_function` unbound → `UndefVarError: <sym> not defin
   `_reduce_sigma_to_obs`. Restructured the observable block to compute `obs_sym` (with rules
   applied) first, then branch on whether it's a single state (`zidx !== nothing`) vs an expression.
 
-### 3. Condition-id alignment (pre-eq-only conditions) — UNCOMMITTED
+### 3. Condition-id alignment (pre-eq-only conditions)
 Zheng has a `preequilibration` conditions-table row that is **pre-eq-only** (never a
 simulationConditionId). `_get_cids` used to return ALL conditions-table rows, so `_get_z_init`
 tried `sol[:preequilibration]` → `KeyError`. Fix = make the canonical `cidx` dimension = the
@@ -71,7 +90,7 @@ SIMULATION conditions:
   `_get_cids`, falls back to cidx (residual uses that condition's own cv; exact when the pre-eq cv
   equals the sim cv or isn't in the RHS; the steady-state *start* is always correct via PEtab u0).
 
-### 4. Heterogeneous-span mesh — "Option A" — UNCOMMITTED, **NOT yet verified**
+### 4. Heterogeneous-span mesh — "Option A" (committed; objective-check re-verify still pending — Zhao compiling in the live benchmark)
 Models like Zhao have conditions with different time spans (e.g. 6, 14, 24, 39). The single shared
 collocation mesh was built from `argmax(length(sol.t))` (most ODE points) → could top out at a
 short condition's tmax and miss later measurement times → `_get_dict_t_tidx` `findfirst`→`nothing`
@@ -86,7 +105,59 @@ every solve, so the mesh should hit them all. Fix (Option A, chosen by user):
   the true full ODE profile since the collocation enforces the ODE over the full mesh anyway.)
 - **TODO: verify Zhao still matches PEtab and Crauste/Brannmark/Zheng don't regress** (not run yet).
 
+### 5. Conditions-table initial-state override in IC constraints (THIS session — UNCOMMITTED)
+**Bug:** A conditions-table column whose header matches a STATE id sets that state's initial value
+PER CONDITION (PEtab spec). This override is NOT in the SBML/MTK `speciemap` (which holds one
+condition-independent default), so `continuity.jl _create_initial_conditions` took the speciemap
+numeric default for every condition → the IC constraint `z[v,1,0,cidx]=<default>` forced all
+conditions to the same wrong initial state. (Armistead: mutant condition forced to wild_type ICs;
+the warm-start z and cv were correct, only the IC *constraint* was wrong — invisible to the obj check.)
+**Fix** (`continuity.jl`): in `_create_initial_conditions`, before the speciemap branch, detect
+states whose name (z_sym stripped of `(t)`) matches a cv column name (`_get_cv_colnames`) and route
+them to `z[v,1,0,cidx] = cv[cvidx,cidx]` (cv already holds the correct per-condition value).
+**Validated:** Armistead warm-start IC viol 0.519→0; GPU solve −288.33→−306.13; PEtab nllh@θ*=−300.88.
+**Blast radius (19-model benchmark): only Armistead** (Lang/Smith also have it but Lang isn't
+benchmarked and Smith has SBML events). No-op for models without a state/cv-column name match.
+
+### 6. initialAssignment-defined parameters frozen at defaults (THIS session — UNCOMMITTED)
+**Bug:** A PARAMETER defined by an SBML `initialAssignment` (e.g. Bertozzi `beta_N => R0_*gamma_/N_`,
+with `R0_/gamma_/N_` being condition vars) is FROZEN by PEtab at the value of that expression
+evaluated with the model's DEFAULT parameter values (`0.1*0.1/1 = 0.01`), even though the condition
+overrides apply to `R0_/gamma_/N_` themselves (verified in `oprob.p`). But `_get_rhs_funcs`'s
+`dict_fixed_val` kept `beta_N` SYMBOLIC, so it got re-evaluated with the per-condition cv values
+(`4.86e-9`) → the `beta_N`-containing RHS terms (dI/dt, dS/dt) were off by ~2.6e6× while `dR/dt=γI`
+(no beta_N) was correct → the warm start (from PEtab's ODE) was ~100% collocation-infeasible
+(residual 1.16e6, unchanged at K=12 → NOT mesh coarseness) → MadNLP stalled at 1.166e12.
+**Fix** (`utils.jl`): new `_resolve_fixed_vals(PEmodel, PEprob)` fixpoint-substitutes the parametermap
+into itself until every default is numeric, then returns the fixed (non-estimated, non-cv) params as
+numeric constants (falls back to the raw symbolic value if a param can't reduce — no regression).
+Used in both `_get_rhs_funcs` and the `continuity.jl` IC fixed-constant substitution.
+**Validated:** RHS-vs-PEtab ratio →1.0 (all states/conditions); colloc residual 1.16e6→0.22
+(mean rel 0.58→0.001); GPU solve SOLVE_SUCCEEDED 5.708e9 = PEtab nllh@θ* exactly.
+**Blast radius (19-model benchmark): only Bertozzi** (Laske also has param initialAssignments but
+they reference fixed constants → `_resolve_fixed_vals` yields identical numeric values; neutral).
+NOTE: Bertozzi now finds a genuine local min 5.708e9; PEtab's 1.94e9 is a different/better local
+min → a multistart/landscape concern, NOT a bug.
+
 ---
+
+## Diagnostic methodology added THIS session (how the two bugs were found)
+The nominal-θ objective check (below) does NOT exercise the ODE RHS or the IC/continuity constraints
+— it only uses warm-start z at measurement nodes + observable/noise formulas — so it passed cleanly
+for BOTH buggy models. The bugs only showed up in the **solve** and in the **warm-start constraint
+violation**. Procedure that nailed them (CPU, no GPU needed):
+1. **Warm-start violation, split by block.** `‖c(x₀)‖∞` = unscaled ∞-norm of the equality-constraint
+   residual at `m.meta.x0`. Split into collocation / cv / interval-continuity / IC / y+σ blocks to
+   localize. (`examples/scratch_tests/warm_start.jl` lumps collocation+cv and all continuity; the
+   session used finer per-sub-block splits.) Armistead → all in IC; Bertozzi → all in collocation.
+2. **Is it a real RHS bug or mesh coarseness?** Compare our `_get_rhs_funcs` f to PEtab's actual ODE
+   RHS: `oprob,_=PEtab.get_odeproblem(θ,PEprob;condition=cid); oprob.f(du,u0,oprob.p,0.0)` vs
+   `fs[v](u0..., pphys..., cvval...)`. Ratio should be 1.0. Also recompute the collocation residual
+   manually: A=`Σ_j z[v,i,j,cidx]·DLDTAU[j+1,k]` vs B=`h[i]·f(...)` — if A≫B at a node where
+   `z_init==sol(t_node)` exactly, the RHS is wrong (raising K won't help; Bertozzi K=6==K=12).
+3. **Is the warm-start z correct?** Check `max|z_init − sol[cid](t_node)|` over all nodes (was 0.0
+   for Bertozzi → sampling fine, so the residual was purely the RHS).
+(Throwaway scripts lived in `/tmp/diag_*.jl`, `/tmp/val_check.jl`, `/tmp/exp_solve.jl` — not kept.)
 
 ## Validation methodology — the "matches PEtab to <tol>" check
 Fixed-point **objective-consistency** check at the NOMINAL parameters (NOT a solve):
@@ -103,6 +174,12 @@ our whole objective formulation (observables, σ, assignment rules, condition in
 state-at-measurement-time mapping) reproduces PEtab. Residual ~1e-7 = K=5 collocation discretization
 + roundoff. Use `backend=nothing` (CPU) for these — much faster than GPU and the obj is identical.
 (Separately, a real MadNLP *solve* check was done for Brannmark earlier in the session.)
+
+⚠️ **This check is necessary but NOT sufficient.** It passed to ~1e-11 for BOTH Armistead and
+Bertozzi while each had a constraint-generation bug, because the warm-start objective only touches z
+at measurement nodes + observable/noise formulas — it never evaluates the ODE RHS or the
+IC/continuity constraints. Always pair it with the **warm-start constraint-violation** check and, on
+any nonzero violation, the RHS-vs-PEtab and per-block localization above.
 
 ## Validation results (objective vs PEtab @ nominal, K=5, CPU)
 | Model | feature exercised | reldiff |
@@ -201,37 +278,70 @@ assignment-rule/alignment/mesh fixes. Key takeaways still relevant:
 
 ---
 
-## Benchmark run status (end of session 2026-06-03)
-No results yet — all 19 model result files have `exa_*` keys cleared (only `petab_*` remain).
-The benchmark processes were killed mid-warmup (SIGTERM during LLVM JIT of Crauste/CSV.File).
-**To start the benchmark in a new session:**
+## Benchmark run (2026-06-03) — FIVE PROBLEM MODELS (2 fixed this session, 3 deferred)
+Benchmark relaunched via `bash examples/Benchmarks/benchmark_examodels.sh` (2 GPUs, K=6).
+Clean matches: **Boehm** (exaObj 138.2 = petab 138.2, SGM 0.44s vs petab 10.2s), **Bruno** (−46.71 =
+−46.69, 0.39s vs 3.34s) — obj matches PEtab, SGM solve 10–25× faster. The five problems:
+
+1. **Bachmann** 🔴 DEFERRED — GPU OOM. Biggest model; single 8.945 GiB alloc fails on already-99.9%-full
+   32 GB GV100. Hardware capacity, not a bug. Fix candidates (untested this session): retry alone at
+   lower K (K=4); and/or `CUDA.reclaim()` between models in the long-lived benchmark process — the
+   "99.9% full BEFORE the alloc" strongly suggests prior models' GPU memory isn't being freed
+   (accumulation), so reclaiming between solves may let it fit even at K=6. **Test alone first** to
+   tell "needs lower K" from "needs cache reclaim".
+2. **Fiedler + Lucarelli** 🔴 DEFERRED — CUDA kernel param-memory overflow. ExaModels fuses a giant
+   expression (Fiedler 36.711 KiB / 4371-element Compressor SIMDFunction; Lucarelli 35.344 KiB) into
+   one kernel, exceeding the **31.996 KiB kernel-param limit on sm_70** (GV100 = cc 7.0). Structural
+   ExaModels/GV100 limit on oversized fused exprs, NOT OOM. Fix candidate: split the fused
+   objective/constraint expression, or run on sm_80+ hardware.
+3. **Bertozzi** ✅ FIXED this session — was garbage 1.166e12 / `SEARCH_DIRECTION_BECOMES_TOO_SMALL`.
+   Root cause = the `beta_N` initialAssignment RHS bug (Fix #6 above). Now SOLVE_SUCCEEDED 5.708e9 =
+   PEtab nllh@θ* (genuine local min; PEtab's 1.94e9 is a different/better local min → multistart, not
+   a bug).
+4. **Armistead** ✅ FIXED this session — was −288.33 vs petab −301.92. Root cause = the conditions-table
+   IC-override bug (Fix #5 above). Now SOLVE_SUCCEEDED −306.13, PEtab nllh@θ*=−300.88 (≈ PEtab).
+
+⚠️ CORRECTION to the prior handoff's claim "the src is NOT implicated — all compile fine": #3 and #4
+were genuine **constraint-generation bugs** (they compiled fine but built the WRONG NLP). Only #1/#2
+are hardware-structural. The live benchmark ran pre-fix code, so re-run #3/#4 after committing.
+
+### Relaunch / resume the benchmark
 ```bash
 # From repo root — no trailing &, harness must track the outer process
 bash examples/Benchmarks/benchmark_examodels.sh
 ```
-Commit `examples/Benchmarks/benchmark_examodels.jl` and `final_report.jl` first.
-Expected: warmup (Crauste, ~5 min compile + solve), then 19 models sequentially per GPU.
-Fast models (Bruno, Perelson, ~1 min) first; slow ones (Laske, Blasi, Fiedler, Lucarelli,
-Bachmann) may approach the 4-hr compile limit or fail. Results appear in
-`examples/Benchmarks/results/` as each model finishes.
+Resumable: re-running re-queues any model not in a terminal `exa_*` state. To re-run a model from
+scratch, strip its `exa_*` keys (keep `petab_*`): `grep "^petab_" file > tmp && mv tmp file`.
+Warmup (Crauste, ~5 min) runs once per GPU; then 19 models sequentially per GPU. Slow compiles:
+Laske, Blasi, Lucarelli (Lucarelli petab-compile alone was 2676s). When all done, run
+`final_report.jl --sgm` for the canonical table.
 
 ## OUTSTANDING / NEXT STEPS
-1. **Verify Option A** (mesh extension): re-run the objective check on Zhao (expect match) +
-   Crauste/Brannmark/Zheng (no regression). Quick CPU script pattern above; `/tmp/val_*.jl` examples.
-2. **Re-run the full Ipopt-filtered benchmark** with ALL current fixes (5 more models now compile)
-   and a **better ExaModels solve budget** — the 2× rule starves it; use e.g. `max(2×petab, 600 s)`
-   floor (edit `madnlp_limit` in `bench2_exa.jl`). User's stated rule: PEtab converged → 2×T; PEtab
-   hit its 1-hr cap → 1 hr for ExaModels.
-3. **Laske compile speed**: 29 nested assignment rules → very large substituted RHS/observable
+0. **Commit Fixes #5 + #6** (`src/continuity.jl`, `src/utils.jl`), then **re-run Armistead + Bertozzi**
+   in the benchmark (the live run used pre-fix code): strip their `exa_*` keys
+   (`grep "^petab_" file > tmp && mv tmp file`) and relaunch. Also worth a quick regression re-check
+   of an assignment-rule model (Rahman/Okuonghae) and Laske, since #6 touches the shared
+   `_get_rhs_funcs`/IC fixed-constant path (expected no-op for them — they reference fixed constants).
+1. **Bachmann** (DEFERRED, OOM): test alone in a fresh process at K=6 first (GPU-mem accumulation vs
+   genuine size); add `CUDA.reclaim()` between models in the benchmark; fall back to K=4 if needed.
+2. **Fiedler + Lucarelli** (DEFERRED, sm_70 kernel-param overflow): split the oversized fused
+   objective/constraint expression so no single kernel exceeds 31.996 KiB of params, or run on sm_80+.
+3. **Bertozzi local-min gap** (NOT a bug): we converge to 5.708e9, PEtab to 1.94e9 — different local
+   minima from the same nominal start. If matching PEtab's optimum matters, try multistart / a better
+   warm start; otherwise document it.
+4. **Verify Option A** (mesh extension) by objective check on Zhao (expect match) +
+   Crauste/Brannmark/Zheng (no regression). CPU pattern in "Validation methodology".
+5. **Laske compile speed**: 29 nested assignment rules → very large substituted RHS/observable
    expressions → ~30-min compile. Consider caching/CSE or limiting expansion if it matters.
-4. **Event callbacks unsupported** (collocation can't represent discontinuities): Liu, Smith (SBML
+6. **Event callbacks unsupported** (collocation can't represent discontinuities): Liu, Smith (SBML
    events) and time-input/pre-eq-reset models. Out of scope unless tackled deliberately.
-5. Decide whether to keep the single-shared-mesh (Option A, extends short conditions to max span —
+7. Decide whether to keep the single-shared-mesh (Option A, extends short conditions to max span —
    wasted DOF + possible blow-up if a condition's ODE diverges past its window) vs per-condition
    meshes (cleaner, ragged z, bigger refactor).
-6. Commit the src fixes once Option A is verified.
 
 ## Useful one-liners
 - Objective check (CPU): see "Validation methodology" above.
 - Event ground-truth: `grep -c '<event[ >]' <model>/*.xml` (only Liu, Smith > 0).
-- Per-model PEtab/Exa status: read `examples/results2/<model>.{petab,exa}.txt`.
+- Per-model PEtab/Exa status: read `examples/Benchmarks/results/<Model>_results.txt` (combined
+  `petab_*` + `exa_*` keys).
+- Warm-start constraint violation (CPU): `examples/scratch_tests/warm_start.jl <Model> <K>`.

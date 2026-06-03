@@ -169,6 +169,39 @@ function _assignment_substitutor(PEprob::PEtabODEProblem; bare::Bool)
     end
 end
 
+# Resolves every FIXED (neither estimated nor condition-dependent) parameter to a numeric
+# constant, returning Dict(sym::Num => value). A parameter can be defined by an SBML
+# initialAssignment, i.e. its parametermap value is a SYMBOLIC expression of other parameters
+# (e.g. Bertozzi's `beta_N => (R0_*gamma_)/N_`). PEtab freezes such a parameter at the value of
+# that expression evaluated with the model's DEFAULT parameter values — it does NOT re-evaluate
+# it with the per-condition / estimated overrides (verified against PEtab's ODEProblem parameter
+# vector: beta_N = 0.1*0.1/1 = 0.01 even though R0_/gamma_/N_ carry their condition values). We
+# MUST freeze it the same way, otherwise the collocation RHS uses a different constant than the
+# ODE that produced the warm start, leaving the warm start grossly collocation-infeasible.
+#
+# We get there by fixpoint-substituting the parametermap into itself until every default is
+# numeric (resolves nested initialAssignments), then reading off the fixed params. If a fixed
+# param cannot be reduced to a number, we fall back to its raw parametermap value (the previous
+# behavior) so models that relied on the symbolic form are unaffected.
+function _resolve_fixed_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+    dict_all_val = Dict(PEprob.model_info.model.parametermap)
+    defaults = Dict{Any,Any}(dict_all_val)
+    for _ in 1:100
+        all(Symbolics.value(v) isa Number for v in values(defaults)) && break
+        for (k, v) in defaults
+            Symbolics.value(v) isa Number && continue
+            defaults[k] = Symbolics.substitute(v, defaults)
+        end
+    end
+    fixed_syms = setdiff(keys(dict_all_val), union(_get_p_syms(PEprob), _get_cv_syms(PEmodel)))
+    out = Dict{Any,Any}()
+    for sym in fixed_syms
+        rv = Symbolics.value(defaults[sym])
+        out[sym] = rv isa Number ? Float64(rv) : dict_all_val[sym]
+    end
+    return out
+end
+
 # Returns (::Vector{Function}, ::Bool) where bool = has_t (ODE depends on time after substitution)
 # Without time: f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
 # With time:    f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]; t]...)
@@ -177,10 +210,9 @@ function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
 
     f_exprs_raw = [eqn.rhs for eqn in MTK.equations(sys)]
 
-    # Substitute in fixed constant values
-    dict_all_val  = Dict(PEprob.model_info.model.parametermap)
-    fixed_syms    = setdiff(keys(Dict(dict_all_val)), union(_get_p_syms(PEprob), _get_cv_syms(PEmodel)))
-    dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms))
+    # Substitute in fixed constant values (initialAssignment-defined params resolved to the
+    # constants PEtab freezes them at — see _resolve_fixed_vals).
+    dict_fixed_val = _resolve_fixed_vals(PEmodel, PEprob)
 
     z_syms  = _get_z_syms(PEprob)
     p_syms  = _get_p_syms(PEprob)
