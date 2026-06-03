@@ -90,6 +90,7 @@ function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PE
     (; Np, Nc, Ncv, pscale) = PEinfo
     conditions_df  = PEmodel.petab_tables[:conditions]
     cv_cols        = _get_cv_colnames(PEmodel)          # cv column names, aligned 1:Ncv
+    cond_rows      = _get_cond_rows(PEmodel)            # cidx => conditions-table row
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)        # parameter name => p decision-var index
     θ0             = _var_starts(c, c.p)                # p (= θ, estimation scale) initial guesses
     # physical parameter starts (cv == p means cv equals the PHYSICAL parameter value)
@@ -98,7 +99,7 @@ function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PE
     cv_init = zeros(Float64, Ncv, Nc)
     for cidx in 1:Nc
         for cvidx in 1:Ncv
-            val = conditions_df[cidx, cv_cols[cvidx]]
+            val = conditions_df[cond_rows[cidx], cv_cols[cvidx]]
             if val isa Number
                 cv_init[cvidx, cidx] = Float64(val)
             elseif val isa String || val isa Symbol

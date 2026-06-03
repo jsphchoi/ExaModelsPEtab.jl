@@ -133,6 +133,11 @@ function _create_objective(
     )
     dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms))
 
+    # Resolves SBML assignment rules (derived/algebraic variables, e.g. pY1173 = Σspecies/c1)
+    # that appear inside observable / noise formulas, to a fixpoint. No-op for models without
+    # assignment rules. Bare-symbol form to match the parsed (t-free) table formulas.
+    apply_rules = _assignment_substitutor(PEprob; bare = true)
+
     # Symbolics of variables that may appear in parsed table formulas
     z_syms = [
         Symbolics.Num(Symbolics.variable(Symbol(split(string(z_sym), "(")[1])))
@@ -184,11 +189,15 @@ function _create_objective(
         end
 
         parsed = Meta.parse(obs_expr_sub)
+        obs_sym = parsed isa Symbol ? Symbolics.Num(Symbolics.variable(parsed)) :
+                                      Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
+        # Resolve SBML assignment rules (e.g. pY1173 = Σspecies/c1) so the observable becomes
+        # a function of states / params only.
+        obs_sym = apply_rules(obs_sym)
 
-        if parsed isa Symbol
+        zidx = findfirst(x -> isequal(x, obs_sym), z_syms)  # observable is a single state?
+        if zidx !== nothing
             # Observable is a single state variable: y[midx] = state at the measurement time.
-            obs_sym = Symbolics.Num(Symbolics.variable(parsed))
-            zidx    = findfirst(x -> isequal(x, obs_sym), z_syms)
             for midx in group_midxs
                 row  = measurements_df[midx, :]
                 cid  = string(row[:simulationConditionId])
@@ -209,9 +218,9 @@ function _create_objective(
                 end
             end
         else
-            # Observable is an arbitrary expression: compile obs_func for this group
-            obs_parsed_sym = Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
-            obs_expr_final = Symbolics.substitute(obs_parsed_sym, dict_fixed_val)
+            # Observable is an arbitrary expression (assignment rules already resolved):
+            # compile obs_func for this group.
+            obs_expr_final = Symbolics.substitute(obs_sym, dict_fixed_val)
             obs_func = Symbolics.build_function(
                 obs_expr_final,
                 [z_syms; p_syms; cv_syms]...,
@@ -313,6 +322,7 @@ function _create_objective(
         sigma_parsed_sym = sigma_parsed isa Symbol ?
             Symbolics.Num(Symbolics.variable(sigma_parsed)) :
             Symbolics.parse_expr_to_symbolic(sigma_parsed, @__MODULE__)
+        sigma_parsed_sym = apply_rules(sigma_parsed_sym)   # resolve SBML assignment rules
         sigma_expr_final = Symbolics.substitute(sigma_parsed_sym, dict_fixed_val)
 
         sigma_free   = Symbolics.get_variables(sigma_expr_final)
@@ -338,7 +348,7 @@ function _create_objective(
                 op = Meta.parse(obs_raw)
                 s  = op isa Symbol ? Symbolics.Num(Symbolics.variable(op)) :
                                      Symbolics.parse_expr_to_symbolic(op, @__MODULE__)
-                Symbolics.substitute(s, dict_fixed_val)
+                Symbolics.substitute(apply_rules(s), dict_fixed_val)
             end
             sigma_reduced, reduced_ok = _reduce_sigma_to_obs(sigma_expr_final, obs_sym, Y_sym, z_syms)
             # Conforming iff the reduction left no state AND only Y / parameters / cv remain

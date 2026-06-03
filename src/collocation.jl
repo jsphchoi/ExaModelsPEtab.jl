@@ -74,6 +74,7 @@ function _create_collocation(
     # Unpack DataFrame: row = experimental condition, col = condition-dependent variable
     conditions_df = PEmodel.petab_tables[:conditions]
     cv_cols = _get_cv_colnames(PEmodel) # cv column names, aligned 1:Ncv (no positional offset)
+    cond_rows = _get_cond_rows(PEmodel) # cidx => conditions-table row (cidx ≠ row when pre-eq-only rows exist)
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob) # string of unknown parameter, p => index of decision variable, p
 
     # Create iterators
@@ -81,7 +82,7 @@ function _create_collocation(
     itr_cv_p    = Tuple{Int, Int, Int}[]
     for cidx in 1:Nc
         for cvidx in 1:Ncv
-            val = conditions_df[cidx, cv_cols[cvidx]] # obtain DataFrame value by column name
+            val = conditions_df[cond_rows[cidx], cv_cols[cvidx]] # by conditionId-aligned row
             if val isa Number
                 # If the value is a numeric value...
                 push!(itr_cv_fix, (cvidx, cidx, Float64(val)))

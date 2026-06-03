@@ -13,8 +13,12 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     p_nominal = PEtab.get_x(PEprob)
     sol = _solve_conds(p_nominal, PEmodel, PEprob, t_meas)
 
-    # Construct mesh
-    h = diff(sol[argmax(k -> length(sol[k].t), keys(sol))].t) # choose mesh based on finest sol.t
+    # Construct the mesh from the finest (most-points) condition's solution. Every condition is
+    # integrated over the SAME span [tstart, max(t_meas)] (see _solve_conds), so whichever
+    # condition we pick spans the full mesh and — because tstops = the union of all measurement
+    # times was forced on every solve — contains every measurement time as a node, so every
+    # t_meas lands on a mesh boundary.
+    h = diff(sol[argmax(k -> length(sol[k].t), keys(sol))].t)
     N = length(h) # number of intervals
     taus = _taus(K) # get interpolation points
     t_mesh = [(cumsum(h) .- h)[i] + taus[j+1]*h[i] for i in 1:N, j in 0:K] # construct t_ij mesh
@@ -25,9 +29,12 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     Nc = sol.count # number of experimental conditions
     L1 = [_eval_l(j,1.0,taus) for j in 0:K] # for interval continuity constraints later
 
-    # Interpolate solution at every point in the mesh
+    # Interpolate each condition's solution at every mesh node. Every condition was integrated
+    # over the full mesh span (see _solve_conds), so sol[cid](t) is valid at every node — no
+    # clamping/extrapolation needed. (Conditions observed only on a sub-window still carry the
+    # true ODE profile over the rest of the mesh, matching what the collocation enforces.)
     sol_at_mesh= [
-        sol[cid](t) 
+        sol[cid](t)
         for t in t_vec_mesh, cid in Symbol.(_get_cids(PEmodel))
     ]
     # t_vec_mesh orders nodes with j (collocation index) varying fastest within each
@@ -57,6 +64,13 @@ function _solve_conds(p_nominal, PEmodel::PEtabModel, PEprob::PEtabODEProblem, t
             cond_arg = preeq_ids[pos] => sim_ids[pos]
         end
         odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
+        # Integrate over the FULL mesh span [tstart, max(t_meas)] — not just this condition's
+        # own tmax — so z_init carries a real ODE profile at every shared-mesh node. The
+        # collocation enforces the ODE over the whole mesh for every condition regardless, and
+        # later (out-of-window) nodes carry no measurements for this condition, so this only
+        # improves the warm start. (max() guards against ever shortening a longer tspan.)
+        tend = isempty(tstops) ? odesys.tspan[2] : max(maximum(tstops), odesys.tspan[2])
+        odesys = ODE.remake(odesys; tspan = (odesys.tspan[1], tend))
         solver = PEprob.probinfo.solver.solver
         sol = ODE.solve(
             odesys, solver;

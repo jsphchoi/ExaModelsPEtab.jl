@@ -104,12 +104,26 @@ function _get_cv_syms(PEmodel::PEtabModel)::Vector{Symbolics.Num}
     return Symbolics.Num.(Symbolics.variable.(cv_strings)) # Converts variable name (::String) into symbolic variable (::Symbolics.Num)
 end
 
-# (!!!) Returns ::Vector{String} of conditionIds
-# cidx[1:Nc]
+# (!!!) Returns ::Vector{String} of the SIMULATION conditionIds (conditions that appear as a
+# simulationConditionId in the measurements table), in conditions-table order. This is THE
+# canonical cidx[1:Nc] ordering used for z / Nc / cv / objective. Pre-equilibration-ONLY
+# conditions (conditions-table rows that are never simulated, e.g. Zheng's `preequilibration`)
+# are excluded — they would otherwise be (wrongly) collocated and break _get_z_init. For
+# models without pre-eq-only rows this is every conditions-table row, so nothing changes.
 function _get_cids(PEmodel::PEtabModel)::Vector{String}
-    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
-    conditions_df = PEtable[:conditions] # DataFrame of different conditions and properties for each condition
-    return conditions_df[!,:conditionId]
+    PEtable       = PEmodel.petab_tables
+    conditions_df = PEtable[:conditions]
+    sim_set       = Set(string.(PEtable[:measurements][!, :simulationConditionId]))
+    return [string(c) for c in conditions_df[!, :conditionId] if string(c) in sim_set]
+end
+
+# Row index into the conditions table for each canonical cidx. Since `_get_cids` may be a
+# subset of the conditions-table rows (pre-eq-only rows dropped), cidx is no longer the row
+# number — condition-dependent values must be looked up by conditionId, not by row position.
+function _get_cond_rows(PEmodel::PEtabModel)::Vector{Int}
+    conditions_df = PEmodel.petab_tables[:conditions]
+    cid2row = Dict(string(conditions_df[r, :conditionId]) => r for r in 1:size(conditions_df, 1))
+    return [cid2row[cid] for cid in _get_cids(PEmodel)]
 end
 
 # (!!!) Returns ::Vector{String} of observableIds
@@ -118,6 +132,41 @@ function _get_obsids(PEmodel::PEtabModel)::Vector{String}
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     observables_df = PEtable[:observables]
     return observables_df[!,:observableId]
+end
+
+# Builds a fixpoint substitutor for SBML assignment rules (= `MTK.observed(sys)`, excluding
+# any state aliases). These derived/algebraic variables (e.g. total_pop = Σstates, or a
+# condition/trigger-dependent rate) can be referenced anywhere — in the ODE RHS, the
+# observable formula, or NESTED inside other assignment rules — so a single substitution
+# pass is not enough; we iterate to a fixpoint until no assignment-rule symbol remains.
+#
+# `bare=true` strips the `(t)` from every variable so the rules match the objective's
+# bare-symbol convention (`_create_objective` parses table formulas into `(t)`-free
+# variables); `bare=false` keeps MTK's native `u(t)` form, used for the ODE RHS.
+function _assignment_substitutor(PEprob::PEtabODEProblem; bare::Bool)
+    sys    = PEprob.model_info.model.sys
+    z_syms = _get_z_syms(PEprob)
+    strip_t(s) = Symbolics.Num(Symbolics.variable(Symbol(split(string(s), "(")[1])))
+    rebare(e) = (vs = collect(Symbolics.get_variables(e));
+                 isempty(vs) ? e : Symbolics.substitute(e, Dict(v => strip_t(v) for v in vs)))
+    rules = Dict{Any,Any}()
+    for eq in MTK.observed(sys)
+        any(isequal(eq.lhs, z) for z in z_syms) && continue   # never rewrite a state alias
+        rules[bare ? strip_t(eq.lhs) : eq.lhs] = bare ? rebare(eq.rhs) : eq.rhs
+    end
+    keyset = collect(keys(rules))
+    return function (expr)
+        isempty(rules) && return expr
+        # Substitute while any assignment-rule symbol still appears among expr's variables.
+        # (Use isequal-membership, not `intersect`/`in`: Symbolics `==` returns a symbolic
+        # equation, not a Bool, so set ops on Nums misbehave.) Capped against cyclic rules.
+        for _ in 1:100
+            vars = Symbolics.get_variables(expr)
+            any(v -> any(k -> isequal(v, k), keyset), vars) || return expr
+            expr = Symbolics.substitute(expr, rules)
+        end
+        return expr
+    end
 end
 
 # Returns (::Vector{Function}, ::Bool) where bool = has_t (ODE depends on time after substitution)
@@ -133,22 +182,16 @@ function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     fixed_syms    = setdiff(keys(Dict(dict_all_val)), union(_get_p_syms(PEprob), _get_cv_syms(PEmodel)))
     dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms))
 
-    # Identify u(t,p) inputs: observed vars that appear in the ODE but are NOT state variables.
-    # get_variables returns Set{BasicSymbolic}; observed eq.lhs is also BasicSymbolic → isequal works.
-    # z_syms are Num-wrapped; isequal(BasicSymbolic, Num) = true for same variable.
     z_syms  = _get_z_syms(PEprob)
     p_syms  = _get_p_syms(PEprob)
     cv_syms = _get_cv_syms(PEmodel)
-    ode_free = foldl(union, Symbolics.get_variables.(f_exprs_raw))  # Set{BasicSymbolic}
-    dict_utp = Dict(
-        eq.lhs => eq.rhs
-        for eq in MTK.observed(sys)
-        if  any(isequal(eq.lhs, v) for v in ode_free) &&
-           !any(isequal(eq.lhs, z) for z in z_syms)
-    )
 
+    # Recursively substitute ALL assignment rules (u(t,p) inputs, derived quantities, and any
+    # nested ones) to a fixpoint, then the fixed numeric constants. After this the RHS is a
+    # function of states / estimated params / condition vars (and possibly t) only.
+    subst_rules = _assignment_substitutor(PEprob; bare = false)
     f_exprs = [
-        Symbolics.substitute(Symbolics.substitute(f_raw, dict_utp), dict_fixed_val)
+        Symbolics.substitute(subst_rules(f_raw), dict_fixed_val)
         for f_raw in f_exprs_raw
     ]
 
@@ -188,7 +231,12 @@ function _get_dict_cidx_sscidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Ve
     dict_cid_cidx = Dict(cids[i] => i for i in eachindex(cids))
     return map(eachindex(cids)) do cidx
         sim_idx = findfirst(==(Symbol(cids[cidx])), sim_ids)
-        sim_idx === nothing ? cidx : dict_cid_cidx[string(ssc_ids[sim_idx])]
+        # Map cidx -> the canonical index of its pre-equilibration condition. If that pre-eq
+        # condition is not itself a simulation condition (so it's not in `cids`), fall back to
+        # cidx — the steady-state residual then uses this condition's own cv. (Exact only when
+        # the pre-eq condition's cv equals the sim condition's, or the cv is absent from the
+        # ODE RHS; the pre-eq steady-state *start* is always correct via PEtab's u0.)
+        sim_idx === nothing ? cidx : get(dict_cid_cidx, string(ssc_ids[sim_idx]), cidx)
     end
 end
 
