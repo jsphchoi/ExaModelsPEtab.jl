@@ -32,6 +32,14 @@ it still runs the buggy code — its Armistead/Bertozzi rows will be stale (pre-
 - 2× Quadro GV100 (32 GB). **`nvidia-smi` is broken** (NVML driver/library version mismatch) but
   **CUDA.jl is functional** (`CUDA.functional() == true`). Monitor GPU work via result files, not nvidia-smi.
 - 96 CPU cores, 376 GB RAM.
+- **SHARED BOX**: another user (`sushin`) runs CUDA jobs here too. **Check GPU usage before kicking off
+  a large-scale benchmark** — both our GPUs may already be partly occupied. With `nvidia-smi` broken,
+  check per-device free memory via CUDA (`for d in CUDA.devices(); CUDA.device!(d);
+  CUDA.available_memory(); end`) and infer the tenant from steady usage. Observed 2026-06-03: a steady
+  ~4 GiB tenant on **GPU 0** (sushin, who likely defaults to device 0) while our benchmark was only
+  compiling → sushin most likely on GPU 0; prefer GPU 1 for ad-hoc runs. Contention isn't a
+  correctness problem (GPUs time-slice) but inflates solve-time measurements AND can tip the big
+  models (Bachmann) into OOM, so coordinate / pick the freer GPU before a full run.
 - Ipopt was added to the project this session (`Pkg.add("Ipopt")`) for the PEtab Ipopt extension.
 - Fides.jl deliberately NOT added (wraps a Python pkg; heavy/fragile).
 
