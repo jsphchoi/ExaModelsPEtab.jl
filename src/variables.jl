@@ -124,14 +124,19 @@ function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PE
     return c
 end
 
-# Creates ExaModels decision variables for steady-state pre-equilibrium state 
-# zss[1:Nz,1:Nc]
-function _create_zss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+# Creates ExaModels decision variables for steady-state state zss[1:Nz,1:Nc].
+# Used by two paths: (a) x0SSpre pre-equilibration (default `init` = pre-equilibrated u0,
+# via _get_zss_init) and (b) pure steady-state models, where zss IS the observed state and
+# the caller passes a forward-simulated steady-state warm start (_get_zss_init_sim).
+function _create_zss(
+        c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo;
+        init = _get_zss_init(PEmodel, PEprob, PEinfo)
+    )
     (; Nz, Nc) = PEinfo
     ExaModels.@add_var(c,
         zss,
         1:Nz, 1:Nc;
-        start = _get_zss_init(PEmodel, PEprob, PEinfo),
+        start = init,
         lvar = -Inf,    # unbounded: same state quantities as z (sign/range model-dependent)
         uvar = Inf
     )

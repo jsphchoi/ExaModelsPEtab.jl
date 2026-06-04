@@ -1,14 +1,18 @@
-#######################################################
-# STATE AS OF: 05/30/26
-#######################################################
 
 # (*) Main function for creating ExaModels collocation equations (*)
 function _create_collocation(
-    c::ExaCore,
-    PEmodel::PEtabModel,
-    PEprob::PEtabODEProblem,
-    PEinfo::PEInfo
-)
+        c::ExaCore,
+        PEmodel::PEtabModel,
+        PEprob::PEtabODEProblem,
+        PEinfo::PEInfo
+    )
+    c = _create_lagrange(c, PEmodel, PEprob, PEinfo)
+    c = _create_cv_constraints(c, PEmodel, PEprob, PEinfo)
+    return c
+end
+
+# Create lagrange collocation equations
+function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     ########################################################################
     # Unpack problem info
     ########################################################################
@@ -27,6 +31,8 @@ function _create_collocation(
 
     # Create constraint: hᵢf(...) = (...)
     if has_t
+        # If RHS = f(x,t)...
+
         # t_ij = start of interval i + tau_k * h_i  (collocation time)
         h_cum    = cumsum(h) .- h  # start time of each interval
         itr_coll = [(i,k,cidx,h[i],h_cum[i] + taus[k+1]*h[i]) for i in 1:N, k in 1:K, cidx in 1:Nc]
@@ -36,13 +42,14 @@ function _create_collocation(
                     ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
                     ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
                     ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
-                    t_ij                                        # time at collocation point
+                    t_ij                                       # time at collocation point
                 )
                 for (i,k,cidx,hi,t_ij) in itr_coll
             )
             for f in fs
         ]
     else
+        # If RHS = f(x)...
         itr_coll = [(i,k,cidx,h[i]) for i in 1:N, k in 1:K, cidx in 1:Nc]
         c_coll   = [
             ExaModels.@add_con(c,
@@ -68,9 +75,25 @@ function _create_collocation(
         )
     end
 
+    return c
+end
+
+# Auxiliary variable constraints binding each cv[cvidx,cidx] to its per-condition value
+# (a numeric literal or the PHYSICAL value of an unknown parameter p). Shared by the
+# collocation (time-course) path and the steady-state path. No-op when Ncv == 0.
+function _create_cv_constraints(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+    ########################################################################
+    # Unpack problem info
+    ########################################################################
+    (; Np, Ncv, Nc, pscale) = PEinfo
+    Ncv >= 1 || return c
+    p  = c.p
+    cv = c.cv
+
     ########################################################################
     # Auxiliary variable constraints for condition-dependent variables, cv
     ########################################################################
+
     # Unpack DataFrame: row = experimental condition, col = condition-dependent variable
     conditions_df = PEmodel.petab_tables[:conditions]
     cv_cols = _get_cv_colnames(PEmodel) # cv column names, aligned 1:Ncv (no positional offset)

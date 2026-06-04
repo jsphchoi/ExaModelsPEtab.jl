@@ -28,11 +28,19 @@ function petab_examodel(
 end
 
 function _build_petab_examodel(
-        PEmodel::PEtabModel, 
-        PEprob::PEtabODEProblem, 
-        backend, 
+        PEmodel::PEtabModel,
+        PEprob::PEtabODEProblem,
+        backend,
         K
     )
+    # Steady-state models (all measurements at time = inf) carry no time-course information:
+    # the data observe the t→∞ steady state, not a trajectory. They take a separate path with
+    # NO collocation mesh — the NLP is just the steady-state equations f(zss)=0 plus the
+    # objective. (See steadystate.jl.) K is unused there.
+    if _is_steady_state(PEmodel)
+        return _build_petab_examodel_ss(PEmodel, PEprob, backend)
+    end
+
     # Create ExaCore
     c = ExaModels.ExaCore(; backend, concrete = Val(true))
 

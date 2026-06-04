@@ -1,3 +1,14 @@
+exa_compile_status=ok
+exa_compile_time=1108.14
+exa_error=Out of GPU memory trying to allocate 8.945 GiB Effective GPU memory usage: 99.92% (31.705 GiB/31.730 GiB) Memory pool usage: 28.061 GiB (31.344 GiB reserved) 
+exa_iter=
+exa_ncon=4102670
+exa_nvar=4102783
+exa_objective=
+exa_presolve_time=64.2
+exa_solve_status=error
+exa_solve_time=
+exa_term_status=
 petab_compile_status=ok
 petab_compile_time=143.38
 petab_has_events=false

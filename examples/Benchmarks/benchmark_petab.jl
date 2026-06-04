@@ -23,9 +23,9 @@ using PEtab, Optim
 # ─── CONFIGURABLE SETTINGS ────────────────────────────────────────────────────
 const TOL           = 1e-6            # Optim g_tol (matches MadNLP tol)
 const SOLVE_LIMIT   = 86400.0         # Optim time_limit [s] (24 hr, matches MadNLP)
-const COMPILE_LIMIT = 1800.0          # hard compile deadline [s] (30 min)
+const COMPILE_LIMIT = parse(Float64, get(ENV, "PETAB_COMPILE_LIMIT", "1800.0"))  # hard compile deadline [s] (default 30 min; override via PETAB_COMPILE_LIMIT env)
 const MAX_ITER      = 100_000_000     # large so wall time is always the bottleneck
-const WARMUP_MODEL  = "Bruno_JExpBot2016"
+const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_examodels.jl; excluded from ALL_MODELS below — benchmark Bruno via benchmark_bruno.jl (Crauste-warmed)
 # ──────────────────────────────────────────────────────────────────────────────
 
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
@@ -35,7 +35,7 @@ const ALL_MODELS = [
     "Alkan_SciSignal2018", "Armistead_CellDeathDis2024", "Bachmann_MSB2011",
     "Beer_MolBioSystems2014", "Bertozzi_PNAS2020", "Blasi_CellSystems2016",
     "Boehm_JProteomeRes2014", "Borghans_BiophysChem1997", "Brannmark_JBC2010",
-    "Bruno_JExpBot2016", "Chen_MSB2009", "Crauste_CellSystems2017",
+    "Chen_MSB2009", "Crauste_CellSystems2017",  # Bruno excluded — it is the JIT warmup (benchmark_bruno.jl covers it)
     "Elowitz_Nature2000", "Fiedler_BMCSystBiol2016", "Froehlich_CellSystems2018",
     "Fujita_SciSignal2010", "Giordano_Nature2020", "Isensee_JCB2018",
     "Lang_PLOSComputBiol2024", "Laske_PLOSComputBiol2019", "Liu_IFACPapersOnLine2025",

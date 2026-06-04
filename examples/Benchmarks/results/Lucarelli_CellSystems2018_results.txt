@@ -1,3 +1,14 @@
+exa_compile_status=ok
+exa_compile_time=3930.42
+exa_error=Kernel invocation uses too much parameter memory. 35.344 KiB exceeds the 31.996 KiB limit imposed by sm_70 / PTX v8.5.  Relevant parameters:   [1] __ctx__::KernelAbstractions.CompilerMetadata{KernelAbstractions.NDIteration.DynamicSize, KernelAbstractions.NDIteration.DynamicCheck, Nothing, CartesianIndices{1, Tuple{Base.OneTo{Int64}}}, KernelAbstractions.NDIteration.NDRange{1, KernelAbstractions.NDIteration.DynamicSize, KernelAbstractions.NDIteration.DynamicSize, CartesianIndices{1, Tuple{Base.OneTo{Int64}}}, CartesianIndices{1, Tuple{Base.OneTo{Int64}}}}} uses 24 bytes   [2] y1::CuDeviceVector{Int64, 1} uses 32 bytes   [3] y2::CuDeviceVector{Int64, 1} uses 32 bytes   [4] f::ExaModels.SIMDFunction{Node2{-,…}, ExaModels.Compressor{NTuple{85, Int64}}, ExaModels.Compressor{NTuple{3570, Int64}}} uses 35.195 KiB   [5] itr::CuDeviceVector{Tuple{Int64, Int64}, 1} uses 32 bytes   [8] adj::Float64 uses 8 bytes   [9] dims::Tuple{Int64} uses 8 bytes 
+exa_iter=
+exa_ncon=835174
+exa_nvar=835258
+exa_objective=
+exa_presolve_time=85.95
+exa_solve_status=error
+exa_solve_time=
+exa_term_status=
 petab_compile_status=ok
 petab_compile_time=233.23
 petab_has_events=false

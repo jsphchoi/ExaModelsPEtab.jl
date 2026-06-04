@@ -1,3 +1,17 @@
+exa_compile_status=ok
+exa_compile_time=91.0
+exa_error=
+exa_iter=60
+exa_ncon=3318
+exa_nvar=3332
+exa_objective=-306.13478847320005
+exa_presolve_time=39.73
+exa_sgm_n=3
+exa_sgm_solve_time=0.81
+exa_sgm_status=ok
+exa_solve_status=ok
+exa_solve_time=74.98
+exa_term_status=SOLVE_SUCCEEDED
 petab_compile_status=ok
 petab_compile_time=80.28
 petab_has_events=false

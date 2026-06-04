@@ -1,0 +1,827 @@
+[ Info: [Chen_MSB2009] PEtab compiling (limit=86400.0s)...
+┌ Warning: For large models adjoint sensitivity analysis is the best gradient method. To use this method load SciMLSensitivity
+└ @ PEtab ~/.julia/packages/PEtab/PnGbI/src/petab_odeproblem/defaults.jl:87
+┌ Warning: For large models we strongly recomend to compare different ODE-solvers instead of using default options.
+└ @ PEtab ~/.julia/packages/PEtab/PnGbI/src/petab_odeproblem/defaults.jl:135
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration diverging: θ = 2.34573993218773 > 2, ndz = 2.9416329545931483, ndzprev = 1.2540320068003723
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:101
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144
+┌ Warning: Verbosity toggle: newton_convergence 
+│  Newton iteration failed with stale Jacobian, retrying with fresh Jacobian
+└ @ OrdinaryDiffEqNonlinearSolve ~/.julia/packages/OrdinaryDiffEqNonlinearSolve/doSPx/src/nlsolve.jl:144

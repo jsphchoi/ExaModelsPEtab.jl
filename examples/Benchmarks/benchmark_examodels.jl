@@ -30,18 +30,20 @@ const COMPILE_LIMIT = 14400.0         # hard compile deadline [s] (4 hr)
 const SOLVE_LIMIT   = 86400.0         # MadNLP max_wall_time [s] (24 hr)
 const MAX_ITER      = 100_000_000     # large so wall time is always the bottleneck
 const N_SGM_RERUNS  = 3               # rerun count for geometric mean timing
-const WARMUP_MODEL  = "Crauste_CellSystems2017"  # excluded from ALL_MODELS — pre-warms generic JIT only
+const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_petab.jl; excluded from ALL_MODELS — pre-warms generic JIT only
 # ──────────────────────────────────────────────────────────────────────────────
 
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
 
 const ALL_MODELS = [
-    # petab_optimum_found=true AND petab_has_events=false (19 models)
-    # Crauste excluded — used as warmup model; its timing would be pre-warmed and invalid
+    # petab_optimum_found=true AND petab_has_events=false (18 models)
+    # Crauste AND Bruno excluded — Bruno is the shared JIT warmup (see WARMUP_MODEL); a model
+    # benchmarked by the same script that warms up on it gets a pre-warmed, invalid compile
+    # time. Bruno is benchmarked separately via benchmark_bruno.jl (warmed up on Crauste).
     "Armistead_CellDeathDis2024", "Bachmann_MSB2011", "Bertozzi_PNAS2020",
     "Blasi_CellSystems2016", "Boehm_JProteomeRes2014", "Borghans_BiophysChem1997",
-    "Bruno_JExpBot2016", "Elowitz_Nature2000",
+    "Elowitz_Nature2000",
     "Fiedler_BMCSystBiol2016", "Laske_PLOSComputBiol2019", "Lucarelli_CellSystems2018",
     "Okuonghae_ChaosSolitonsFractals2020", "Perelson_Science1996", "Rahman_MBS2016",
     "SalazarCavazos_MBoC2020", "Schwen_PONE2014", "Sneyd_PNAS2002",
@@ -103,6 +105,21 @@ function build_model(yaml, t_origin)
     PEmodel = PEtab.PEtabModel(yaml)
     PEprob  = PEtab.PEtabODEProblem(PEmodel)
     c = ExaModels.ExaCore(; backend=CUDA.CUDABackend(), concrete=Val(true))
+
+    # Steady-state models (all measurements at time=inf) take the no-collocation-mesh path:
+    # variables (zss in place of z) → steady-state residual + conservation → objective.
+    if ExaModelsPEtab._is_steady_state(PEmodel)
+        c, PEinfo = ExaModelsPEtab._create_variables_ss(c, PEmodel, PEprob)
+        t_phase1 = time() - t_origin
+        c = ExaModelsPEtab._create_ss_constraints(c, PEmodel, PEprob, PEinfo)
+        c, y0, sigma0 = ExaModelsPEtab._create_objective_ss(c, PEmodel, PEprob, PEinfo)
+        mdl = ExaModels.ExaModel(c)
+        ExaModels.set_start!(mdl, c.y, y0)
+        ExaModels.set_start!(mdl, c.sigma, sigma0)
+        CUDA.synchronize()
+        return mdl, mdl.meta.nvar, mdl.meta.ncon, t_phase1
+    end
+
     c, PEinfo = ExaModelsPEtab._create_variables(c, PEmodel, PEprob, K)
     t_phase1 = time() - t_origin
     c = ExaModelsPEtab._create_collocation(c, PEmodel, PEprob, PEinfo)

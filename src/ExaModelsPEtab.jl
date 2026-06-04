@@ -18,6 +18,7 @@ module ExaModelsPEtab
     import Symbolics
     import OrdinaryDiffEq as ODE # for solving ode at nominal guess to obtain intiail guess for discretized
     import SteadyStateDiffEq as SSDE # for solving steady-state pre-equilibration initial states
+    import LinearAlgebra # conservation-law detection for steady-state models (svd/qr null space)
     
     # Includes
     include("structs.jl")       # data structure for parameter estimation problem
@@ -28,6 +29,7 @@ module ExaModelsPEtab
     include("collocation.jl")   # create collocation equality constraints
     include("continuity.jl")    # create continuity equality constraints
     include("objective.jl")     # create objective function
+    include("steadystate.jl")   # steady-state (time = inf) model path
 
     # Exports
     include("userfuncs.jl")     # user-end functions

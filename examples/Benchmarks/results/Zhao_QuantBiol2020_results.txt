@@ -1,3 +1,17 @@
+exa_compile_status=ok
+exa_compile_time=176.69
+exa_error=
+exa_iter=13971
+exa_ncon=66258
+exa_nvar=66286
+exa_objective=544.6179254017896
+exa_presolve_time=56.56
+exa_sgm_n=3
+exa_sgm_status=error
+exa_sgm_error=manually skipped: RESTORATION_FAILED solve (40min/13971 iters), SGM timing meaningless
+exa_solve_status=ok
+exa_solve_time=2377.02
+exa_term_status=RESTORATION_FAILED
 petab_compile_status=ok
 petab_compile_time=117.36
 petab_has_events=false

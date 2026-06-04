@@ -1,8 +1,3 @@
-#######################################################
-# STATE AS OF: 05/26/26
-# TODO: verify _get_zss_init implementation
-#######################################################
-
 # get initial guess for z and a lot of other things
 function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     # Get unique t_meas

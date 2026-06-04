@@ -1,3 +1,17 @@
+exa_compile_status=ok
+exa_compile_time=1048.02
+exa_error=
+exa_iter=128
+exa_ncon=599850
+exa_nvar=599863
+exa_objective=301.03291166433087
+exa_presolve_time=116.97
+exa_sgm_n=3
+exa_sgm_solve_time=193.86
+exa_sgm_status=ok
+exa_solve_status=ok
+exa_solve_time=475.14
+exa_term_status=RESTORATION_FAILED
 petab_compile_status=ok
 petab_compile_time=198.85
 petab_has_events=false

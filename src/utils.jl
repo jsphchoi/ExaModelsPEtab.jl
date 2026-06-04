@@ -169,6 +169,38 @@ function _assignment_substitutor(PEprob::PEtabODEProblem; bare::Bool)
     end
 end
 
+# Table of SBML assignment rules (= `MTK.observed(sys)`, excluding state aliases), as BARE
+# symbols matching the objective's `(t)`-free convention. Returns `(ids, lhs, rhs, is_flat)`:
+#   ids[r]     :: Symbol  — the rule's name
+#   lhs[r]     :: Num     — the bare leaf symbol that stands for the rule
+#   rhs[r]     :: <expr>  — the bare RHS (a function of states/params/cv, possibly nested)
+#   is_flat[r] :: Bool    — true iff rhs[r] references NO other rule symbol
+# Instead of inlining a rule everywhere it appears (which makes build_function expand the rule
+# into every formula and blows up codegen — e.g. SalazarCavazos's EGFRtot = Σ72 species divided
+# into 4 observables), the objective binds each occurring FLAT rule to an auxiliary "observed
+# variable" (ov) defined once per evaluation node. Nested rules (is_flat == false) are left to
+# the inlining fallback. Mirrors the bare-symbol construction in `_assignment_substitutor`.
+function _rule_table(PEprob::PEtabODEProblem)
+    sys    = PEprob.model_info.model.sys
+    z_syms = _get_z_syms(PEprob)
+    strip_t(s) = Symbolics.Num(Symbolics.variable(Symbol(split(string(s), "(")[1])))
+    rebare(e) = (vs = collect(Symbolics.get_variables(e));
+                 isempty(vs) ? e : Symbolics.substitute(e, Dict(v => strip_t(v) for v in vs)))
+    ids = Symbol[]; lhs = Symbolics.Num[]; rhs = Any[]
+    for eq in MTK.observed(sys)
+        any(isequal(eq.lhs, z) for z in z_syms) && continue   # never treat a state alias as a rule
+        push!(ids, Symbol(split(string(eq.lhs), "(")[1]))
+        push!(lhs, strip_t(eq.lhs))
+        push!(rhs, rebare(eq.rhs))
+    end
+    nr = length(ids)
+    is_flat = Bool[
+        !any(w -> any(k -> k != r && isequal(w, lhs[k]), 1:nr), Symbolics.get_variables(rhs[r]))
+        for r in 1:nr
+    ]
+    return ids, lhs, rhs, is_flat
+end
+
 # Resolves every FIXED (neither estimated nor condition-dependent) parameter to a numeric
 # constant, returning Dict(sym::Num => value). A parameter can be defined by an SBML
 # initialAssignment, i.e. its parametermap value is a SYMBOLIC expression of other parameters

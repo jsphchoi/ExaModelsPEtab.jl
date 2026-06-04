@@ -1,25 +1,73 @@
-#######################################################
-# STATE AS OF: 05/30/26
 # TODO: support ev: _create_ev, intervene interval continuity. idea: create dict i=1:N -> f(t_event) to continuity constraint!
-#######################################################
 
 # (*) Main function for creating collocation continuity constraints (*)
 function _create_continuity(
-    c::ExaCore,
-    PEmodel::PEtabModel,
-    PEprob::PEtabODEProblem,
-    PEinfo::PEInfo
-)
+        c::ExaCore,
+        PEmodel::PEtabModel,
+        PEprob::PEtabODEProblem,
+        PEinfo::PEInfo
+    )
     c = _create_interval_continuity(c, PEmodel, PEprob, PEinfo)
     c = _create_initial_conditions(c, PEmodel, PEprob, PEinfo)
     return c
 end
 
+# Steady-state residual constraints f(zss[:,cidx]; p, cv[:,cvindex_of(cidx)]) = 0 for every
+# simulation condition. Shared by two callers:
+#   - x0SSpre pre-equilibration: cvindex_of maps a simulation condition to its
+#     pre-equilibration condition's cv index (zss is the IC of the main time-course).
+#   - pure steady-state models: cvindex_of = identity — the residual is evaluated under the
+#     simulation condition's own cv, and zss IS the observed (terminal) state.
+# Autonomous in t (steady state), so any explicit time-dependence is evaluated at t=0.
+function _add_ss_residual(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo, cvindex_of; keep_rows = nothing)
+    # Unpack problem info
+    (; Nz, Nc, Np, Ncv, pscale) = PEinfo
+    p   = c.p
+    zss = c.zss
+    if Ncv >= 1
+        cv = c.cv
+    end
+
+    # RHS functions for the steady-state residual (same funcs the collocation uses).
+    # keep_rows (pure steady-state path) selects an independent subset of rows when the
+    # system has conservation laws — the redundant rows are replaced by conservation
+    # constraints (see _ss_conservation). nothing => keep all rows (x0SSpre path).
+    fs, has_t = _get_rhs_funcs(PEmodel, PEprob)
+    keep_rows !== nothing && (fs = fs[keep_rows])
+
+    itr_ss = [(cidx, cvindex_of(cidx)) for cidx in 1:Nc]
+    if has_t
+        # If f(x_ss,t=0) = 0...
+        for f in fs
+            ExaModels.@add_con(c,
+                f(
+                    ntuple(v -> zss[v,cidx], Nz)...,
+                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                    ntuple(m -> cv[m,cvidx], Ncv)...,
+                    0.0
+                )
+                for (cidx,cvidx) in itr_ss
+            )
+        end
+    else
+        # If f(x_ss) = 0...
+        for f in fs
+            ExaModels.@add_con(c,
+                f(
+                    ntuple(v -> zss[v,cidx], Nz)...,
+                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                    ntuple(m -> cv[m,cvidx], Ncv)...
+                )
+                for (cidx,cvidx) in itr_ss
+            )
+        end
+    end
+    return c
+end
+
 # Create cross-interval continuity constraints
 function _create_interval_continuity(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    ###############################################################
     # Unpack problem info
-    ###############################################################
     (; Nz, N, Nc, L1, K) = PEinfo
     z = c.z
 
@@ -62,9 +110,6 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         # Unpack steady state variable
         zss = c.zss
 
-        # RHS functions for the steady-state residual (same funcs the collocation uses)
-        fs, has_t = _get_rhs_funcs(PEmodel, PEprob)
-
         # Constraint 1: simulation initial condition = pre-equilibration steady state.
         # zss is indexed by simulation condition cidx (zss[:, cidx]).
         itr_ss1 = [(v,cidx) for v in 1:Nz, cidx in 1:Nc]
@@ -78,32 +123,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         # PRE-EQUILIBRATION condition's inputs cv[:, sscidx], where sscidx is the
         # canonical index of cidx's pre-equilibration condition.
         dict_cidx_sscidx = _get_dict_cidx_sscidx(PEmodel, PEprob)
-        itr_ss2 = [(cidx, dict_cidx_sscidx[cidx]) for cidx in 1:Nc]
-        if has_t
-            # Pre-equilibration is autonomous; evaluate any explicit time-dependence at t=0.
-            for f in fs
-                ExaModels.@add_con(c,
-                    f(
-                        ntuple(v -> zss[v,cidx], Nz)...,
-                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                        ntuple(m -> cv[m,sscidx], Ncv)...,
-                        0.0
-                    )
-                    for (cidx,sscidx) in itr_ss2
-                )
-            end
-        else
-            for f in fs
-                ExaModels.@add_con(c,
-                    f(
-                        ntuple(v -> zss[v,cidx], Nz)...,
-                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                        ntuple(m -> cv[m,sscidx], Ncv)...
-                    )
-                    for (cidx,sscidx) in itr_ss2
-                )
-            end
-        end
+        c = _add_ss_residual(c, PEmodel, PEprob, PEinfo, cidx -> dict_cidx_sscidx[cidx])
 
     else
         ###############################################################
