@@ -18,13 +18,14 @@ read it from the source of truth:
   in `399fb43`**, then large-expr cap + event tweaks in `e848fb8` (`ov-work` merged 2026-06-05; both side
   branches/worktrees deleted — single `main`, working tree clean). Benchmark scripts (K=6, SGM reruns,
   **Bruno** warmup) committed.
-- **Canonical model lists + results layout (2026-06-05; UNCOMMITTED working-tree changes).** All three
+- **Canonical model lists + results layout (2026-06-05; committed in `be131ce`).** All three
   scripts now `include("examples/Benchmarks/list_benchmarks.jl")` — the single source of truth: `BENCHMARK_MODELS` (35) ⊇
   `PETAB_SOLVED_MODELS` (28, drops the 7 PEtab-side failures) ⊇ `EXA_SUPPORTED_MODELS` (26, drops Beer +
   Liu). benchmark_examodels.jl derives its 24 in-loop models = `EXA_SUPPORTED − {Bruno, Crauste}`;
   final_report.jl rows = `PETAB_SOLVED_MODELS`. `results/` now holds ONLY the 35 benchmark-model
-  `*_results.txt`; run logs moved to `examples/debugging/logs/`; the Bachmann-K=3 scratch test
-  (`benchmark_bachmann_k3.jl` + its result/log) moved to `examples/debugging/` + `debugging/results/`.
+  `*_results.txt`; `scratch_tests/` renamed to `debugging/`, run logs moved to `examples/debugging/logs/`;
+  the Bachmann-K=3 scratch test (`benchmark_bachmann_k3.jl` + its result/log) moved to `examples/debugging/`
+  + `debugging/results/`. Solve wall-time cap also lowered 24h→**2h** (7200s) — see Critical harness notes.
 - **NEEDS A FRESH BENCHMARK RUN.** Fix #10 changes the observable/IC transcription (ov/zN); the result
   files predate it. Re-run `benchmark_examodels.sh` and re-run `validate_events.jl <Model>` for the event
   models (whose solves drifted off θ* on the OLD objective).
@@ -32,7 +33,7 @@ read it from the source of truth:
 
 ---
 
-## Fixes implemented (#1–#9, all committed on `main`)
+## Fixes implemented (#1–#10, all committed on `main`)
 
 ### 1. x0SSpre (steady-state pre-equilibration)
 - `initialize.jl _solve_conds` / `_get_zss_init`: pre-eq models reject plain condition ids in
