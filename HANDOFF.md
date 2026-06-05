@@ -12,13 +12,14 @@ read it from the source of truth:
 - `ps aux | grep benchmark_examodels` — is the run live, and which PID (it changes on each auto-restart).
 
 ## Git state
-- Fixes #1–#9 below are COMMITTED on `main`. #5/#6 in `95e7729`; **#7 fixed-time events in `7454a85`**
+- Fixes #1–#10 below are COMMITTED on `main`. #5/#6 in `95e7729`; **#7 fixed-time events in `7454a85`**
   (`events-fixed-time` fast-forwarded into `main` 2026-06-05); #8 Blasi steady-state path in `dc1b295`;
-  #9 Bruno-warmup restructure in `08273a3`. Benchmark scripts (K=6, SGM reruns, **Bruno** warmup) committed.
-- **STILL OUTSTANDING: the build_function / observable-blowup work is on branch `ov-work`** (edits
-  `objective.jl`), NOT yet merged. Event-model solves drift off θ* until it lands (see Fix #7 open blocker);
-  it also fixes the SalazarCavazos-class compile blowup. Merge `ov-work` next, then re-run
-  `examples/scratch_tests/validate_events.jl <Model>`.
+  #9 Bruno-warmup restructure in `08273a3`; **#10 observable build_function-blowup fixes (ov + zN) merged
+  in `399fb43`** (`ov-work` merged 2026-06-05; both side branches/worktrees deleted — single `main` now).
+  Benchmark scripts (K=6, SGM reruns, **Bruno** warmup) committed.
+- **NEEDS A FRESH BENCHMARK RUN.** Fix #10 changes the observable/IC transcription (ov/zN); the result
+  files predate it. Re-run `benchmark_examodels.sh` and re-run `validate_events.jl <Model>` for the event
+  models (whose solves drifted off θ* on the OLD objective).
 - Detailed change history lives in git, not here — `git log`/`git show <sha>` rather than re-narrating.
 
 ---
@@ -138,6 +139,36 @@ and `benchmark_petab.jl` warm on **Bruno** and exclude it from their timed lists
 `benchmark_petab.jl` `COMPILE_LIMIT` is env-overridable via `PETAB_COMPILE_LIMIT` (default 1800 s).
 `benchmark_bachmann_k3.jl` (NEW) = the one-off Bachmann K=3 OOM-fit test → separate `*_K3_results.txt`.
 
+### 10. Observable build_function blowups — `ov` (assignment-rule binding) + `zN` (final-time aux) (`399fb43`)
+Two build blowups, both from `build_function` expanding complex SBML expressions into dense-Hessian
+ExaModels kernels (all in `objective.jl`; lazy, so unaffected models are byte-identical):
+- **`ov` (observed variables) — COMPILE blowup.** SBML assignment rules used in observable/noise formulas
+  (`MTK.observed`; e.g. SalazarCavazos `EGFRtot=Σ72 species` inlined into 4 ratio observables) were
+  inlined and re-differentiated into every formula → `build_function` codegen explosion. Now each occurring
+  FLAT rule is bound to an auxiliary variable `ov[rule,node]` (defined once per evaluation node via the
+  `@add_con`/`@add_con!` idiom over `_rule_table`), and the formula references that single leaf — ExaModels
+  never re-expands it. SalazarCavazos `_create_objective` **2711s→67s** (K=2); objective matches PEtab nllh.
+  Nested rules (rule-of-rule) fall back to inlining. (`cse=true` in `build_function` does NOT help — ExaModels
+  traces through the compiled fn and expands the let-bindings; the aux-variable leaf is what works.)
+- **`zN` (final-time endpoint state) — SOLVE-time kernel-param-memory.** `idx==N` observable/noise inlined the
+  `K+1`-term L1 endpoint sum `Σ_j L1[j+1]·z[v,N,j,cidx]` into the nonlinear obs/noise fn, blowing the CUDA
+  kernel parameter budget (Lucarelli ratio observables: 35.3 KiB at K=6). Now one aux var `zN[v,col]` is bound
+  to that linear sum (base+aug constraint) and the single var is fed in — mirroring how `idx<N` feeds the
+  single node `z[v,idx+1,0,cidx]`. **Lucarelli K=6 (nvar=835588): max kernel 35.3→5.5 KiB, zero oversized
+  layers** (was a hard-fail; now builds).
+- Both reformulations are mathematically identical and warm-start-feasible by construction; Boehm/Fujita
+  regression objective-match unchanged after merge.
+
+### NOT supported: very large arbitrary-function ICs (`z0_func`) — Fiedler (accepted)
+Fiedler's `initialAssignment`s give each non-input state a ~130-op rational closed form of estimated params
+(the drug-free steady state). Tracing that into the IC `@add_con` (`continuity.jl` `itr_z0_func`) builds a
+dense-Hessian kernel that overflows GPU param memory (36.8 KiB) and takes 40min+ of LLVM. **No other model
+exercises the `z0_func` (arbitrary-function IC) path** — all solved models have fixed/param/cv ICs — so it is
+effectively untested and Fiedler is its only user. Investigated and DEFERRED: `cse=true` refuted; a
+steady-state-residual reroute (the IC *is* a SS) is complicated by the drugs being states with per-condition
+overrides; a CSE-to-aux-variable decomposition is possible but not worth it for one model. **Accepted as
+unsupported for now** — ExaModels just can't take this one very large fused expression.
+
 ---
 
 ## Known-failing / hard models (diagnosed root causes — durable; live status in result files)
@@ -148,18 +179,21 @@ These are the diagnosed blockers, not a live snapshot. The *current* pass/fail o
 |---|---|---|
 | ~~Blasi~~ | ~~compile `Nothing→Int64`~~ | **RESOLVED** (Fix #8, steady-state no-mesh path) — now `SOLVE_SUCCEEDED` −1090.91 vs −1090.56 (−0.03%). |
 | **Bachmann** | GPU OOM @ K=6 (4.10M vars, needed ~40 GB) | **memory-only** — verified: **K=3 FITS** (2.34M vars, ~23 GB, compiles 1128 s; `Bachmann_MSB2011_K3_results.txt`). For a real result use A100/H100 80 GB @ K=6. (K=3 *solve* is non-convergent — a separate conditioning issue.) |
-| **Fiedler / Lucarelli** | CUDA kernel param-memory overflow (36.8 / 35.3 KiB > 31.996 KiB) | structural sm_70 (GV100=cc7.0) limit on one oversized fused expr; split it or run sm_80+. |
+| ~~Lucarelli~~ | ~~CUDA kernel param-memory overflow (35.3 KiB)~~ | **RESOLVED** (Fix #10, `zN`) — `idx==N` ratio-observable inlined the L1 endpoint sum; K=6 max kernel 35.3→5.5 KiB, builds. |
+| **Fiedler** | CUDA kernel param-memory overflow (36.8 KiB) | **Accepted unsupported** (Fix #10 note) — the IC is a ~130-op `z0_func` rational; the only model on that untested path. NOT the sm_70 limit per se; even split it's an enormous fused IC expression. |
 | **Borghans / Elowitz** | solve diverges to all-NaN spin | infeasible collocation warm-start; killed/skipped. **A NaN/stall early-abort + ‖c(x₀)‖∞ diagnosis is the fix.** |
 | **Zheng** | ill-conditioned non-convergence | primal-feasible but dual-infeasible stuck (inf_du~0.26, lg_rg maxed = singular KKT); obj wandered −278→−529 (not a real optimum). Likely **unidentifiable params / scaling**. |
-| **SalazarCavazos** | compile blowup (~10×+ PEtab) | `build_function` codegen of rule-expanded RHS + observables — the `ov-work` build_function work. |
+| ~~SalazarCavazos~~ | ~~compile blowup (~10×+ PEtab)~~ | **RESOLVED** (Fix #10, `ov`) — assignment-rule observable expansion; `_create_objective` 2711s→67s. (RHS-codegen cost remains but is under budget.) |
 
 ### Benchmark campaign results (20-model snapshot, closed 2026-06-05; non-event subset)
 Point-in-time closeout for the 19 non-event + Crauste. **9 clean ✅ · 4 converged-marginal ⚠️ · 7 hard-fail 🔴.**
 Once compiled, ExaModels' warm SGM solve is **6–60× faster** than PEtab/IPNewton, matching obj to ≤2% on the clean set.
 - **✅ Clean (9, warm speedup):** Crauste 60×, Bruno 57×, Blasi 35×, Rahman 26×, Boehm 23×, Armistead 18×, Perelson 14×, Sneyd 6×, Okuonghae 2× (+4.6% high).
 - **⚠️ Marginal (4):** Schwen (skipped; converges to RIGHT answer but stalls above dual tol → needs looser tol), Laske (RESTORATION_FAILED +3.6%), Zhao (RESTORATION_FAILED +8.2%, SGM skipped), Bertozzi (SOLVE_SUCCEEDED **+194%** worse local min).
-- **🔴 Hard-fail (7):** Bachmann, Fiedler, Lucarelli, Borghans, Elowitz, Zheng, SalazarCavazos (table above).
-- **Event models (6, Fix #7):** transcription reproduces PEtab @ iter 0, but solves drift off θ* pending the `ov-work` objective fix — not yet clean passes (Oliveira/Giordano don't finish building).
+- **🔴 Hard-fail (7 at campaign close; Fix #10 since resolved SalazarCavazos compile + Lucarelli build →
+  pending re-run):** Bachmann, Fiedler, Lucarelli, Borghans, Elowitz, Zheng, SalazarCavazos (table above).
+- **Event models (6, Fix #7):** transcription reproduces PEtab @ iter 0; solves drifted off θ* on the OLD
+  objective — Fix #10 (`ov`) just merged should unblock them; **re-run `validate_events.jl` to confirm**.
 
 **Suboptimality is itself an error class:** a `SOLVE_SUCCEEDED` on a HIGHER (worse) nllh than PEtab is a
 correctness flag, not a pass. Judge by DIRECTION: exa *lower* (Armistead −306 vs −302) is usually K=6
@@ -272,8 +306,12 @@ Oliveira, Fujita, Giordano, Brannmark (pre-eq), Isensee (pre-eq), Raimundez (pre
 `gpu_run.jl` (end-to-end GPU sanity), `sigma_constraints.jl`, `stage_build.jl`.
 Event support (Fix #7): `validate_events.jl <Model>` (GPU build+solve, compares to PEtab optimum),
 `diag_gates.jl <Model>` (prints gate_syms + per-(interval,condition) gate patterns + gate_vals_ss),
-`build_smoke.jl <Model>` (fast CPU build-only smoke), `probe_preeq.jl` / `probe_tupledata.jl` (one-off
-probes for the pre-eq gate source and the ExaModels tuple-data-field behavior).
+`build_smoke.jl <Model>` (fast CPU build-only smoke), `probe_gates.jl` / `probe_preeq.jl` /
+`probe_tupledata.jl` (one-off probes for the gate source and ExaModels tuple-data behavior).
+Blowup diagnosis (Fix #10): `stage_build_timed.jl [K] <Model>` (per-stage compile timing — localizes a
+codegen blowup to collocation vs objective; K-independent) and `diag_layers.jl <Model> [K]` (per-constraint
+SIMDFunction comp1/comp2 lengths — finds the layer whose Hessian compressor overflows the GPU kernel param
+limit; do NOT add an expression-stringify, it hangs on the giant exprs).
 
 ## PEtab optimizer findings
 `docs/.../optimizers.md`: small → `Optim.IPNewton()` + exact Hessian; medium → `Fides.CustomHessian()`+GN;
@@ -292,19 +330,21 @@ Hessian — chosen. `res.converged` is Bool for Optim, an Int status for Ipopt. 
   problem (GPUs time-slice) but inflates solve times and can tip the big models (Bachmann) into OOM.
 
 ## Outstanding / next steps (post-campaign, 2026-06-05)
-1. **Merge `ov-work` (build_function / observable-blowup fix) into `main`** — THE next step. Unblocks the
-   event-model solves (drift off θ* until then) AND the SalazarCavazos-class compile blowup
-   (`build_function` codegen of rule-expanded RHS + observables; profiled K-independent via
-   `stage_build_timed.jl`). Then re-run `validate_events.jl <Model>` for end-to-end event convergence.
+1. **RE-RUN THE BENCHMARK with the new objective (Fix #10 just merged).** The `exa_*` result files predate
+   `ov`/`zN`, so the campaign snapshot below is stale for the affected models. Re-run
+   `benchmark_examodels.sh` (SalazarCavazos should now compile; Lucarelli should now build) and re-run
+   `validate_events.jl <Model>` for the 6 event models (their solves drifted off θ* on the OLD objective —
+   the integration is verified at iter 0; confirm end-to-end convergence now). Regression-re-check an
+   assignment-rule model (Rahman/Okuonghae) + Boehm (objective-match unchanged after merge, but confirm at K=6).
 2. **Solver-conditioning — the recurring wall on big/stiff models.** Related symptoms:
    NaN-spin (Borghans, Elowitz → NaN/stall early-abort + ‖c(x₀)‖∞ diagnosis); tail-stall above tol
    (Schwen → looser/adaptive dual tol); RESTORATION_FAILED spiral (Laske, Zhao, Bachmann-K3 → better
    warm start); singular-KKT (Zheng → check unidentifiable params / scaling).
-3. **Bigger GPU** — Bachmann (proven K=3 fits 23 GB → K=6 needs 80 GB A100/H100) and Fiedler/Lucarelli
-   (sm_70 kernel-param overflow → sm_80+). Hardware blockers, not bugs.
+3. **Bigger GPU** — Bachmann (proven K=3 fits 23 GB → K=6 needs 80 GB A100/H100). Hardware blocker, not a bug.
+   (Lucarelli's kernel-param overflow is RESOLVED by Fix #10 `zN`; Fiedler's is the accepted-unsupported
+   `z0_func` IC, not a GPU/size issue.)
 4. **Bertozzi local-min gap** (+194%) — multistart / better warm start if matching PEtab's optimum matters.
-5. **Regression re-check** an assignment-rule model (Rahman/Okuonghae) + Laske after `ov-work` lands.
-6. **Mesh design** — Option A (shared mesh) is the KEPT decision; per-condition ragged meshes only if a
+5. **Mesh design** — Option A (shared mesh) is the KEPT decision; per-condition ragged meshes only if a
    short condition's ODE ever diverges past its window (not observed).
 - *(DONE this campaign: Blasi → Fix #8; Bachmann K-fit test → K=3 fits (memory-only); warmup → Fix #9.)*
 - *(Non-canonical PEtab reruns: Chen/Froehlich compile intractable on this CPU (capped ~19.6 h); Lang

@@ -39,8 +39,6 @@ function _eval_dldtau(
     end
 end
 
-# TODO VERIFY IMPLEMENTATION
-# CITE: CLAUDE SONNET 4.6
 # Compute n Gauss-Legendre nodes on [-1, 1] using Newton's method
 # with Chebyshev initial guesses. Sufficient for moderate n (K ≤ ~50).
 function _legendre_nodes(n::Int64)::Vector{Float64}
@@ -75,8 +73,6 @@ function _legendre_nodes(n::Int64)::Vector{Float64}
     return x  # sorted ascending
 end
 
-# TODO VERIFY IMPLEMENTATION
-# CITE: CLAUDE SONNET 4.6
 # Returns K+1 interpolation points on [0, 1):
 #  - τ[1] = 0 (left endpoint of the element)
 #  - τ[2:K+1] = K Gauss-Legendre nodes shifted from [-1,1] to (0,1)

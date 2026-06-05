@@ -1,7 +1,3 @@
-#######################################################
-# STATE AS OF: 05/30/26
-#######################################################
-
 # (*) Main function for creating ExaModels decision variables (*)
 function _create_variables(
         c::ExaCore,

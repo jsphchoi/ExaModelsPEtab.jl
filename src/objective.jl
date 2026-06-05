@@ -1,8 +1,3 @@
-#######################################################
-# STATE AS OF: 05/30/26
-# TODO: verify implementation
-# TODO: y0 initial guess just idx+1, if idx=N then use weighted sum.
-#######################################################
 
 # Reduce a noise (σ) expression so that its dependence on model states enters ONLY through
 # the observable. Every PEtab benchmark noise form (c | θ | β·y | α+β·y | √(α²+(β·y)²)) is a

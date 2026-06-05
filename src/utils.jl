@@ -1,8 +1,3 @@
-#######################################################
-# STATE AS OF: 6/01/26
-# TODO: handle event callbacks
-#######################################################
-
 # Key: (!!!) := determines index -> variable ordering/mapping
 
 # Reads the numeric start (initial-guess) values of a variable handle back out of the
@@ -439,26 +434,10 @@ end
 ####################################################
 # UTILS FOR CHECKING MODEL FEATURES
 ####################################################
+# True if the model uses steady-state pre-equilibration (x0SSpre) initial conditions.
 function _check_x0SSpre(PEprob::PEtabODEProblem)::Bool
     return PEprob.model_info.simulation_info.has_pre_equilibration
 end
-# check if steadysteate preeq x0 type (Claude Sonnet 4.6)
-# function _check_x0SSpre(path_yaml::String)::Bool
-#     petab_version = PEtab._get_version(path_yaml)
-
-#     if petab_version == "1.0.0"
-#         tables = PEtab.read_tables_v1(path_yaml)
-#         measurements_df = tables[:measurements]
-#         :preequilibrationConditionId in propertynames(measurements_df) || return false
-#         return any(!ismissing, measurements_df.preequilibrationConditionId)
-#     else
-#         # v2: check experiments table for time == -Inf rows (pre-eq marker)
-#         tables = PEtab.read_tables_v2(path_yaml)
-#         experiments_df = tables[:experiments]
-#         isempty(experiments_df) && return false
-#         return any(isinf.(experiments_df.time) .& (experiments_df.time .< 0))
-#     end
-# end
 
 ####################################################
 # UTILS FOR OBJECTIVE FUNCTION
