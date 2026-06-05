@@ -14,6 +14,14 @@ struct PEInfo{T <: Number}
     taus::Vector{Float64}
     L1::Vector{Float64}
     pscale::Vector{Symbol} # (m = 1,...,Np) per-parameter PEtab estimation scale (:log10/:log/:lin)
+    # Fixed-time event support. SBMLImporter folds piecewise(time>T,…) into the RHS as the
+    # smooth form b*a+(1-b)*c, where b is a gating parameter (__parameter_ifelseN) toggled by a
+    # callback at a fixed time. We keep these gates LIVE in the RHS (see _get_rhs_funcs) and pass
+    # their per-(interval,condition) values as data, instead of freezing them at the parametermap
+    # default (which is the pre-trigger value, not the value PEtab actually simulates with).
+    gate_syms::Vector{Symbolics.Num}  # (g = 1,...,Ng) gating parameters kept live in the RHS
+    gate_vals::Array{Float64,3}       # Ng×N×Nc gate value on each (interval i, condition cidx)
+    gate_vals_ss::Array{Float64,2}    # Ng×Nc gate value for the steady-state residual per condition
 end
-# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale)
-# (; Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale) = PEinfo
+# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale, gate_syms, gate_vals, gate_vals_ss)
+# (; Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale, gate_syms, gate_vals, gate_vals_ss) = PEinfo

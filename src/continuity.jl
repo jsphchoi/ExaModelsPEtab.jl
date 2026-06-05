@@ -1,5 +1,3 @@
-# TODO: support ev: _create_ev, intervene interval continuity. idea: create dict i=1:N -> f(t_event) to continuity constraint!
-
 # (*) Main function for creating collocation continuity constraints (*)
 function _create_continuity(
         c::ExaCore,
@@ -21,46 +19,35 @@ end
 # Autonomous in t (steady state), so any explicit time-dependence is evaluated at t=0.
 function _add_ss_residual(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo, cvindex_of; keep_rows = nothing)
     # Unpack problem info
-    (; Nz, Nc, Np, Ncv, pscale) = PEinfo
+    (; Nz, Nc, Np, Ncv, pscale, gate_syms, gate_vals_ss) = PEinfo
+    Ng  = length(gate_syms)
     p   = c.p
     zss = c.zss
     if Ncv >= 1
         cv = c.cv
     end
 
-    # RHS functions for the steady-state residual (same funcs the collocation uses).
-    # keep_rows (pure steady-state path) selects an independent subset of rows when the
-    # system has conservation laws — the redundant rows are replaced by conservation
-    # constraints (see _ss_conservation). nothing => keep all rows (x0SSpre path).
-    fs, has_t = _get_rhs_funcs(PEmodel, PEprob)
+    # RHS with the live gates as trailing args (see _get_rhs_funcs). The per-condition residual gate
+    # gate_vals_ss[:,cidx] (the IC gate: pre-equilibration value on the x0SSpre path, the condition's
+    # own value on the pure steady-state path) rides in the iterator tuple as an NTuple field `gv`,
+    # splatted via ntuple(g->gv[g],Ng)... — same idiom as the collocation RHS. keep_rows (pure
+    # steady-state path) selects an independent subset of residual rows when the system has
+    # conservation laws (see _ss_conservation). Ng==0 => `gv`=() and the splat is a no-op.
+    fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
     keep_rows !== nothing && (fs = fs[keep_rows])
-
-    itr_ss = [(cidx, cvindex_of(cidx)) for cidx in 1:Nc]
-    if has_t
-        # If f(x_ss,t=0) = 0...
-        for f in fs
-            ExaModels.@add_con(c,
-                f(
-                    ntuple(v -> zss[v,cidx], Nz)...,
-                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                    ntuple(m -> cv[m,cvidx], Ncv)...,
-                    0.0
-                )
-                for (cidx,cvidx) in itr_ss
+    # Steady state => autonomous, evaluate at t=0 (the always-present trailing t arg).
+    itr_ss = [(cidx, cvindex_of(cidx), ntuple(g->gate_vals_ss[g,cidx],Ng)) for cidx in 1:Nc]
+    for f in fs
+        ExaModels.@add_con(c,
+            f(
+                ntuple(v -> zss[v,cidx], Nz)...,
+                ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                ntuple(m -> cv[m,cvidx], Ncv)...,
+                ntuple(g -> gv[g], Ng)...,
+                0.0
             )
-        end
-    else
-        # If f(x_ss) = 0...
-        for f in fs
-            ExaModels.@add_con(c,
-                f(
-                    ntuple(v -> zss[v,cidx], Nz)...,
-                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                    ntuple(m -> cv[m,cvidx], Ncv)...
-                )
-                for (cidx,cvidx) in itr_ss
-            )
-        end
+            for (cidx,cvidx,gv) in itr_ss
+        )
     end
     return c
 end

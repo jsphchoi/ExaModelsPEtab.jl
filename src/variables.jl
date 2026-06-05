@@ -17,7 +17,12 @@ function _create_variables(
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
     Ny = length(_get_obsids(PEmodel)) # number of model observables
     pscale = _get_pscale(PEprob) # per-parameter estimation scale (:log10/:log/:lin), aligned 1:Np
-    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale)
+    # Fixed-time event gates: keep piecewise(time) gates live and resolve their per-(interval,
+    # condition) values from a stepped warm-start integrator (no-op / empty when the model has none).
+    gate_syms = _get_gate_syms(PEprob)
+    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, gate_syms, h, taus)
+    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale,
+                    gate_syms, gate_vals, gate_vals_ss)
 
     # OBJECTIVE FUNCTION VARIABLES
     # Create auxiliary variables for model observables, y

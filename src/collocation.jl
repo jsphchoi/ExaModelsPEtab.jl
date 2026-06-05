@@ -16,7 +16,8 @@ function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     ########################################################################
     # Unpack problem info
     ########################################################################
-    (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale) = PEinfo
+    (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale, gate_syms, gate_vals) = PEinfo
+    Ng = length(gate_syms)
     z = c.z
     p = c.p
     if Ncv >= 1
@@ -26,43 +27,31 @@ function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     ########################################################################
     # Lagrange collocation equations
     ########################################################################
-    # Get ODE RHS functions (and whether they depend on time t)
-    fs, has_t = _get_rhs_funcs(PEmodel, PEprob)
+    # ODE RHS functions; t is always the final arg (autonomous RHS just ignores it — see
+    # _get_rhs_funcs), and the live piecewise(time) gates are trailing args before it. Their
+    # per-(interval,condition) values gate_vals[:,i,cidx] are carried in the iterator tuple as an
+    # NTuple field `gv` (exactly like h[i]/t_ij), then splatted into f via ntuple(g->gv[g],Ng)...
+    # (ExaModels supports getindex on a tuple data field but NOT splatting it directly). Ng==0 makes
+    # `gv` an empty tuple and the splat a no-op, so non-event models are unchanged.
+    fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
 
-    # Create constraint: hᵢf(...) = (...)
-    if has_t
-        # If RHS = f(x,t)...
-
-        # t_ij = start of interval i + tau_k * h_i  (collocation time)
-        h_cum    = cumsum(h) .- h  # start time of each interval
-        itr_coll = [(i,k,cidx,h[i],h_cum[i] + taus[k+1]*h[i]) for i in 1:N, k in 1:K, cidx in 1:Nc]
-        c_coll   = [
-            ExaModels.@add_con(c,
-                -hi*f(
-                    ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
-                    ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
-                    ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
-                    t_ij                                       # time at collocation point
-                )
-                for (i,k,cidx,hi,t_ij) in itr_coll
+    # Create constraint: hᵢf(...) = (...). t_ij = start of interval i + tau_k * h_i (collocation time).
+    h_cum    = cumsum(h) .- h  # start time of each interval
+    itr_coll = [(i,k,cidx,h[i],h_cum[i] + taus[k+1]*h[i], ntuple(g->gate_vals[g,i,cidx],Ng))
+                for i in 1:N, k in 1:K, cidx in 1:Nc]
+    c_coll   = [
+        ExaModels.@add_con(c,
+            -hi*f(
+                ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
+                ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
+                ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
+                ntuple(g -> gv[g], Ng)...,                 # piecewise(time) gate values
+                t_ij                                       # time at collocation point
             )
-            for f in fs
-        ]
-    else
-        # If RHS = f(x)...
-        itr_coll = [(i,k,cidx,h[i]) for i in 1:N, k in 1:K, cidx in 1:Nc]
-        c_coll   = [
-            ExaModels.@add_con(c,
-                -hi*f(
-                    ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
-                    ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
-                    ntuple(m -> cv[m,cidx], Ncv)...            # condition-dep. vars
-                )
-                for (i,k,cidx,hi) in itr_coll
-            )
-            for f in fs
-        ]
-    end
+            for (i,k,cidx,hi,t_ij,gv) in itr_coll
+        )
+        for f in fs
+    ]
 
     # Constraint augmentation: (...) = ∑dlⱼdτ(τₖ)*zᵢⱼ
     DLDTAU  = [_eval_dldtau(j,k,taus) for j in 0:K, k in 1:K]

@@ -37,7 +37,7 @@ const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
 
 const ALL_MODELS = [
-    # petab_optimum_found=true AND petab_has_events=false (18 models)
+    # petab_optimum_found=true AND petab_has_events=false (18 non-event models)
     # Crauste AND Bruno excluded — Bruno is the shared JIT warmup (see WARMUP_MODEL); a model
     # benchmarked by the same script that warms up on it gets a pre-warmed, invalid compile
     # time. Bruno is benchmarked separately via benchmark_bruno.jl (warmed up on Crauste).
@@ -48,6 +48,13 @@ const ALL_MODELS = [
     "Okuonghae_ChaosSolitonsFractals2020", "Perelson_Science1996", "Rahman_MBS2016",
     "SalazarCavazos_MBoC2020", "Schwen_PONE2014", "Sneyd_PNAS2002",
     "Zhao_QuantBiol2020", "Zheng_PNAS2012",
+    # Fixed-time piecewise(time) EVENT models (NEW — gate support added this session, see HANDOFF
+    # "Fix #7"). The last three also exercise x0SSpre pre-equilibration. petab_optimum_found=true
+    # for all 6; the event transcription reproduces PEtab's EXACT objective at the warm start. Full
+    # end-to-end convergence still pends the objective.jl observable/noise fixes (ov-work branch).
+    # (18 + 6 = 24 in ALL_MODELS; 26 total incl. Bruno + Crauste.)
+    "Oliveira_NatCommun2021", "Fujita_SciSignal2010", "Giordano_Nature2020",
+    "Brannmark_JBC2010", "Isensee_JCB2018", "Raimundez_PCB2020",
 ]
 
 get_yaml(m) = begin

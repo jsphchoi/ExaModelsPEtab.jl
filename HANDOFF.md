@@ -14,7 +14,13 @@ read it from the source of truth:
 ## Git state
 - Fixes #1–#6 (below) are all COMMITTED. The two constraint-generation bugs (#5 Armistead, #6 Bertozzi)
   landed in `95e7729` — its commit message has the full root-cause writeup. Benchmark scripts (K=6, SGM
-  reruns, Crauste warmup, 19-model list) are committed.
+  reruns, Crauste warmup) are committed.
+- **Fix #7 (fixed-time events) is UNCOMMITTED**, on branch **`events-fixed-time`** in a separate worktree
+  `~/.julia/dev/ExaModelsPEtab-events` (isolated from a concurrent session editing `objective.jl` on
+  `ov-work`). Touches `src/{utils,collocation,continuity,steadystate,variables,structs}.jl` +
+  `examples/Benchmarks/benchmark_examodels.jl` (ALL_MODELS). To merge: bring in `ov-work`'s `objective.jl`
+  first, then this branch; the two are complementary (events vs observable/blowup) and edit disjoint files
+  except neither touches the other's. Tests for #7 live in `examples/scratch_tests/` (this worktree).
 - Detailed change history lives in git, not here — `git log`/`git show <sha>` rather than re-narrating.
 
 ---
@@ -85,6 +91,41 @@ back to symbolic if irreducible). Used in `_get_rhs_funcs` and the `continuity.j
 substitution. Blast radius: only Bertozzi (Laske's param initialAssignments reference fixed constants →
 identical numeric values, neutral).
 
+### 7. Fixed-time event support (piecewise(time) gates) — NOT yet committed; branch `events-fixed-time` / worktree `~/.julia/dev/ExaModelsPEtab-events`
+Adds the 6 fixed-time event models (Oliveira, Fujita, Giordano + pre-eq Brannmark, Isensee, Raimundez)
+to `ALL_MODELS` (18 → 24; **26 total** incl. Bruno + Crauste). All 6 have petab_optimum_found=true.
+
+- **Mechanism.** For these models `PEprob.model_info.model.petab_events` is EMPTY — SBMLImporter folds
+  every `piecewise(time>T, a, b)` into the RHS as the smooth form `b*a+(1-b)*c`, where `b =
+  __parameter_ifelseN` is an MTK parameter toggled by an init/discrete callback at the fixed time T.
+  No `ifelse` survives (ExaModels-AD non-issue) and NO state jump (continuity unchanged). The pre-existing
+  bug: `_resolve_fixed_vals` froze those gates at the parametermap DEFAULT (pre-trigger value) instead of
+  the value PEtab simulates with.
+- **Design (tuple-data, src changes).** `utils.jl _get_gate_syms` (NEW) finds the `__parameter_ifelse*`
+  params; `_get_rhs_funcs(PEmodel, PEprob, gate_syms)` keeps them as TRAILING ARGS of one f per state
+  (no per-pattern build_function) AND now always appends `t` as the final arg (autonomous RHS ignores the
+  unused arg) so `has_t` is gone everywhere. `utils.jl _get_gate_vals` (NEW) reads each gate's per-
+  (interval,condition) value from a STEPPED PEtab integrator (`integ.ps[gate]`, post-init — the bare
+  `oprob.ps[gate]` carries the stale pre-trigger default; `ODE.getp`/`SavingCallback` are unavailable);
+  asserts every toggle lands on a mesh node; `_get_gate_vals_ss` (NEW) for the pure-SS path. `collocation.jl
+  _create_lagrange` carries `gate_vals[:,i,cidx]` in the iterator tuple as an NTuple field `gv` (like
+  `h[i]`/`t_ij`) and splats it via `ntuple(g->gv[g],Ng)...` (ExaModels: you may `getindex` a tuple data
+  field but NOT splat it). `continuity.jl _add_ss_residual` and `steadystate.jl _ss_conservation/_create_
+  variables_ss` use the same idiom (residual/IC gate = the t=0 IC value `g0`, verified `‖f(zss_init;g0)‖≈0`).
+  `structs.jl PEInfo` gained `gate_syms`/`gate_vals`/`gate_vals_ss`. `Ng==0` ⇒ `gv=()` ⇒ non-event models
+  byte-identical.
+- **Validation (GPU, K=5).** Non-event regression byte-identical (Boehm 138.22083 pre==post). Event
+  transcription reproduces PEtab's EXACT objective at MadNLP **iter 0** (Fujita −53.084, Brannmark 141.889)
+  with good warm-start feasibility — gates/collocation/continuity/pre-eq are correct at θ*.
+- **Open blocker (NOT events).** Both event models then drift OFF θ* during the solve (Fujita → −323 lower
+  feasible obj; Brannmark diverges). Root cause is the unvalidated `objective.jl` observable/noise handling
+  for these models (Oliveira/Giordano don't even finish building — `sd_cumulative_cases`,
+  `CurrentDiagnosedInfected`), which is the OTHER session's `ov-work` (build_function blowup + observable-
+  rule resolution). **Merge `ov-work`'s objective.jl into this branch, then re-run
+  `examples/scratch_tests/validate_events.jl <Model>` to confirm end-to-end convergence.**
+- **Out of scope (still):** Beer (event TIME is an estimated param), Liu (state-triggered `U<1e-8`), Smith
+  (true state-jump events; also petab opt_status=false).
+
 ---
 
 ## Known-failing / hard models (diagnosed root causes — durable; live status in result files)
@@ -104,8 +145,11 @@ PEtab is a potential correctness flag, not a pass. Caveat — the K=6 collocatio
 nllh, so judge by DIRECTION: exa *lower* (Armistead −306.13 vs −301.92) is usually discretization; exa
 *higher* (Bertozzi) is genuine suboptimal convergence. `final_report.jl` prints the rel.gap column.
 
-**Out of scope — event/discontinuity models** (collocation can't represent discontinuities): Liu, Smith
-(SBML events) and time-input/pre-eq-reset models. `has_events` in the harness over-flags (callback-based);
+**Event models — fixed-time NOW SUPPORTED (Fix #7).** The 6 fixed-time `piecewise(time>T)` models
+(Oliveira, Fujita, Giordano, Brannmark, Isensee, Raimundez) are handled by the gate transcription and are
+in `ALL_MODELS`. STILL out of scope: **Beer** (event time is an estimated parameter — freeze-at-nominal
+invalid), **Liu** (state-triggered `U<1e-8`), **Smith** (true SBML state-jump `<event>`s — collocation
+can't represent the discontinuity; also petab opt_status=false). `has_events` over-flags (callback-based);
 true SBML `<event>` models are only Liu + Smith (`grep -c '<event[ >]' <model>/*.xml`).
 
 ---
@@ -161,7 +205,8 @@ Results in `results/`, combined key=value `{Model}_results.txt` per model (petab
 ### Scripts
 - `benchmark_petab.jl / .sh` — one Julia process per model; builds PEtabODEProblem, solves with
   Optim.IPNewton(), 1-hr cap. Writes `petab_*`. `bash examples/Benchmarks/benchmark_petab.sh` from root.
-- `benchmark_examodels.jl / .sh` — long-lived Julia process(es), strided over the 19 models. Warmup =
+- `benchmark_examodels.jl / .sh` — long-lived Julia process(es), strided over the 24 `ALL_MODELS`
+  (18 non-event + 6 fixed-time event, Fix #7). Warmup =
   **Crauste** (excluded from ALL_MODELS; pre-warms generic JIT, its timing is invalid). K=6, compile
   deadline 4 hr. Writes `exa_*`. `bash examples/Benchmarks/benchmark_examodels.sh` from root
   (**no trailing `&`** — the script uses `wait`; the harness must track the outer process).
@@ -180,10 +225,13 @@ Results in `results/`, combined key=value `{Model}_results.txt` per model (petab
 `exa_compile_status`, `exa_solve_status`, `exa_sgm_status`, `exa_term_status`, `exa_objective`,
 `exa_iter`, `exa_nvar`, `exa_ncon`, `exa_error`. `%EXA = (compile−presolve)/compile×100`.
 
-### Models benchmarked (19)
-petab_optimum_found=true AND petab_has_events=false, Crauste excluded (warmup):
+### Models benchmarked (25 = 24 `ALL_MODELS` + Bruno; Crauste excluded as warmup)
+**Non-event (19, original)** — petab_optimum_found=true AND petab_has_events=false:
 Armistead, Bachmann, Bertozzi, Blasi, Boehm, Borghans, Bruno, Elowitz, Fiedler, Laske, Lucarelli,
 Okuonghae, Perelson, Rahman, SalazarCavazos, Schwen, Sneyd, Zhao, Zheng.
+**Fixed-time event (6, NEW — Fix #7)** — petab_optimum_found=true, piecewise(time) gates:
+Oliveira, Fujita, Giordano, Brannmark (pre-eq), Isensee (pre-eq), Raimundez (pre-eq).
+(`ALL_MODELS` = the 18 non-event in-list + these 6 = 24; Bruno benchmarked separately; total pipeline 26.)
 
 ### Critical harness notes
 - **Run julia at `-t 1`**; enforce timeouts with external `bash -c "sleep N; kill -9 <pid>"`. A Julia
@@ -199,6 +247,10 @@ Okuonghae, Perelson, Rahman, SalazarCavazos, Schwen, Sneyd, Zhao, Zheng.
 ### Scratch tests (examples/scratch_tests/)
 `verify_models.jl` (objective-consistency, main validation tool), `warm_start.jl` (warm-start violation),
 `gpu_run.jl` (end-to-end GPU sanity), `sigma_constraints.jl`, `stage_build.jl`.
+Event support (Fix #7): `validate_events.jl <Model>` (GPU build+solve, compares to PEtab optimum),
+`diag_gates.jl <Model>` (prints gate_syms + per-(interval,condition) gate patterns + gate_vals_ss),
+`build_smoke.jl <Model>` (fast CPU build-only smoke), `probe_preeq.jl` / `probe_tupledata.jl` (one-off
+probes for the pre-eq gate source and the ExaModels tuple-data-field behavior).
 
 ## PEtab optimizer findings
 `docs/.../optimizers.md`: small → `Optim.IPNewton()` + exact Hessian; medium → `Fides.CustomHessian()`+GN;

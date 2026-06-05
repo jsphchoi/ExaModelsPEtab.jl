@@ -234,17 +234,42 @@ function _resolve_fixed_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     return out
 end
 
-# Returns (::Vector{Function}, ::Bool) where bool = has_t (ODE depends on time after substitution)
-# Without time: f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]]...)
-# With time:    f[v=1:Nz]([z[:,i,k,cidx]; p[:]; cv[:,cidx]; t]...)
-function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+# (!!!) Returns ::Vector{Symbolics.Num} of piecewise(time) gating parameters, __parameter_ifelseN.
+# SBMLImporter rewrites every `piecewise(time>T, a, b)` in an SBML rule into the smooth algebraic
+# form `b*a + (1-b)*c` where `b = __parameter_ifelseN` is an MTK parameter toggled by a callback at
+# the fixed time T. These are NOT estimated and NOT condition columns; we keep them live in the RHS
+# (one extra function argument each) and supply their per-(interval,condition) value as data, rather
+# than freezing them at the parametermap default (= the pre-trigger value). Empty for models with no
+# time events, in which case _get_rhs_funcs is byte-identical to the no-gate behavior.
+function _get_gate_syms(PEprob::PEtabODEProblem)::Vector{Symbolics.Num}
+    sys = PEprob.model_info.model.sys
+    return Symbolics.Num[Symbolics.Num(pp) for pp in MTK.parameters(sys)
+                         if occursin("__parameter_ifelse", string(pp))]
+end
+
+# Returns ::Vector{Function}, one RHS function per state, with signature
+#   f[v]([z[:,i,k,cidx]; p[:]; cv[:,cidx]; gates; t]...)
+# The independent variable t is ALWAYS the final argument, even for an autonomous RHS that ignores
+# it: build_function tolerates unused arguments (z/p/cv are already passed in full for every state),
+# so always carrying t lets every call site pass it uniformly (t_ij for collocation, 0.0 at steady
+# state) with no has_t branching. The live piecewise(time) gates gate_syms (see _get_gate_syms) are
+# kept as trailing args (the smooth form b*a+(1-b)*c stays symbolic in b); their per-(interval,
+# condition) values are supplied as iterator data at the call site, like h[i]/t_ij. ONE
+# build_function per state regardless of the gate pattern. gate_syms empty => no-event behavior.
+function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
+                        gate_syms::Vector{Symbolics.Num} = Symbolics.Num[])
     sys = PEprob.model_info.model.sys
 
     f_exprs_raw = [eqn.rhs for eqn in MTK.equations(sys)]
 
     # Substitute in fixed constant values (initialAssignment-defined params resolved to the
-    # constants PEtab freezes them at — see _resolve_fixed_vals).
+    # constants PEtab freezes them at — see _resolve_fixed_vals). EXCLUDE the gate parameters: they
+    # stay symbolic so they remain function arguments whose value is set per interval.
     dict_fixed_val = _resolve_fixed_vals(PEmodel, PEprob)
+    gate_names = Set(string.(gate_syms))
+    for k in collect(keys(dict_fixed_val))
+        string(k) in gate_names && delete!(dict_fixed_val, k)
+    end
 
     z_syms  = _get_z_syms(PEprob)
     p_syms  = _get_p_syms(PEprob)
@@ -252,15 +277,16 @@ function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
 
     # Recursively substitute ALL assignment rules (u(t,p) inputs, derived quantities, and any
     # nested ones) to a fixpoint, then the fixed numeric constants. After this the RHS is a
-    # function of states / estimated params / condition vars (and possibly t) only.
+    # function of states / estimated params / condition vars / gates (and possibly t) only.
     subst_rules = _assignment_substitutor(PEprob; bare = false)
     f_exprs = [
         Symbolics.substitute(subst_rules(f_raw), dict_fixed_val)
         for f_raw in f_exprs_raw
     ]
 
-    # Detect time-dependence: check if MTK's independent variable 't' is a free variable
-    # after substituting u(t,p) inputs. Use string comparison — robust across Symbolics versions.
+    # The t argument: use the actual independent-variable object when the RHS is time-dependent (so
+    # build_function binds it correctly), otherwise any unused `t` symbol — it is a trailing arg the
+    # autonomous RHS never references. (String compare on the name is robust across Symbolics vers.)
     all_free = foldl(union, Symbolics.get_variables.(f_exprs))
     t_basic  = nothing
     for v in all_free
@@ -269,15 +295,121 @@ function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
             break
         end
     end
-    has_t = t_basic !== nothing
-    t_sym = has_t ? Symbolics.Num(t_basic) : nothing
+    t_sym = t_basic !== nothing ? Symbolics.Num(t_basic) : Symbolics.Num(Symbolics.variable(:t))
 
-    all_syms = has_t ? [z_syms; p_syms; cv_syms; [t_sym]] : [z_syms; p_syms; cv_syms]
+    all_syms = [z_syms; p_syms; cv_syms; gate_syms; [t_sym]]
 
     return [
         Symbolics.build_function(f_expr, all_syms..., expression = Val{false})
         for f_expr in f_exprs
-    ], has_t
+    ]
+end
+
+# Per-(interval, condition) values of the live gating parameters gate_syms, plus the per-condition
+# value to use in the steady-state residual. SBMLImporter's init callback sets each gate at t=0 to
+# its triggered value (e.g. 1.0), which the bare ODEProblem does NOT reflect (it carries the
+# pre-trigger default) — so we read the gates off a stepped INTEGRATOR, not the problem.
+#
+# Returns (gate_vals, gate_vals_ss):
+#   gate_vals[g,i,cidx]  : value of gate g on interval i of simulation condition cidx (collocation)
+#   gate_vals_ss[g,cidx] : value of gate g for cidx's steady-state residual (pre-eq condition's gate
+#                          if pre-equilibrated, else the condition's own t=0 value)
+# Asserts every in-window gate toggle lands on a mesh node (cumsum(h)); a mid-interval toggle would
+# make a single per-interval value wrong and is rejected with a clear error.
+function _get_gate_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
+                        gate_syms::Vector{Symbolics.Num}, h::Vector{Float64}, taus::Vector{Float64})
+    Ng   = length(gate_syms)
+    cids = Symbol.(_get_cids(PEmodel))
+    Nc   = length(cids)
+    N    = length(h)
+    gate_vals    = zeros(Float64, Ng, N, Nc)
+    gate_vals_ss = zeros(Float64, Ng, Nc)
+    Ng == 0 && return gate_vals, gate_vals_ss
+
+    si        = PEprob.model_info.simulation_info
+    has_preeq = si.has_pre_equilibration
+    sim_ids   = si.conditionids[:simulation]
+    preeq_ids = si.conditionids[:pre_equilibration]
+    p_nominal = PEtab.get_x(PEprob)
+    solver    = PEprob.probinfo.solver.solver
+    abstol    = PEprob.probinfo.solver.abstol
+    reltol    = PEprob.probinfo.solver.reltol
+
+    h_cum      = cumsum(h) .- h
+    bnds       = cumsum(h)                                   # mesh nodes = where events may live
+    t_interior = [h_cum[i] + taus[2] * h[i] for i in 1:N]    # strictly inside interval i (past left node)
+    tstops     = sort(unique(vcat(t_interior, bnds)))        # stop at every interior sample and node
+
+    gate_raw = [Symbolics.value(g) for g in gate_syms]   # unwrap Num for the .ps[] indexing interface
+    read_gates(integ) = Float64[Float64(integ.ps[g]) for g in gate_raw]
+
+    for (cidx, cid) in enumerate(cids)
+        cond_arg = cid
+        if has_preeq
+            pos = findfirst(==(cid), sim_ids)
+            pos === nothing && continue
+            cond_arg = preeq_ids[pos] => sim_ids[pos]
+        end
+        oprob, cbs = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
+        tend  = max(maximum(bnds), oprob.tspan[2])
+        oprob = ODE.remake(oprob; tspan = (oprob.tspan[1], tend))
+        integ = ODE.init(oprob, solver; callback = cbs, tstops = tstops, abstol = abstol, reltol = reltol)
+
+        g0        = read_gates(integ)                        # gate at the (post-init) initial condition, t=0
+        cur       = copy(g0)
+        change_ts = Float64[]
+        for i in 1:N
+            tq = t_interior[i]
+            while integ.t < tq
+                tprev = integ.t
+                ODE.step!(integ)
+                (isfinite(integ.t) && integ.t > tprev) || break   # integrator stalled/failed
+                new = read_gates(integ)
+                if new != cur
+                    push!(change_ts, integ.t)
+                    cur = new
+                end
+            end
+            gate_vals[:, i, cidx] = cur
+        end
+        # Reject any toggle that does not coincide with a mesh node (would split an interval).
+        for tc in change_ts
+            any(b -> isapprox(b, tc; atol = 1.0e-6, rtol = 1.0e-6), bnds) || error(
+                "Condition '$cid' has a fixed-time event at t=$tc that does not coincide with a " *
+                "collocation mesh node; mid-interval events are not supported. (Mesh nodes come " *
+                "from measurement times; add a measurement/tstop at t=$tc to support it.)")
+        end
+
+        # Steady-state residual / initial-condition gate value: the gate at the IC (t=0+), i.e. the
+        # SAME value interval 1 uses. The continuity constraint sets z[:,1,0,cidx] = zss[:,cidx] and
+        # the residual pins f(zss)=0; using g0 keeps the residual consistent with the first
+        # collocation interval (and with PEtab's pre-equilibrated u0 — verified ‖f(u0; g0)‖ ≈ 0,
+        # e.g. Brannmark Dose_0 4.7e-6). Pre-eq conditions cannot be addressed standalone (only as
+        # the pair preeq=>sim), so there is no separate pre-eq integrator to read.
+        gate_vals_ss[:, cidx] = g0
+    end
+    return gate_vals, gate_vals_ss
+end
+
+# Per-condition steady-state gate values for the PURE steady-state path (no collocation mesh).
+# Each gate is constant at the equilibrium, so we read it off the integrator at t=0 (post-init).
+function _get_gate_vals_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem, gate_syms::Vector{Symbolics.Num})
+    Ng   = length(gate_syms)
+    cids = Symbol.(_get_cids(PEmodel))
+    Nc   = length(cids)
+    out  = zeros(Float64, Ng, Nc)
+    Ng == 0 && return out
+    p_nominal = PEtab.get_x(PEprob)
+    solver    = PEprob.probinfo.solver.solver
+    abstol    = PEprob.probinfo.solver.abstol
+    reltol    = PEprob.probinfo.solver.reltol
+    gate_raw  = [Symbolics.value(g) for g in gate_syms]   # unwrap Num for the .ps[] indexing interface
+    for (cidx, cid) in enumerate(cids)
+        oprob, cbs = PEtab.get_odeproblem(p_nominal, PEprob; condition = cid)
+        integ = ODE.init(oprob, solver; callback = cbs, abstol = abstol, reltol = reltol)
+        out[:, cidx] = Float64[Float64(integ.ps[g]) for g in gate_raw]
+    end
+    return out
 end
 
 # Returns ::Dictionary{} of p::String => p[pidx] index

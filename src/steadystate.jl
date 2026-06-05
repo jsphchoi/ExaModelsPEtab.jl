@@ -88,8 +88,14 @@ function _create_variables_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     Ny  = length(_get_obsids(PEmodel))                  # number of model observables
     pscale = _get_pscale(PEprob)
 
+    # Live piecewise(time) gates: no collocation mesh here, so gate_vals (Ng×N×Nc) is empty; the
+    # residual uses the per-condition steady-state gate values gate_vals_ss (identity cv mapping).
+    gate_syms = _get_gate_syms(PEprob)
+    gate_vals_ss = _get_gate_vals_ss(PEmodel, PEprob, gate_syms)
+
     # The mesh fields (N, K, t_meas, t_vec_mesh, h, taus, L1) are never read on this path.
-    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, 0, 0, [Inf], Float64[], Float64[], Float64[], Float64[], pscale)
+    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, 0, 0, [Inf], Float64[], Float64[], Float64[], Float64[], pscale,
+                    gate_syms, zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss)
 
     c = _create_y(c, PEmodel, PEinfo)
     c = _create_sigma(c, PEinfo)
@@ -127,18 +133,20 @@ end
 #               the ones the conservation constraints replace, chosen by pivoted QR of W)
 # r=0 returns empty W/b and keep_rows = 1:Nz (no conservation, plain f(zss)=0 is full rank).
 function _ss_conservation(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    (; Nz, Nc, Np, Ncv, pscale) = PEinfo
+    (; Nz, Nc, Np, Ncv, pscale, gate_syms, gate_vals_ss) = PEinfo
     zss0 = reshape(_var_starts(c, c.zss), Nz, Nc)
     cv0  = Ncv >= 1 ? reshape(_var_starts(c, c.cv), Ncv, Nc) : zeros(Float64, 0, Nc)
     θ    = PEtab.get_x(PEprob)
     p0   = [_p_phys_val(θ, m, pscale) for m in 1:Np]
 
     # f evaluated at nominal params and condition-1 inputs (conservation is structural, so the
-    # point/condition only needs to be generic). Autonomous at steady state => t=0.
-    fs, has_t = _get_rhs_funcs(PEmodel, PEprob)
+    # point/condition only needs to be generic). The live gates are trailing args of f, supplied
+    # here as real numbers (condition-1 steady-state values); t is the always-present final arg,
+    # 0.0 at steady state. Plain numeric call (not @add_con), so real-vector splats are fine.
+    gss = size(gate_vals_ss, 2) >= 1 ? gate_vals_ss[:, 1] : Float64[]
+    fs  = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
     cvc = Ncv >= 1 ? cv0[:, 1] : Float64[]
-    Fz = has_t ? (z -> Float64[f(z..., p0..., cvc..., 0.0) for f in fs]) :
-                 (z -> Float64[f(z..., p0..., cvc...) for f in fs])
+    Fz  = z -> Float64[f(z..., p0..., cvc..., gss..., 0.0) for f in fs]
 
     # Finite-difference Jacobian at the warm-start steady state (Nz extra RHS evals).
     z1 = zss0[:, 1]
