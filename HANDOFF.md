@@ -12,20 +12,18 @@ read it from the source of truth:
 - `ps aux | grep benchmark_examodels` — is the run live, and which PID (it changes on each auto-restart).
 
 ## Git state
-- Fixes #1–#6 (below) are all COMMITTED. The two constraint-generation bugs (#5 Armistead, #6 Bertozzi)
-  landed in `95e7729` — its commit message has the full root-cause writeup. Benchmark scripts (K=6, SGM
-  reruns, Crauste warmup) are committed.
-- **Fix #7 (fixed-time events) is UNCOMMITTED**, on branch **`events-fixed-time`** in a separate worktree
-  `~/.julia/dev/ExaModelsPEtab-events` (isolated from a concurrent session editing `objective.jl` on
-  `ov-work`). Touches `src/{utils,collocation,continuity,steadystate,variables,structs}.jl` +
-  `examples/Benchmarks/benchmark_examodels.jl` (ALL_MODELS). To merge: bring in `ov-work`'s `objective.jl`
-  first, then this branch; the two are complementary (events vs observable/blowup) and edit disjoint files
-  except neither touches the other's. Tests for #7 live in `examples/scratch_tests/` (this worktree).
+- Fixes #1–#9 below are COMMITTED on `main`. #5/#6 in `95e7729`; **#7 fixed-time events in `7454a85`**
+  (`events-fixed-time` fast-forwarded into `main` 2026-06-05); #8 Blasi steady-state path in `dc1b295`;
+  #9 Bruno-warmup restructure in `08273a3`. Benchmark scripts (K=6, SGM reruns, **Bruno** warmup) committed.
+- **STILL OUTSTANDING: the build_function / observable-blowup work is on branch `ov-work`** (edits
+  `objective.jl`), NOT yet merged. Event-model solves drift off θ* until it lands (see Fix #7 open blocker);
+  it also fixes the SalazarCavazos-class compile blowup. Merge `ov-work` next, then re-run
+  `examples/scratch_tests/validate_events.jl <Model>`.
 - Detailed change history lives in git, not here — `git log`/`git show <sha>` rather than re-narrating.
 
 ---
 
-## Fixes implemented (#1–#6, all committed)
+## Fixes implemented (#1–#9, all committed on `main`)
 
 ### 1. x0SSpre (steady-state pre-equilibration)
 - `initialize.jl _solve_conds` / `_get_zss_init`: pre-eq models reject plain condition ids in
@@ -91,7 +89,7 @@ back to symbolic if irreducible). Used in `_get_rhs_funcs` and the `continuity.j
 substitution. Blast radius: only Bertozzi (Laske's param initialAssignments reference fixed constants →
 identical numeric values, neutral).
 
-### 7. Fixed-time event support (piecewise(time) gates) — NOT yet committed; branch `events-fixed-time` / worktree `~/.julia/dev/ExaModelsPEtab-events`
+### 7. Fixed-time event support (piecewise(time) gates) — COMMITTED `7454a85` (merged to `main` 2026-06-05)
 Adds the 6 fixed-time event models (Oliveira, Fujita, Giordano + pre-eq Brannmark, Isensee, Raimundez)
 to `ALL_MODELS` (18 → 24; **26 total** incl. Bruno + Crauste). All 6 have petab_optimum_found=true.
 
@@ -126,6 +124,20 @@ to `ALL_MODELS` (18 → 24; **26 total** incl. Bruno + Crauste). All 6 have peta
 - **Out of scope (still):** Beer (event TIME is an estimated param), Liu (state-triggered `U<1e-8`), Smith
   (true state-jump events; also petab opt_status=false).
 
+### 8. Steady-state (no-mesh) build path → Blasi resolved (`dc1b295`)
+Steady-state models (all measurements at t=∞) hit the mesh-indexing `Nothing→Int64` because they have no
+time-course mesh. **Fix:** `build_model` branches on `ExaModelsPEtab._is_steady_state(PEmodel)` to
+`_create_variables_ss` / `_create_ss_constraints` / `_create_objective_ss` (uses `zss`, steady-state
+residual + conservation, no collocation mesh). Blasi now `SOLVE_SUCCEEDED` −1090.91 vs −1090.56 (−0.03%).
+
+### 9. Benchmark warmup restructure — Bruno is the shared JIT warmup (`08273a3`)
+Old design warmed examodels on Crauste and petab on Bruno, but Bruno wasn't excluded from the petab loop →
+its `petab_compile_time` was pre-warmed garbage (4.96 s vs ~225 s real). Now BOTH `benchmark_examodels.jl`
+and `benchmark_petab.jl` warm on **Bruno** and exclude it from their timed lists; **`benchmark_bruno.jl`**
+(Crauste-warmed) benchmarks Bruno itself with both backends; old `benchmark_crauste.jl` deleted.
+`benchmark_petab.jl` `COMPILE_LIMIT` is env-overridable via `PETAB_COMPILE_LIMIT` (default 1800 s).
+`benchmark_bachmann_k3.jl` (NEW) = the one-off Bachmann K=3 OOM-fit test → separate `*_K3_results.txt`.
+
 ---
 
 ## Known-failing / hard models (diagnosed root causes — durable; live status in result files)
@@ -134,16 +146,24 @@ These are the diagnosed blockers, not a live snapshot. The *current* pass/fail o
 
 | Model | Failure | Root cause / status |
 |---|---|---|
-| **Blasi** | compile error `Nothing→Int64` | mesh-indexing (`_get_dict_t_tidx` `findfirst→nothing`); NOT fixed by #4/#5/#6 — needs its own fix |
-| **Bachmann** | GPU OOM (8.945 GiB on full GV100) | biggest model; hardware capacity, not a bug. Try alone at K=6 + `CUDA.reclaim()` between models; fall back to K=4 |
-| **Fiedler / Lucarelli** | CUDA kernel param-memory overflow (36.8 / 35.3 KiB > 31.996 KiB) | ExaModels fuses one oversized expr; structural sm_70 (GV100=cc7.0) limit. Split the fused expr, or run on sm_80+ |
-| **Borghans / Elowitz** | solve diverges to all-NaN spin | starts clean then all-NaN; external watchdog SIGKILLs + auto-resumes (loses ~one watchdog interval). Likely infeasible collocation warm-start — investigate ‖c(x₀)‖∞ per block. **A NaN/stall early-abort is the real fix.** (Being worked in a parallel session — don't kill the live run.) |
-| **Bertozzi** | converged but suboptimal | `SOLVE_SUCCEEDED` 5.708e9 vs PEtab 1.94e9 (~2.9× worse nllh) — a different/worse local min from the same nominal start. Multistart / warm-start concern, NOT a build bug. |
+| ~~Blasi~~ | ~~compile `Nothing→Int64`~~ | **RESOLVED** (Fix #8, steady-state no-mesh path) — now `SOLVE_SUCCEEDED` −1090.91 vs −1090.56 (−0.03%). |
+| **Bachmann** | GPU OOM @ K=6 (4.10M vars, needed ~40 GB) | **memory-only** — verified: **K=3 FITS** (2.34M vars, ~23 GB, compiles 1128 s; `Bachmann_MSB2011_K3_results.txt`). For a real result use A100/H100 80 GB @ K=6. (K=3 *solve* is non-convergent — a separate conditioning issue.) |
+| **Fiedler / Lucarelli** | CUDA kernel param-memory overflow (36.8 / 35.3 KiB > 31.996 KiB) | structural sm_70 (GV100=cc7.0) limit on one oversized fused expr; split it or run sm_80+. |
+| **Borghans / Elowitz** | solve diverges to all-NaN spin | infeasible collocation warm-start; killed/skipped. **A NaN/stall early-abort + ‖c(x₀)‖∞ diagnosis is the fix.** |
+| **Zheng** | ill-conditioned non-convergence | primal-feasible but dual-infeasible stuck (inf_du~0.26, lg_rg maxed = singular KKT); obj wandered −278→−529 (not a real optimum). Likely **unidentifiable params / scaling**. |
+| **SalazarCavazos** | compile blowup (~10×+ PEtab) | `build_function` codegen of rule-expanded RHS + observables — the `ov-work` build_function work. |
 
-**Suboptimality is itself an error class:** a `SOLVE_SUCCEEDED` landing on a HIGHER (worse) nllh than
-PEtab is a potential correctness flag, not a pass. Caveat — the K=6 collocation objective ≠ continuous
-nllh, so judge by DIRECTION: exa *lower* (Armistead −306.13 vs −301.92) is usually discretization; exa
-*higher* (Bertozzi) is genuine suboptimal convergence. `final_report.jl` prints the rel.gap column.
+### Benchmark campaign results (20-model snapshot, closed 2026-06-05; non-event subset)
+Point-in-time closeout for the 19 non-event + Crauste. **9 clean ✅ · 4 converged-marginal ⚠️ · 7 hard-fail 🔴.**
+Once compiled, ExaModels' warm SGM solve is **6–60× faster** than PEtab/IPNewton, matching obj to ≤2% on the clean set.
+- **✅ Clean (9, warm speedup):** Crauste 60×, Bruno 57×, Blasi 35×, Rahman 26×, Boehm 23×, Armistead 18×, Perelson 14×, Sneyd 6×, Okuonghae 2× (+4.6% high).
+- **⚠️ Marginal (4):** Schwen (skipped; converges to RIGHT answer but stalls above dual tol → needs looser tol), Laske (RESTORATION_FAILED +3.6%), Zhao (RESTORATION_FAILED +8.2%, SGM skipped), Bertozzi (SOLVE_SUCCEEDED **+194%** worse local min).
+- **🔴 Hard-fail (7):** Bachmann, Fiedler, Lucarelli, Borghans, Elowitz, Zheng, SalazarCavazos (table above).
+- **Event models (6, Fix #7):** transcription reproduces PEtab @ iter 0, but solves drift off θ* pending the `ov-work` objective fix — not yet clean passes (Oliveira/Giordano don't finish building).
+
+**Suboptimality is itself an error class:** a `SOLVE_SUCCEEDED` on a HIGHER (worse) nllh than PEtab is a
+correctness flag, not a pass. Judge by DIRECTION: exa *lower* (Armistead −306 vs −302) is usually K=6
+discretization; exa *higher* (Bertozzi, Okuonghae, Laske, Zhao) is genuine suboptimal convergence.
 
 **Event models — fixed-time NOW SUPPORTED (Fix #7).** The 6 fixed-time `piecewise(time>T)` models
 (Oliveira, Fujita, Giordano, Brannmark, Isensee, Raimundez) are handled by the gate transcription and are
@@ -206,14 +226,15 @@ Results in `results/`, combined key=value `{Model}_results.txt` per model (petab
 - `benchmark_petab.jl / .sh` — one Julia process per model; builds PEtabODEProblem, solves with
   Optim.IPNewton(), 1-hr cap. Writes `petab_*`. `bash examples/Benchmarks/benchmark_petab.sh` from root.
 - `benchmark_examodels.jl / .sh` — long-lived Julia process(es), strided over the 24 `ALL_MODELS`
-  (18 non-event + 6 fixed-time event, Fix #7). Warmup =
-  **Crauste** (excluded from ALL_MODELS; pre-warms generic JIT, its timing is invalid). K=6, compile
-  deadline 4 hr. Writes `exa_*`. `bash examples/Benchmarks/benchmark_examodels.sh` from root
-  (**no trailing `&`** — the script uses `wait`; the harness must track the outer process).
+  (18 non-event + 6 fixed-time event, Fix #7). Warmup = **Bruno** (Fix #9; excluded from ALL_MODELS,
+  pre-warms generic JIT). K=6, compile deadline 4 hr. Writes `exa_*`.
+  `bash examples/Benchmarks/benchmark_examodels.sh` from root (**no trailing `&`**).
+- `benchmark_bruno.jl` (Crauste-warmed, benchmarks Bruno both backends) / `benchmark_bachmann_k3.jl`
+  (Bachmann K=3 OOM-fit test) — see Fix #9.
 - `final_report.jl [--sgm]` — prints/writes `final_report.txt`; `--sgm` uses SGM solve times.
 
 ### Per-model examodels sequence
-1. **Warmup** (Crauste, once per process).
+1. **Warmup** (Bruno, once per process; Fix #9).
 2. **Compile** — Phase 1 PEtab setup + ODE presolve (`exa_presolve_time`); Phase 2 Symbolics codegen +
    ExaModels build (`exa_compile_time` = Phase1+2).
 3. **First solve** — MadNLP/cuDSS; includes GPU kernel JIT (`exa_solve_time`, inflated, not comparable).
@@ -225,13 +246,15 @@ Results in `results/`, combined key=value `{Model}_results.txt` per model (petab
 `exa_compile_status`, `exa_solve_status`, `exa_sgm_status`, `exa_term_status`, `exa_objective`,
 `exa_iter`, `exa_nvar`, `exa_ncon`, `exa_error`. `%EXA = (compile−presolve)/compile×100`.
 
-### Models benchmarked (25 = 24 `ALL_MODELS` + Bruno; Crauste excluded as warmup)
+### Models benchmarked (26 total pipeline = 24 `ALL_MODELS` + Bruno + Crauste)
+**Bruno is now the JIT warmup** (Fix #9), so it's excluded from the timed `ALL_MODELS` loop and
+benchmarked via `benchmark_bruno.jl`; **Crauste** is also benchmarked outside the loop (its data captured).
 **Non-event (19, original)** — petab_optimum_found=true AND petab_has_events=false:
 Armistead, Bachmann, Bertozzi, Blasi, Boehm, Borghans, Bruno, Elowitz, Fiedler, Laske, Lucarelli,
 Okuonghae, Perelson, Rahman, SalazarCavazos, Schwen, Sneyd, Zhao, Zheng.
 **Fixed-time event (6, NEW — Fix #7)** — petab_optimum_found=true, piecewise(time) gates:
 Oliveira, Fujita, Giordano, Brannmark (pre-eq), Isensee (pre-eq), Raimundez (pre-eq).
-(`ALL_MODELS` = the 18 non-event in-list + these 6 = 24; Bruno benchmarked separately; total pipeline 26.)
+(`ALL_MODELS` = the 18 non-event in-loop + these 6 = 24; Bruno + Crauste benchmarked separately.)
 
 ### Critical harness notes
 - **Run julia at `-t 1`**; enforce timeouts with external `bash -c "sleep N; kill -9 <pid>"`. A Julia
@@ -268,18 +291,21 @@ Hessian — chosen. `res.converged` is Bool for Optim, an Int status for Ipopt. 
   Prefer GPU 1 for ad-hoc runs; check free memory before a full run. Contention isn't a correctness
   problem (GPUs time-slice) but inflates solve times and can tip the big models (Bachmann) into OOM.
 
-## Outstanding / next steps
-1. **NaN-spin (Borghans + Elowitz)** — add a NaN/stall early-abort to the solve (vs relying on the
-   external SIGKILL) and diagnose the shared infeasible-warm-start root cause (‖c(x₀)‖∞ per block).
-   *(being worked in a parallel session)*.
-2. **Blasi** — dedicated mesh-indexing fix for the `Nothing→Int64` (`_get_dict_t_tidx`) compile error.
-3. **Bachmann** — test alone at K=6 with `CUDA.reclaim()` between models (GPU-mem accumulation vs genuine
-   size); fall back to K=4.
-4. **Fiedler + Lucarelli** — split the oversized fused expr (<31.996 KiB/kernel) or run on sm_80+.
-5. **Bertozzi local-min gap** — multistart / better warm start if matching PEtab's optimum matters; else document.
-6. **Regression re-check** an assignment-rule model (Rahman/Okuonghae) + Laske as they cycle through the
-   queue (#6 touches the shared `_get_rhs_funcs`/IC path; expected no-op).
-7. **Laske compile speed** — 29 nested rules → ~30-min compile; consider CSE/caching if it matters.
-8. **Mesh design** — Option A (shared mesh, extends short conditions to max span) is the kept decision;
-   per-condition meshes (ragged z, bigger refactor) only if a short condition's ODE ever diverges past
-   its window (not yet observed).
+## Outstanding / next steps (post-campaign, 2026-06-05)
+1. **Merge `ov-work` (build_function / observable-blowup fix) into `main`** — THE next step. Unblocks the
+   event-model solves (drift off θ* until then) AND the SalazarCavazos-class compile blowup
+   (`build_function` codegen of rule-expanded RHS + observables; profiled K-independent via
+   `stage_build_timed.jl`). Then re-run `validate_events.jl <Model>` for end-to-end event convergence.
+2. **Solver-conditioning — the recurring wall on big/stiff models.** Related symptoms:
+   NaN-spin (Borghans, Elowitz → NaN/stall early-abort + ‖c(x₀)‖∞ diagnosis); tail-stall above tol
+   (Schwen → looser/adaptive dual tol); RESTORATION_FAILED spiral (Laske, Zhao, Bachmann-K3 → better
+   warm start); singular-KKT (Zheng → check unidentifiable params / scaling).
+3. **Bigger GPU** — Bachmann (proven K=3 fits 23 GB → K=6 needs 80 GB A100/H100) and Fiedler/Lucarelli
+   (sm_70 kernel-param overflow → sm_80+). Hardware blockers, not bugs.
+4. **Bertozzi local-min gap** (+194%) — multistart / better warm start if matching PEtab's optimum matters.
+5. **Regression re-check** an assignment-rule model (Rahman/Okuonghae) + Laske after `ov-work` lands.
+6. **Mesh design** — Option A (shared mesh) is the KEPT decision; per-condition ragged meshes only if a
+   short condition's ODE ever diverges past its window (not observed).
+- *(DONE this campaign: Blasi → Fix #8; Bachmann K-fit test → K=3 fits (memory-only); warmup → Fix #9.)*
+- *(Non-canonical PEtab reruns: Chen/Froehlich compile intractable on this CPU (capped ~19.6 h); Lang
+  compiled in 2.65 h but solve errored. Out of the canonical set.)*
