@@ -18,7 +18,7 @@ SteadyStateDiffEq = "9672c7b4-1e72-59bd-8a11-6ac3964bc41f"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 
 [compat]
-CUDA = "5"
+CUDA = "5, 6.1"
 CUDSS = "0.6.5"
 ExaModels = "0.11"
 Ipopt = "1.14.3"
