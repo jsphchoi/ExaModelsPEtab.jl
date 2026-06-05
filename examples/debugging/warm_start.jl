@@ -2,7 +2,7 @@
 # the parameter scale chain (decision-var start vs PEtab nominal).
 #
 # Usage (from repo root):
-#   julia --project=. examples/scratch_tests/warm_start.jl [model] [K]
+#   julia --project=. examples/debugging/warm_start.jl [model] [K]
 # Defaults: Crauste_CellSystems2017, K=2
 
 using ExaModelsPEtab, PEtab, ExaModels

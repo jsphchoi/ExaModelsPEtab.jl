@@ -1,7 +1,7 @@
 # gpu_run.jl — quick GPU build + solve sanity check for a single model.
 #
 # Usage (from repo root):
-#   julia --project=. -t 1 examples/scratch_tests/gpu_run.jl [model] [K] [max_wall_time] [gpu_id]
+#   julia --project=. -t 1 examples/debugging/gpu_run.jl [model] [K] [max_wall_time] [gpu_id]
 # Defaults: Crauste_CellSystems2017, K=5, 300s wall time, GPU 0
 
 using ExaModelsPEtab, CUDA, MadNLPGPU, CUDSS

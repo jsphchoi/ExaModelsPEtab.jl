@@ -15,8 +15,16 @@ read it from the source of truth:
 - Fixes #1–#10 below are COMMITTED on `main`. #5/#6 in `95e7729`; **#7 fixed-time events in `7454a85`**
   (`events-fixed-time` fast-forwarded into `main` 2026-06-05); #8 Blasi steady-state path in `dc1b295`;
   #9 Bruno-warmup restructure in `08273a3`; **#10 observable build_function-blowup fixes (ov + zN) merged
-  in `399fb43`** (`ov-work` merged 2026-06-05; both side branches/worktrees deleted — single `main` now).
-  Benchmark scripts (K=6, SGM reruns, **Bruno** warmup) committed.
+  in `399fb43`**, then large-expr cap + event tweaks in `e848fb8` (`ov-work` merged 2026-06-05; both side
+  branches/worktrees deleted — single `main`, working tree clean). Benchmark scripts (K=6, SGM reruns,
+  **Bruno** warmup) committed.
+- **Canonical model lists + results layout (2026-06-05; UNCOMMITTED working-tree changes).** All three
+  scripts now `include("examples/Benchmarks/list_benchmarks.jl")` — the single source of truth: `BENCHMARK_MODELS` (35) ⊇
+  `PETAB_SOLVED_MODELS` (28, drops the 7 PEtab-side failures) ⊇ `EXA_SUPPORTED_MODELS` (26, drops Beer +
+  Liu). benchmark_examodels.jl derives its 24 in-loop models = `EXA_SUPPORTED − {Bruno, Crauste}`;
+  final_report.jl rows = `PETAB_SOLVED_MODELS`. `results/` now holds ONLY the 35 benchmark-model
+  `*_results.txt`; run logs moved to `examples/debugging/logs/`; the Bachmann-K=3 scratch test
+  (`benchmark_bachmann_k3.jl` + its result/log) moved to `examples/debugging/` + `debugging/results/`.
 - **NEEDS A FRESH BENCHMARK RUN.** Fix #10 changes the observable/IC transcription (ov/zN); the result
   files predate it. Re-run `benchmark_examodels.sh` and re-run `validate_events.jl <Model>` for the event
   models (whose solves drifted off θ* on the OLD objective).
@@ -121,7 +129,7 @@ to `ALL_MODELS` (18 → 24; **26 total** incl. Bruno + Crauste). All 6 have peta
   for these models (Oliveira/Giordano don't even finish building — `sd_cumulative_cases`,
   `CurrentDiagnosedInfected`), which is the OTHER session's `ov-work` (build_function blowup + observable-
   rule resolution). **Merge `ov-work`'s objective.jl into this branch, then re-run
-  `examples/scratch_tests/validate_events.jl <Model>` to confirm end-to-end convergence.**
+  `examples/debugging/validate_events.jl <Model>` to confirm end-to-end convergence.**
 - **Out of scope (still):** Beer (event TIME is an estimated param), Liu (state-triggered `U<1e-8`), Smith
   (true state-jump events; also petab opt_status=false).
 
@@ -214,7 +222,7 @@ only uses warm-start z at measurement nodes + observable/noise formulas — so i
 buggy models. The bugs showed up only in the **solve** and the **warm-start constraint violation**:
 1. **‖c(x₀)‖∞ split by block.** Unscaled ∞-norm of the equality-constraint residual at `m.meta.x0`,
    split into collocation / cv / interval-continuity / IC / y+σ to localize. Armistead → all in IC;
-   Bertozzi → all in collocation. (`examples/scratch_tests/warm_start.jl <Model> <K>`.)
+   Bertozzi → all in collocation. (`examples/debugging/warm_start.jl <Model> <K>`.)
 2. **Real RHS bug or mesh coarseness?** Compare our `_get_rhs_funcs` f to PEtab's actual RHS
    (`oprob,_=PEtab.get_odeproblem(θ,PEprob;condition=cid); oprob.f(du,u0,oprob.p,0.0)` vs `fs[v](...)`;
    ratio should be 1.0). Manual collocation residual: A=`Σ_j z[v,i,j,cidx]·DLDTAU[j+1,k]` vs B=`h[i]·f(...)`
@@ -233,7 +241,7 @@ reldiff = abs(exa-petab)/abs(petab)                 # ~1e-7 = K=5 discretization
 ```
 Both numbers are the likelihood at nominal θ via independent code paths, so small reldiff means our
 objective formulation (observables, σ, assignment rules, condition indexing, mesh, state-at-measurement
-mapping) reproduces PEtab. Use `backend=nothing` (CPU). Tool: `examples/scratch_tests/verify_models.jl`.
+mapping) reproduces PEtab. Use `backend=nothing` (CPU). Tool: `examples/debugging/verify_models.jl`.
 
 ⚠️ **Necessary but NOT sufficient** — passed to ~1e-11 for BOTH Armistead and Bertozzi while each had a
 constraint-generation bug (the check never touches the RHS or IC/continuity constraints). Always pair it
@@ -263,8 +271,11 @@ Results in `results/`, combined key=value `{Model}_results.txt` per model (petab
   (18 non-event + 6 fixed-time event, Fix #7). Warmup = **Bruno** (Fix #9; excluded from ALL_MODELS,
   pre-warms generic JIT). K=6, compile deadline 4 hr. Writes `exa_*`.
   `bash examples/Benchmarks/benchmark_examodels.sh` from root (**no trailing `&`**).
-- `benchmark_bruno.jl` (Crauste-warmed, benchmarks Bruno both backends) / `benchmark_bachmann_k3.jl`
-  (Bachmann K=3 OOM-fit test) — see Fix #9.
+- `benchmark_bruno.jl` (Crauste-warmed, benchmarks Bruno both backends) — see Fix #9. (The Bachmann K=3
+  OOM-fit scratch test moved to `examples/debugging/benchmark_bachmann_k3.jl`, writing to
+  `debugging/results/Bachmann_MSB2011_K3_results.txt`.)
+- `list_benchmarks.jl` — canonical BENCHMARK_MODELS (35) / PETAB_SOLVED_MODELS (28) / EXA_SUPPORTED_MODELS (26),
+  included by benchmark_examodels.jl, benchmark_petab.jl, and final_report.jl.
 - `final_report.jl [--sgm]` — prints/writes `final_report.txt`; `--sgm` uses SGM solve times.
 
 ### Per-model examodels sequence
@@ -281,6 +292,7 @@ Results in `results/`, combined key=value `{Model}_results.txt` per model (petab
 `exa_iter`, `exa_nvar`, `exa_ncon`, `exa_error`. `%EXA = (compile−presolve)/compile×100`.
 
 ### Models benchmarked (26 total pipeline = 24 `ALL_MODELS` + Bruno + Crauste)
+**Canonical lists now live in `list_benchmarks.jl`** (`EXA_SUPPORTED_MODELS` = these 26).
 **Bruno is now the JIT warmup** (Fix #9), so it's excluded from the timed `ALL_MODELS` loop and
 benchmarked via `benchmark_bruno.jl`; **Crauste** is also benchmarked outside the loop (its data captured).
 **Non-event (19, original)** — petab_optimum_found=true AND petab_has_events=false:
@@ -298,10 +310,12 @@ Oliveira, Fujita, Giordano, Brannmark (pre-eq), Isensee (pre-eq), Raimundez (pre
   restart; `exa_finished()` re-queues anything not terminal.
 - Re-run a model from scratch: strip its `exa_*` keys, keep `petab_*`:
   `grep "^petab_" file > tmp && mv tmp file`.
-- A diverging (NaN) solve currently relies on the external SIGKILL + auto-resume; `MAX_ITER=1e8` +
-  `SOLVE_LIMIT=86400` means without that guard a dead solve would burn ~24h.
+- A diverging (NaN) solve relies on MadNLP `max_wall_time` + external SIGKILL + auto-resume; with
+  `MAX_ITER=1e8` the wall clock is the only real bound. `SOLVE_LIMIT` lowered 86400→**7200 (2 hr)**
+  on 2026-06-05 — the longest TRUE successful solve was Lucarelli/PEtab ~2676 s (0.74 hr) and exa Boehm
+  ~264 s, so 2 hr caps only diverging/NaN-spin solves (≈12× faster to abandon a dead run than the old 24h).
 
-### Scratch tests (examples/scratch_tests/)
+### Scratch tests (examples/debugging/)
 `verify_models.jl` (objective-consistency, main validation tool), `warm_start.jl` (warm-start violation),
 `gpu_run.jl` (end-to-end GPU sanity), `sigma_constraints.jl`, `stage_build.jl`.
 Event support (Fix #7): `validate_events.jl <Model>` (GPU build+solve, compares to PEtab optimum),

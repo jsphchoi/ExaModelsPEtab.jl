@@ -3,7 +3,7 @@
 # ("does not follow an expected PEtab noise form") fires unexpectedly.
 #
 # Usage (from repo root):
-#   julia --project=. examples/scratch_tests/sigma_constraints.jl [K]
+#   julia --project=. examples/debugging/sigma_constraints.jl [K]
 # Default: K=2
 
 using ExaModelsPEtab, PEtab, ExaModels, Logging

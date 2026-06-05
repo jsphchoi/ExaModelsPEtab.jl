@@ -5,14 +5,14 @@
 # Writes to a SEPARATE file Bachmann_MSB2011_K3_results.txt so the K=6 OOM record in
 # the main file is preserved. exa_K=3 is stamped so the coarser mesh is explicit.
 # Warmup on Bruno (NOT the target). CPU/GPU: pinned to the GPU id in ARGS[1] (default 0).
-#   julia --project=. -t 1 examples/Benchmarks/benchmark_bachmann_k3.jl 1
+#   julia --project=. -t 1 examples/debugging/benchmark_bachmann_k3.jl 1
 
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels
 
 const K             = 3                # coarser mesh to fit the 32 GB GPU (vs standard 6)
 const TOL           = 1e-6
 const COMPILE_LIMIT = 14400.0
-const SOLVE_LIMIT   = 86400.0
+const SOLVE_LIMIT   = 7200.0          # 2 hr (matches the benchmark scripts)
 const MAX_ITER      = 100_000_000
 const N_SGM_RERUNS  = 3
 const WARMUP_MODEL  = "Bruno_JExpBot2016"

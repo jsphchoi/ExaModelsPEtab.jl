@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# benchmark_petab.sh — runs benchmark_petab.jl for all 35 models in parallel.
-# Each model is a separate Julia process. Results go to Benchmarks/results/*.txt
-# and are resumable (models with a terminal petab result are skipped).
+# benchmark_petab.sh — runs benchmark_petab.jl for every benchmark model (minus the Bruno
+# JIT warmup, which benchmark_bruno.jl covers) in parallel. Each model is a separate Julia
+# process. Result txts go to Benchmarks/results/ (resumable — models with a terminal petab
+# result are skipped); per-model run logs go to debugging/logs/.
+#
+# The MODELS array below is the canonical BENCHMARK_MODELS list (list_benchmarks.jl) minus Bruno.
 #
 # Usage (from repo root):
 #   bash examples/Benchmarks/benchmark_petab.sh [max_parallel_workers]
@@ -9,14 +12,15 @@
 set -u
 cd "$(dirname "$0")/../.."
 RD=examples/Benchmarks/results
-mkdir -p "$RD"
+LD=examples/debugging/logs
+mkdir -p "$RD" "$LD"
 PAR=${1:-12}
 
 MODELS=(
     Alkan_SciSignal2018 Armistead_CellDeathDis2024 Bachmann_MSB2011
     Beer_MolBioSystems2014 Bertozzi_PNAS2020 Blasi_CellSystems2016
     Boehm_JProteomeRes2014 Borghans_BiophysChem1997 Brannmark_JBC2010
-    Bruno_JExpBot2016 Chen_MSB2009 Crauste_CellSystems2017
+    Chen_MSB2009 Crauste_CellSystems2017  # Bruno excluded — shared JIT warmup (benchmark_bruno.jl)
     Elowitz_Nature2000 Fiedler_BMCSystBiol2016 Froehlich_CellSystems2018
     Fujita_SciSignal2010 Giordano_Nature2020 Isensee_JCB2018
     Lang_PLOSComputBiol2024 Laske_PLOSComputBiol2019 Liu_IFACPapersOnLine2025
@@ -49,7 +53,7 @@ for m in "${MODELS[@]}"; do
     while [ "$(jobs -rp | wc -l)" -ge "$PAR" ]; do sleep 2; done
     echo "[run ] $m"
     julia --project=. -t 1 examples/Benchmarks/benchmark_petab.jl "$m" \
-        > "$RD/${m}_petab.log" 2>&1 &
+        > "$LD/${m}_petab.log" 2>&1 &
 done
 wait
 echo "[benchmark_petab] $(date) ALL DONE"

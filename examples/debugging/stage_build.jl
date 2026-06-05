@@ -3,7 +3,7 @@
 # Reports nvar/ncon after each stage and checks warm-start feasibility at the end.
 #
 # Usage (from repo root):
-#   julia --project=. examples/scratch_tests/stage_build.jl [model] [K]
+#   julia --project=. examples/debugging/stage_build.jl [model] [K]
 # Defaults: Smith_BMCSystBiol2013, K=2
 
 using ExaModelsPEtab, PEtab, ExaModels

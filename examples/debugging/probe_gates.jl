@@ -1,5 +1,5 @@
 # Probe: how piecewise(time) gate parameters are represented & how to read their values over time.
-# Run: julia --project=. examples/scratch_tests/probe_gates.jl
+# Run: julia --project=. examples/debugging/probe_gates.jl
 using ExaModelsPEtab
 import PEtab
 import ModelingToolkitBase as MTK

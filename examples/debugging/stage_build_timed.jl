@@ -6,7 +6,7 @@
 # numbers for the real targets are codegen-time, not first-call-compile time.
 #
 # Usage (from repo root):
-#   julia --project=. examples/scratch_tests/stage_build_timed.jl [K] [model1] [model2 ...]
+#   julia --project=. examples/debugging/stage_build_timed.jl [K] [model1] [model2 ...]
 #   defaults: K=2, models = Perelson_Science1996 (fast baseline) + SalazarCavazos_MBoC2020
 
 using ExaModelsPEtab, PEtab, ExaModels

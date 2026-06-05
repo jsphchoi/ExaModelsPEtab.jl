@@ -11,20 +11,12 @@ const RESULTDIR  = joinpath(@__DIR__, "results")
 const REPORT_TXT = joinpath(@__DIR__, "final_report.txt")
 const USE_SGM    = "--sgm" in ARGS
 
-const ALL_MODELS = [
-    "Alkan_SciSignal2018", "Armistead_CellDeathDis2024", "Bachmann_MSB2011",
-    "Beer_MolBioSystems2014", "Bertozzi_PNAS2020", "Blasi_CellSystems2016",
-    "Boehm_JProteomeRes2014", "Borghans_BiophysChem1997", "Brannmark_JBC2010",
-    "Bruno_JExpBot2016", "Chen_MSB2009", "Crauste_CellSystems2017",
-    "Elowitz_Nature2000", "Fiedler_BMCSystBiol2016", "Froehlich_CellSystems2018",
-    "Fujita_SciSignal2010", "Giordano_Nature2020", "Isensee_JCB2018",
-    "Lang_PLOSComputBiol2024", "Laske_PLOSComputBiol2019", "Liu_IFACPapersOnLine2025",
-    "Lucarelli_CellSystems2018", "Okuonghae_ChaosSolitonsFractals2020",
-    "Oliveira_NatCommun2021", "Perelson_Science1996", "Rahman_MBS2016",
-    "Raia_CancerResearch2011", "Raimundez_PCB2020", "SalazarCavazos_MBoC2020",
-    "Schwen_PONE2014", "Smith_BMCSystBiol2013", "Sneyd_PNAS2002",
-    "Weber_BMC2015", "Zhao_QuantBiol2020", "Zheng_PNAS2012",
-]
+include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
+
+# The report rows are the models PEtab actually solved — the meaningful head-to-head set.
+# PEtab-side failures (Alkan/Chen/Froehlich/Lang/Raia/Smith/Weber) are excluded. The two
+# ExaModels-unsupported models (Beer, Liu) stay in the rows so the solved-count accounting is honest.
+const ALL_MODELS = PETAB_SOLVED_MODELS  # 28
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 function read_result(m)
@@ -152,25 +144,27 @@ end
 println(buf, sep)
 
 # ─── summary ──────────────────────────────────────────────────────────────────
-petab_opt(d) = g(d, "petab_optimum_found") == "true"
-exa_opt(d)   = madnlp_code(d) == "0"
-all_d        = [read_result(m) for m in ALL_MODELS]
+exa_opt(d) = madnlp_code(d) == "0"
+all_d           = [read_result(m) for m in ALL_MODELS]                 # 28 PEtab-solved (rows)
+exa_supported_d = [read_result(m) for m in EXA_SUPPORTED_MODELS]       # 26 exa-representable
 
-n_exa_opt   = count(exa_opt,   all_d)
-n_petab_opt = count(petab_opt, all_d)
+n_bench   = length(BENCHMARK_MODELS)         # 35
+n_petab   = length(PETAB_SOLVED_MODELS)      # 28
+n_exa_sup = length(EXA_SUPPORTED_MODELS)     # 26
+n_exa_opt = count(exa_opt, exa_supported_d)  # exa SOLVE_SUCCEEDED among the supported set
 
-n = length(ALL_MODELS)
 println(buf, "\nSUMMARY")
-@printf(buf, "  ExaModels solved : %2d / %2d  (of PEtab-solved)\n", n_exa_opt,   n_petab_opt)
-@printf(buf, "  PEtab solved     : %2d / %2d\n",                     n_petab_opt, n)
-@printf(buf, "  Total models     : %2d\n",                            n)
+@printf(buf, "  Benchmark models       : %2d\n",                          n_bench)
+@printf(buf, "  PEtab found optimum    : %2d / %2d\n",                     n_petab, n_bench)
+@printf(buf, "  ExaModels-supported    : %2d  (PEtab-solved minus Beer, Liu)\n", n_exa_sup)
+@printf(buf, "  ExaModels solved (opt) : %2d / %2d  (of ExaModels-supported)\n", n_exa_opt, n_exa_sup)
 
 get_gap(d) = begin
     eo = fparse(g(d, "exa_objective")); po = fparse(g(d, "petab_objective"))
     (eo === nothing || po === nothing || !isfinite(eo) || !isfinite(po) || po == 0.0) ? nothing :
     (eo - po) / abs(po) * 100.0
 end
-gaps = filter(!isnothing, get_gap.(all_d))
+gaps = filter(!isnothing, get_gap.(exa_supported_d))
 if !isempty(gaps)
     max_idx = argmax(abs.(gaps))
     @printf(buf, "\nRELATIVE OBJECTIVE GAP  (exa_obj - petab_obj) / |petab_obj| × 100%%  [negative = ExaModels lower]:\n")

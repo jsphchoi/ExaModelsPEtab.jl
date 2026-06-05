@@ -1,7 +1,8 @@
 # benchmark_examodels.jl — ExaModelsPEtab + MadNLP GPU benchmark
 #
-# Builds petab_examodel (with CUDABackend) and solves with MadNLP on GPU for all
-# 35 benchmark models. Results are written to Benchmarks/results/{Model}_results.txt
+# Builds petab_examodel (with CUDABackend) and solves with MadNLP on GPU for the
+# ExaModelsPEtab-supported models (EXA_SUPPORTED_MODELS in list_benchmarks.jl, minus the
+# warmup/separately-benchmarked ones). Results are written to Benchmarks/results/{Model}_results.txt
 # using prefixed keys (exa_*) so petab results in the same file are preserved.
 #
 # Compilation timing is split into two phases:
@@ -27,7 +28,7 @@ using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels
 const K             = 6               # collocation points per mesh interval
 const TOL           = 1e-6            # MadNLP solver tolerance
 const COMPILE_LIMIT = 14400.0         # hard compile deadline [s] (4 hr)
-const SOLVE_LIMIT   = 86400.0         # MadNLP max_wall_time [s] (24 hr)
+const SOLVE_LIMIT   = 7200.0         # MadNLP max_wall_time [s] (2 hr; longest true success ~0.74 hr, so this only caps diverging/NaN-spin solves)
 const MAX_ITER      = 100_000_000     # large so wall time is always the bottleneck
 const N_SGM_RERUNS  = 3               # rerun count for geometric mean timing
 const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_petab.jl; excluded from ALL_MODELS — pre-warms generic JIT only
@@ -36,26 +37,15 @@ const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_petab.jl
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
 
-const ALL_MODELS = [
-    # petab_optimum_found=true AND petab_has_events=false (18 non-event models)
-    # Crauste AND Bruno excluded — Bruno is the shared JIT warmup (see WARMUP_MODEL); a model
-    # benchmarked by the same script that warms up on it gets a pre-warmed, invalid compile
-    # time. Bruno is benchmarked separately via benchmark_bruno.jl (warmed up on Crauste).
-    "Armistead_CellDeathDis2024", "Bachmann_MSB2011", "Bertozzi_PNAS2020",
-    "Blasi_CellSystems2016", "Boehm_JProteomeRes2014", "Borghans_BiophysChem1997",
-    "Elowitz_Nature2000",
-    "Fiedler_BMCSystBiol2016", "Laske_PLOSComputBiol2019", "Lucarelli_CellSystems2018",
-    "Okuonghae_ChaosSolitonsFractals2020", "Perelson_Science1996", "Rahman_MBS2016",
-    "SalazarCavazos_MBoC2020", "Schwen_PONE2014", "Sneyd_PNAS2002",
-    "Zhao_QuantBiol2020", "Zheng_PNAS2012",
-    # Fixed-time piecewise(time) EVENT models (NEW — gate support added this session, see HANDOFF
-    # "Fix #7"). The last three also exercise x0SSpre pre-equilibration. petab_optimum_found=true
-    # for all 6; the event transcription reproduces PEtab's EXACT objective at the warm start. Full
-    # end-to-end convergence still pends the objective.jl observable/noise fixes (ov-work branch).
-    # (18 + 6 = 24 in ALL_MODELS; 26 total incl. Bruno + Crauste.)
-    "Oliveira_NatCommun2021", "Fujita_SciSignal2010", "Giordano_Nature2020",
-    "Brannmark_JBC2010", "Isensee_JCB2018", "Raimundez_PCB2020",
-]
+include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
+
+# The timed in-loop set = ExaModelsPEtab-supported models (PEtab-solved ∩ exa-representable),
+# minus the two benchmarked outside this loop:
+#   Bruno   — the shared JIT warmup (see WARMUP_MODEL); benchmarked by benchmark_bruno.jl
+#   Crauste — benchmarked separately (its data already captured)
+# 26 EXA_SUPPORTED − Bruno − Crauste = 24 (18 non-event + 6 fixed-time piecewise(time) event).
+const ALL_MODELS = filter(m -> m ∉ (WARMUP_MODEL, "Crauste_CellSystems2017"),
+                          EXA_SUPPORTED_MODELS)
 
 get_yaml(m) = begin
     d = joinpath(MODELDIR, m); isdir(d) || return nothing

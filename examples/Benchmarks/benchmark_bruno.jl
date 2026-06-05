@@ -20,7 +20,7 @@ const K             = 6                # collocation points per mesh interval (e
 const TOL           = 1e-6             # solver tolerance (both)
 const COMPILE_LIMIT = 14400.0          # exa compile deadline [s] (4 hr)
 const PETAB_COMPILE_LIMIT = 1800.0     # petab compile deadline [s] (30 min)
-const SOLVE_LIMIT   = 86400.0          # max_wall_time / time_limit [s] (24 hr)
+const SOLVE_LIMIT   = 7200.0          # max_wall_time / time_limit [s] (2 hr; matches the parent scripts)
 const MAX_ITER      = 100_000_000
 const N_SGM_RERUNS  = 3                # rerun count for geometric mean timing
 # ────────────────────────────────────────────────────────────────────────────────

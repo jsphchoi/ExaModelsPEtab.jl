@@ -22,7 +22,7 @@ using PEtab, Optim
 
 # ─── CONFIGURABLE SETTINGS ────────────────────────────────────────────────────
 const TOL           = 1e-6            # Optim g_tol (matches MadNLP tol)
-const SOLVE_LIMIT   = 86400.0         # Optim time_limit [s] (24 hr, matches MadNLP)
+const SOLVE_LIMIT   = 7200.0         # Optim time_limit [s] (2 hr, matches MadNLP; longest true success ~0.74 hr)
 const COMPILE_LIMIT = parse(Float64, get(ENV, "PETAB_COMPILE_LIMIT", "1800.0"))  # hard compile deadline [s] (default 30 min; override via PETAB_COMPILE_LIMIT env)
 const MAX_ITER      = 100_000_000     # large so wall time is always the bottleneck
 const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_examodels.jl; excluded from ALL_MODELS below — benchmark Bruno via benchmark_bruno.jl (Crauste-warmed)
@@ -31,20 +31,12 @@ const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_examodel
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
 
-const ALL_MODELS = [
-    "Alkan_SciSignal2018", "Armistead_CellDeathDis2024", "Bachmann_MSB2011",
-    "Beer_MolBioSystems2014", "Bertozzi_PNAS2020", "Blasi_CellSystems2016",
-    "Boehm_JProteomeRes2014", "Borghans_BiophysChem1997", "Brannmark_JBC2010",
-    "Chen_MSB2009", "Crauste_CellSystems2017",  # Bruno excluded — it is the JIT warmup (benchmark_bruno.jl covers it)
-    "Elowitz_Nature2000", "Fiedler_BMCSystBiol2016", "Froehlich_CellSystems2018",
-    "Fujita_SciSignal2010", "Giordano_Nature2020", "Isensee_JCB2018",
-    "Lang_PLOSComputBiol2024", "Laske_PLOSComputBiol2019", "Liu_IFACPapersOnLine2025",
-    "Lucarelli_CellSystems2018", "Okuonghae_ChaosSolitonsFractals2020",
-    "Oliveira_NatCommun2021", "Perelson_Science1996", "Rahman_MBS2016",
-    "Raia_CancerResearch2011", "Raimundez_PCB2020", "SalazarCavazos_MBoC2020",
-    "Schwen_PONE2014", "Smith_BMCSystBiol2013", "Sneyd_PNAS2002",
-    "Weber_BMC2015", "Zhao_QuantBiol2020", "Zheng_PNAS2012",
-]
+include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
+
+# PEtab attempts EVERY benchmark model (optimum-found is only known after solving), minus the
+# shared JIT warmup Bruno (benchmarked via benchmark_bruno.jl). Only used by print_models() /
+# the .sh driver; run_worker() benchmarks whatever model name is passed as ARGS[1].
+const ALL_MODELS = filter(!=(WARMUP_MODEL), BENCHMARK_MODELS)  # 34
 
 print_models() = foreach(m -> print(m, " "), ALL_MODELS)
 
