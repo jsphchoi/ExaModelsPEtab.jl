@@ -1,6 +1,16 @@
-exa_compile_status=error
-exa_error=PEtab.PEtabInputError("Condition id `pred2` not found in the PEtab problem. Valid ids: [:pred1].")
-exa_solve_status=skipped
+exa_compile_status=ok
+exa_compile_time=275.17
+exa_error=
+exa_iter=134
+exa_ncon=16026
+exa_nvar=16076
+exa_objective=-689.39949174676
+exa_presolve_time=150.0
+exa_sgm_error=first solve term=INFEASIBLE_PROBLEM_DETECTED≠SOLVE_SUCCEEDED; SGM skipped
+exa_sgm_status=skipped
+exa_solve_status=ok
+exa_solve_time=87.49
+exa_term_status=INFEASIBLE_PROBLEM_DETECTED
 petab_compile_status=ok
 petab_compile_time=239.16
 petab_has_events=true

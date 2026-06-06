@@ -93,8 +93,8 @@ function exa_finished(m)
     # First solve failed/timed out — no SGM, done
     ss in ("timeout", "error") && return true
     ss != "ok" && return false
-    # First solve succeeded — done only when SGM is also terminal
-    return sgm in ("ok", "error")
+    # First solve succeeded — done only when SGM is also terminal ("skipped" = diverged solve, no SGM)
+    return sgm in ("ok", "error", "skipped")
 end
 
 # ─── build one ExaModel (compile phases 1+2) ──────────────────────────────────
@@ -246,30 +246,38 @@ function bench_one(m)
     d2 = read_result(rp)
     if get(d2, "exa_compile_status", "") == "ok" &&
        get(d2, "exa_solve_status",   "") == "ok" &&
-       get(d2, "exa_sgm_status",     "") ∉ ("ok", "error")
+       get(d2, "exa_sgm_status",     "") ∉ ("ok", "error", "skipped")
 
-        # Resuming: model not in memory — rebuild silently (time not recorded)
-        if model === nothing
-            yaml === nothing && return
-            @info "[$m] rebuilding for SGM (resume)..."
-            try
-                t0 = time()
-                model, _, _, _ = with_hard_deadline(COMPILE_LIMIT) do
-                    build_model(yaml, t0)
+        # SGM reruns are timing-only — skip them unless the first solve actually CONVERGED
+        # (SOLVE_SUCCEEDED). SGM on a diverged / walltime-capped solve is wasted GPU time.
+        if uppercase(get(d2, "exa_term_status", "")) != "SOLVE_SUCCEEDED"
+            write_result(rp, Dict("exa_sgm_status" => "skipped",
+                "exa_sgm_error" => "first solve term=$(get(d2, "exa_term_status", ""))≠SOLVE_SUCCEEDED; SGM skipped"))
+            @info "[$m] SGM skipped (solve term=$(get(d2, "exa_term_status", "")), not SOLVE_SUCCEEDED)"
+        else
+            # Resuming: model not in memory — rebuild silently (time not recorded)
+            if model === nothing
+                yaml === nothing && return
+                @info "[$m] rebuilding for SGM (resume)..."
+                try
+                    t0 = time()
+                    model, _, _, _ = with_hard_deadline(COMPILE_LIMIT) do
+                        build_model(yaml, t0)
+                    end
+                    # prime GPU kernels with one solve before timing
+                    madnlp(model; tol=TOL, max_iter=MAX_ITER,
+                           max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
+                catch e
+                    @error "[$m] SGM rebuild failed" exception=(e, catch_backtrace())
+                    write_result(rp, Dict("exa_sgm_status" => "error",
+                                          "exa_sgm_error"  => sprint(showerror, e)))
+                    model = nothing; GC.gc(); CUDA.reclaim()
+                    return
                 end
-                # prime GPU kernels with one solve before timing
-                madnlp(model; tol=TOL, max_iter=MAX_ITER,
-                       max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
-            catch e
-                @error "[$m] SGM rebuild failed" exception=(e, catch_backtrace())
-                write_result(rp, Dict("exa_sgm_status" => "error",
-                                      "exa_sgm_error"  => sprint(showerror, e)))
-                model = nothing; GC.gc(); CUDA.reclaim()
-                return
             end
-        end
 
-        run_sgm_reruns(m, rp, model)
+            run_sgm_reruns(m, rp, model)
+        end
     end
 
     model = nothing; GC.gc(); CUDA.reclaim()

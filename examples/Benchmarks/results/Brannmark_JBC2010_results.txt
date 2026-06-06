@@ -1,13 +1,17 @@
 exa_compile_status=ok
-exa_compile_time=180.78
-exa_iter=302
-exa_ncon=105598
-exa_nvar=105620
-exa_objective=143.6925527384695
-exa_solve_limit=158.2
+exa_compile_time=200.39
+exa_error=
+exa_iter=1721
+exa_ncon=130735
+exa_nvar=130757
+exa_objective=2.4616793964790754e7
+exa_presolve_time=74.82
+exa_sgm_error=first solve term=SEARCH_DIRECTION_BECOMES_TOO_SMALL≠SOLVE_SUCCEEDED; SGM skipped
+exa_sgm_n=3
+exa_sgm_status=skipped
 exa_solve_status=ok
-exa_solve_time=160.25
-exa_term_status=MAXIMUM_WALLTIME_EXCEEDED
+exa_solve_time=406.02
+exa_term_status=SEARCH_DIRECTION_BECOMES_TOO_SMALL
 petab_compile_status=ok
 petab_compile_time=307.17
 petab_has_events=true
