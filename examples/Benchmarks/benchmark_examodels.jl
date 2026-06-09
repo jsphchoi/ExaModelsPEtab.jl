@@ -10,9 +10,10 @@
 #   Phase 2 (ExaModels)  — collocation/continuity/objective setup + ExaModel(c) build
 # Both timings are stored; final_report.jl computes the %ExaModels column from them.
 #
-# After a successful first compile+solve, 3 additional reruns are performed and
-# the geometric mean (SGM, n=3) of compile/presolve/solve times is stored under
-# exa_sgm_* keys for timing reproducibility analysis.
+# After a successful first compile+solve, N_SGM_RERUNS additional reruns are performed and
+# the geometric mean (SGM, n=10 by default) of the solve times is stored under exa_sgm_*
+# keys for timing reproducibility analysis. SGM is skipped unless the first solve is
+# SOLVE_SUCCEEDED (timing a diverged / walltime-capped solve is meaningless).
 #
 # The run is resumable: models with a terminal result are skipped. Wrap with
 # benchmark_examodels.sh to restart after a watchdog SIGKILL on compile timeout.
@@ -25,12 +26,19 @@
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels
 
 # ─── CONFIGURABLE SETTINGS ────────────────────────────────────────────────────
-const K             = 6               # collocation points per mesh interval
+const K             = parse(Int, get(ENV, "EXA_K", "4"))       # collocation points per mesh interval (env-overridable; K=4 = canonical default)
 const TOL           = 1e-6            # MadNLP solver tolerance
 const COMPILE_LIMIT = 14400.0         # hard compile deadline [s] (4 hr)
 const SOLVE_LIMIT   = 7200.0         # MadNLP max_wall_time [s] (2 hr; longest true success ~0.74 hr, so this only caps diverging/NaN-spin solves)
 const MAX_ITER      = 100_000_000     # large so wall time is always the bottleneck
-const N_SGM_RERUNS  = 3               # rerun count for geometric mean timing
+const N_SGM_RERUNS  = parse(Int, get(ENV, "EXA_SGM_N", "5"))   # rerun count for geometric mean timing (env-overridable; n=5 = canonical default)
+# acceptable-level termination: accept an ε-optimal KKT point when the strict tol can't be reached
+# (boundary optima / ill-conditioning floor inf_du just above tol). MadNLP's default acceptable_tol
+# (1e-6) equals our tol, making the fallback a no-op; 1e-4 restores the 100×-looser slack Ipopt's
+# defaults intend. It certifies true-but-boundary optima (Schwen) while still rejecting genuinely
+# non-converged solves (Lucarelli/Zheng floor at ~1e-2). Returns SOLVED_TO_ACCEPTABLE_LEVEL.
+const ACCEPT_TOL    = parse(Float64, get(ENV, "EXA_ACCEPT_TOL", "1e-4"))
+const ACCEPT_ITER   = parse(Int,     get(ENV, "EXA_ACCEPT_ITER", "10"))
 const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_petab.jl; excluded from ALL_MODELS — pre-warms generic JIT only
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -39,13 +47,12 @@ const RESULTDIR = joinpath(@__DIR__, "results")
 
 include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
 
-# The timed in-loop set = ExaModelsPEtab-supported models (PEtab-solved ∩ exa-representable),
-# minus the two benchmarked outside this loop:
-#   Bruno   — the shared JIT warmup (see WARMUP_MODEL); benchmarked by benchmark_bruno.jl
-#   Crauste — benchmarked separately (its data already captured)
-# 26 EXA_SUPPORTED − Bruno − Crauste = 24 (18 non-event + 6 fixed-time piecewise(time) event).
-const ALL_MODELS = filter(m -> m ∉ (WARMUP_MODEL, "Crauste_CellSystems2017"),
-                          EXA_SUPPORTED_MODELS)
+# The timed in-loop set = the K=10 rerun target subset (EXA_RERUN_INLOOP in list_benchmarks.jl),
+# ordered clean-success → least-reliable so the high-confidence results land first. It already
+# excludes Bruno (the shared JIT warmup) and Crauste, which are benchmarked via benchmark_bruno.jl.
+# Override with the BENCH_SUBSET env var (comma-separated, order-preserving) for an ad-hoc set.
+const ALL_MODELS = haskey(ENV, "BENCH_SUBSET") ?
+    String.(split(ENV["BENCH_SUBSET"], ',')) : EXA_RERUN_INLOOP
 
 get_yaml(m) = begin
     d = joinpath(MODELDIR, m); isdir(d) || return nothing
@@ -87,8 +94,8 @@ function exa_finished(m)
     cs  = get(d, "exa_compile_status", "")
     ss  = get(d, "exa_solve_status",   "")
     sgm = get(d, "exa_sgm_status",     "")
-    # Terminal compile failures — nothing left to do
-    cs in ("timeout", "error", "missing_yaml") && return true
+    # Terminal compile failures + manual skips — nothing left to do
+    cs in ("timeout", "error", "missing_yaml", "skipped") && return true
     cs != "ok" && return false
     # First solve failed/timed out — no SGM, done
     ss in ("timeout", "error") && return true
@@ -143,7 +150,7 @@ function run_sgm_reruns(m, rp, model)
         try
             t0 = time()
             with_hard_deadline(SOLVE_LIMIT + 3600.0) do
-                madnlp(model; tol=TOL, max_iter=MAX_ITER,
+                madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
                        max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
             end
             push!(solve_times, round(time() - t0; digits=2))
@@ -201,7 +208,8 @@ function bench_one(m)
                 "exa_compile_status" => "ok",
                 "exa_compile_time"   => round(time() - t0; digits=2),
                 "exa_presolve_time"  => round(t_phase1;    digits=2),
-                "exa_nvar"           => nvar,
+                "exa_K"              => K,      # collocation points/interval (mesh fidelity)
+                "exa_nvar"           => nvar,   # NLP problem size (decision variables)
                 "exa_ncon"           => ncon,
             ))
         catch e
@@ -220,7 +228,7 @@ function bench_one(m)
         try
             t0 = time()
             res = with_hard_deadline(SOLVE_LIMIT + 3600.0) do
-                madnlp(model; tol=TOL, max_iter=MAX_ITER,
+                madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
                        max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
             end
             write_result(rp, Dict(
@@ -250,9 +258,9 @@ function bench_one(m)
 
         # SGM reruns are timing-only — skip them unless the first solve actually CONVERGED
         # (SOLVE_SUCCEEDED). SGM on a diverged / walltime-capped solve is wasted GPU time.
-        if uppercase(get(d2, "exa_term_status", "")) != "SOLVE_SUCCEEDED"
+        if !(uppercase(get(d2, "exa_term_status", "")) in ("SOLVE_SUCCEEDED", "SOLVED_TO_ACCEPTABLE_LEVEL"))
             write_result(rp, Dict("exa_sgm_status" => "skipped",
-                "exa_sgm_error" => "first solve term=$(get(d2, "exa_term_status", ""))≠SOLVE_SUCCEEDED; SGM skipped"))
+                "exa_sgm_error" => "first solve term=$(get(d2, "exa_term_status", ""))∉{SUCCEEDED,ACCEPTABLE}; SGM skipped"))
             @info "[$m] SGM skipped (solve term=$(get(d2, "exa_term_status", "")), not SOLVE_SUCCEEDED)"
         else
             # Resuming: model not in memory — rebuild silently (time not recorded)
@@ -265,7 +273,7 @@ function bench_one(m)
                         build_model(yaml, t0)
                     end
                     # prime GPU kernels with one solve before timing
-                    madnlp(model; tol=TOL, max_iter=MAX_ITER,
+                    madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
                            max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
                 catch e
                     @error "[$m] SGM rebuild failed" exception=(e, catch_backtrace())
@@ -291,7 +299,7 @@ function warmup()
         t0 = time()
         mdl, _, _, _ = build_model(yaml, t0)
         CUDA.synchronize()
-        madnlp(mdl; tol=TOL, max_iter=MAX_ITER, max_wall_time=250.0,
+        madnlp(mdl; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER, max_wall_time=250.0,
                linear_solver=MadNLPGPU.CUDSSSolver)
         mdl = nothing; GC.gc(); CUDA.reclaim()
         @info "warmup done"

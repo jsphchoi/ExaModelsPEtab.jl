@@ -5,24 +5,29 @@
 # benchmarked by the same script that warms up on it gets a pre-warmed, invalid compile
 # time (Bruno's petab_compile_time came out 4.96 s vs ~200-300 s for its cold peers).
 #
-# This script benchmarks Bruno with BOTH backends in a single process, warming up on
-# Crauste instead, so Bruno's exa_* and petab_* numbers are valid and comparable. The
-# measurement logic is copied verbatim from the two parent scripts to keep parity.
-#
-#   julia --project=. -t 1 examples/Benchmarks/benchmark_bruno.jl [gpu_id]
+# This script benchmarks the TARGET with BOTH backends in a single process, warming up on a
+# DIFFERENT model (never the target), so the target's exa_* and petab_* numbers are valid and
+# comparable. The measurement logic is copied verbatim from the two parent scripts to keep parity.
+# Bruno and Crauste are each the other's warmup, so this script benchmarks BOTH:
+#   julia --project=. -t 1 examples/Benchmarks/benchmark_bruno.jl Bruno_JExpBot2016   [gpu_id]
+#   julia --project=. -t 1 examples/Benchmarks/benchmark_bruno.jl Crauste_CellSystems2017 [gpu_id]
+# (no target arg ⇒ defaults to Bruno, warmed on Crauste, for backwards compatibility)
 
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels, Optim
 
 # ─── CONFIGURABLE SETTINGS (must match the two parent scripts) ──────────────────
-const TARGET        = "Bruno_JExpBot2016"            # the model under test
-const WARMUP_MODEL  = "Crauste_CellSystems2017"      # warmup (NOT the target) — valid timing
-const K             = 6                # collocation points per mesh interval (examodels)
+const TARGET        = (length(ARGS) >= 1 && !occursin(r"^\d+$", ARGS[1])) ? ARGS[1] : "Bruno_JExpBot2016"  # model under test (arg 1)
+const WARMUP_MODEL  = TARGET == "Crauste_CellSystems2017" ? "Bruno_JExpBot2016" : "Crauste_CellSystems2017"  # warmup ≠ target ⇒ valid timing
+const K             = parse(Int, get(ENV, "EXA_K", "4"))       # collocation points per mesh interval (env-overridable; matches benchmark_examodels.jl)
 const TOL           = 1e-6             # solver tolerance (both)
 const COMPILE_LIMIT = 14400.0          # exa compile deadline [s] (4 hr)
 const PETAB_COMPILE_LIMIT = 1800.0     # petab compile deadline [s] (30 min)
 const SOLVE_LIMIT   = 7200.0          # max_wall_time / time_limit [s] (2 hr; matches the parent scripts)
 const MAX_ITER      = 100_000_000
-const N_SGM_RERUNS  = 3                # rerun count for geometric mean timing
+const N_SGM_RERUNS  = parse(Int, get(ENV, "EXA_SGM_N", "5"))   # exa rerun count for geometric mean timing (env-overridable; canonical n=5)
+const ACCEPT_TOL    = parse(Float64, get(ENV, "EXA_ACCEPT_TOL", "1e-4"))   # ε-optimal acceptable termination (see benchmark_examodels.jl)
+const ACCEPT_ITER   = parse(Int,     get(ENV, "EXA_ACCEPT_ITER", "10"))
+const PETAB_SGM_N   = parse(Int, get(ENV, "PETAB_SGM_N", "5")) # petab rerun count for geometric mean timing (env-overridable)
 # ────────────────────────────────────────────────────────────────────────────────
 
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
@@ -88,7 +93,7 @@ function run_sgm_reruns(m, rp, model)
         @info "[$m] SGM solve $i/$N_SGM_RERUNS ..."
         try
             t0 = time()
-            madnlp(model; tol=TOL, max_iter=MAX_ITER,
+            madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
                    max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
             push!(solve_times, round(time() - t0; digits=2))
         catch e
@@ -135,7 +140,8 @@ function bench_exa(m)
             "exa_compile_status" => "ok",
             "exa_compile_time"   => round(time() - t0; digits=2),
             "exa_presolve_time"  => round(t_phase1;    digits=2),
-            "exa_nvar"           => nvar,
+            "exa_K"              => K,      # collocation points/interval (mesh fidelity)
+            "exa_nvar"           => nvar,   # NLP problem size (decision variables)
             "exa_ncon"           => ncon,
         ))
     catch e
@@ -151,7 +157,7 @@ function bench_exa(m)
     try
         t0 = time()
         res = with_hard_deadline(SOLVE_LIMIT + 3600.0) do
-            madnlp(model; tol=TOL, max_iter=MAX_ITER,
+            madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
                    max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
         end
         write_result(rp, Dict(
@@ -255,9 +261,37 @@ function bench_petab(m)
         write_result(rp, Dict("petab_solve_status" => "error",
                               "petab_error" => sprint(showerror, e)))
     end
+
+    # ── PEtab SGM SOLVE RERUNS (n=10 head-to-head; needs a converged first solve) ──
+    if PETAB_SGM_N > 0 && get(read_result(rp), "petab_optimum_found", "") == "true"
+        write_result(rp, Dict("petab_sgm_status" => "running", "petab_sgm_n" => PETAB_SGM_N))
+        ptimes = Float64[]
+        ok = true
+        for i in 1:PETAB_SGM_N
+            @info "[$m] PEtab SGM solve $i/$PETAB_SGM_N ..."
+            try
+                t0 = time()
+                with_hard_deadline(SOLVE_LIMIT + 600.0) do
+                    calibrate(PEprob, get_x(PEprob), Optim.IPNewton(); options=optim_opts())
+                end
+                push!(ptimes, round(time() - t0; digits=2))
+            catch e
+                @error "[$m] PEtab SGM solve $i failed" exception=(e, catch_backtrace())
+                write_result(rp, Dict("petab_sgm_status" => "error",
+                                      "petab_sgm_error"  => sprint(showerror, e)))
+                ok = false; break
+            end
+        end
+        if ok
+            psgm = round(exp(sum(log, ptimes) / length(ptimes)); digits=2)
+            write_result(rp, Dict("petab_sgm_status" => "ok", "petab_sgm_n" => PETAB_SGM_N,
+                                  "petab_sgm_solve_time" => psgm))
+            @info "[$m] PEtab SGM done: solve=$psgm s (n=$PETAB_SGM_N)"
+        end
+    end
 end
 
-# ─── warmups on Crauste (NOT the target), one per backend ───────────────────────
+# ─── warmups on the WARMUP_MODEL (NOT the target), one per backend ───────────────
 function warmup_exa()
     yaml = get_yaml(WARMUP_MODEL); yaml === nothing && return
     @info "EXA warmup: JIT build+solve on $WARMUP_MODEL ..."
@@ -265,7 +299,7 @@ function warmup_exa()
         t0 = time()
         mdl, _, _, _ = build_model(yaml, t0)
         CUDA.synchronize()
-        madnlp(mdl; tol=TOL, max_iter=MAX_ITER, max_wall_time=250.0,
+        madnlp(mdl; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER, max_wall_time=250.0,
                linear_solver=MadNLPGPU.CUDSSSolver)
         mdl = nothing; GC.gc(); CUDA.reclaim()
         @info "EXA warmup done"
@@ -283,7 +317,9 @@ function warmup_petab()
 end
 
 function main()
-    gpu_id = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 0
+    # gpu_id = the first purely-numeric arg (target name is the non-numeric arg 1); default 0
+    gpu_idx = findfirst(a -> occursin(r"^\d+$", a), ARGS)
+    gpu_id  = gpu_idx === nothing ? 0 : parse(Int, ARGS[gpu_idx])
     CUDA.device!(gpu_id)
     mkpath(RESULTDIR)
     @info "benchmark_bruno: target=$TARGET warmup=$WARMUP_MODEL on GPU $gpu_id ($(CUDA.name(CUDA.device())))"

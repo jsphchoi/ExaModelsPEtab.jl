@@ -62,6 +62,26 @@ function _assert_normal_noise(PEmodel::PEtabModel)
     return nothing
 end
 
+# Guard: the orthogonal-collocation transcription can represent fixed-time piecewise(time>T) gates
+# (SBMLImporter folds those into the RHS as __parameter_ifelse params — NOT <event> elements), but
+# NOT true SBML <event> elements: state-triggered events, state-jump event assignments, or events
+# with a parametric/estimated trigger time. Those impose a discontinuity (or a state reset) the
+# smooth collocation ODE constraints do not model, and they are otherwise SILENTLY IGNORED (the
+# warm-start integrator applies them, so the build looks fine, but the enforced dynamics are wrong).
+# Discriminator (validated): #<event> elements in the SBML — 0 for every fixed-time model, >0 only
+# for the true-event models (Liu=1, Smith=3). Error LOUDLY rather than produce wrong results.
+function _assert_supported_events(PEmodel::PEtabModel)
+    sbml_path = get(PEmodel.paths, :SBML, nothing)
+    (sbml_path === nothing || !isfile(sbml_path)) && return nothing
+    nev = count(r"<event[ >]", read(sbml_path, String))
+    nev == 0 && return nothing
+    error("ExaModelsPEtab does not support SBML <event> elements ($nev found in " *
+          "$(basename(sbml_path))). These encode state-triggered, state-jump, or parametric-time " *
+          "events that the collocation transcription cannot represent and would otherwise be " *
+          "SILENTLY IGNORED (wrong dynamics/objective). Fixed-time piecewise(time>T) gates ARE " *
+          "supported. Known affected benchmark models: Liu, Smith.")
+end
+
 # Physical parameter value of p[m] as an ExaModels expression, where the decision
 # variable p[m] := θ lives on PEtab's estimation scale. The native ODE RHS and all
 # observable/noise formulas use physical parameters, so this inverse-transform is

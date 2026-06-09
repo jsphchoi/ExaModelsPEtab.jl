@@ -79,6 +79,7 @@ end
 # Decision variables for the steady-state path. Mirrors _create_variables but with zss (warm
 # started by forward simulation) in place of the discretized state z, and no collocation mesh.
 function _create_variables_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+    _assert_supported_events(PEmodel)   # reject true SBML <event> models (silently-wrong otherwise)
     c, Np = _create_p(c, PEprob)
 
     Nz  = Int64(PEprob.model_info.nstates)              # number of state variables
@@ -259,6 +260,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     # Objective: Gaussian NLL (shared with the time-course path). @add_obj rebinds the core,
     # so the helper's returned core MUST be captured (else the objective is orphaned).
     c = _add_nll_objective(c, PEmodel, PEinfo)
+    c = _add_prior_objective(c, PEmodel, PEprob)   # MAP: add -log prior(θ) terms (matches PEtab.nllh)
 
     # Parsed table values => ExaModels variable index mappings
     dict_cid_cidx = _get_dict_cid_cidx(PEmodel)

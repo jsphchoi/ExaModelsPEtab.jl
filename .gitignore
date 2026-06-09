@@ -1,1 +1,5 @@
 /Manifest*.toml
+
+# benchmark run artifacts (transient / large)
+/examples/debugging/logs/
+/examples/debugging/archive/

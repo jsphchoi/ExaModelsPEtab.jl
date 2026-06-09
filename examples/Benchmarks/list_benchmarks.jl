@@ -54,3 +54,34 @@ const EXA_SUPPORTED_MODELS = filter(m -> m ∉ _EXA_UNSUPPORTED, PETAB_SOLVED_MO
 @assert length(BENCHMARK_MODELS)     == 35
 @assert length(PETAB_SOLVED_MODELS)  == 28
 @assert length(EXA_SUPPORTED_MODELS) == 26
+
+# ── K=10 / SGM n=10 rerun target set ────────────────────────────────────────────
+# The models on which ExaModelsPEtab reached (or nearly reached) a converged solve, targeted
+# for the K=10 + SGM-n=10 head-to-head rerun against PEtab. ORDERED clean-success → least-
+# reliable so the high-confidence results land first (benchmark_examodels.jl runs in this order,
+# and the unreliable tail's 2 h solve caps don't delay the clean numbers). Membership rationale:
+#   Clean SOLVE_SUCCEEDED matching/near PEtab : Boehm, Blasi, Rahman, Sneyd, Perelson, Armistead,
+#                                               SalazarCavazos (Fix #10 ov win), Bruno, Crauste
+#   Converged but suboptimal local min        : Okuonghae (+4.6%), Bertozzi (+194%) — valid KKT pts
+#   User-requested retry (tail-stall last run): Schwen (was inf_du~1.2e-6 just above 1e-6 tol)
+#   Conditioning long-shots (likely re-fail)  : Lucarelli (dual-stall 0.028), Zhao (+8.2% restoration),
+#                                               Laske (+3.6% restoration) — K=10 mostly won't fix
+# EXCLUDED (and why): Fujita (Status-0 but FALSE PASS — gate-bug, exa −323.5 vs PEtab −53.08);
+#   Zheng (singular-KKT/unidentifiable, lg(rg) pinned ~9–10); Bachmann (OOM, needs 80 GB);
+#   Fiedler (unsupported z0_func IC); Borghans/Elowitz (NaN-spin); event models (don't build/diverge).
+#
+# Bruno & Crauste are the JIT-warmup models (excluded from the timed in-loop scripts — a model
+# warmed-on then benchmarked by the same process gets an invalid compile time); they are
+# benchmarked via benchmark_bruno.jl (warmup-swapped). So EXA_RERUN_INLOOP omits them.
+const EXA_RERUN_INLOOP = [   # benchmark_examodels.jl timed loop, clean → unreliable order
+    "Boehm_JProteomeRes2014", "Blasi_CellSystems2016", "Rahman_MBS2016",
+    "Sneyd_PNAS2002", "Perelson_Science1996", "Armistead_CellDeathDis2024",
+    "SalazarCavazos_MBoC2020", "Okuonghae_ChaosSolitonsFractals2020",
+    "Bertozzi_PNAS2020", "Schwen_PONE2014", "Lucarelli_CellSystems2018",
+    "Zhao_QuantBiol2020", "Laske_PLOSComputBiol2019",
+]
+const EXA_RERUN_MODELS = [EXA_RERUN_INLOOP; "Bruno_JExpBot2016"; "Crauste_CellSystems2017"]  # 15 (report rows)
+
+@assert length(EXA_RERUN_INLOOP) == 13
+@assert length(EXA_RERUN_MODELS) == 15
+@assert all(m -> m ∈ EXA_SUPPORTED_MODELS, EXA_RERUN_MODELS)

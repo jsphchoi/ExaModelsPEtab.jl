@@ -84,6 +84,66 @@ function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
     return c
 end
 
+# Parameter priors (MAP objective). PEtab's nllh adds the negative-log prior for every parameter
+# carrying an objectivePrior; ExaModelsPEtab previously omitted these, leaving a constant objective
+# offset vs PEtab for models that use them (Schwen: 6 parameterScaleNormal priors summing to 12.519,
+# the entire observed gap). Only parameterScaleNormal(μ,σ) is supported: a Gaussian on the
+# ESTIMATION-scale parameter, which IS the decision variable p[pidx] (e.g. log10(param) for a
+# log10-scaled parameter — no extra transform needed). Term: 0.5((p[pidx]-μ)/σ)² + log σ + ½log2π
+# (normalization constants INCLUDED so the objective matches PEtab.nllh to round-off). Models
+# without priors are byte-identical (itr_prior empty). Unsupported prior types warn loudly rather
+# than silently producing a wrong objective. @add_obj rebinds the core, so capture the return.
+function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+    params_df = PEmodel.petab_tables[:parameters]
+    (:objectivePriorType in propertynames(params_df)) || return c   # no priors in this model
+    p           = c.p
+    HALF_LOG2PI = 0.5 * log(2π)
+    LN10        = log(10.0)
+    dict_pidx   = _get_dict_pstr_pidx(PEprob)            # estimated-param name => p[pidx]
+    # `x_scale=true` priors (parameterScale*) act on the DECISION variable p[pidx] (the estimation-
+    # scale value). `x_scale=false` priors (normal/laplace/uniform) act on the PHYSICAL/linear value,
+    # so for a log10/log-scaled param the linear value is 10^p / e^p; for a lin-scaled param it is p
+    # itself (all benchmark laplace/uniform priors are lin-scale, so itr_*_l10/_log stay empty there).
+    psnorm = Tuple{Int,Float64,Float64}[]    # parameterScaleNormal:  0.5((p-μ)/σ)² + logσ + ½log2π
+    pslap  = Tuple{Int,Float64,Float64}[]    # parameterScaleLaplace: |p-μ|/b + log2b
+    lap_li = Tuple{Int,Float64,Float64}[]    # laplace, lin-scale param:  |p-μ|/b + log2b
+    lap_10 = Tuple{Int,Float64,Float64}[]    # laplace, log10-scale:      |10^p-μ|/b + log2b
+    lap_e  = Tuple{Int,Float64,Float64}[]    # laplace, log-scale:        |e^p-μ|/b + log2b
+    unif   = Tuple{Int,Float64}[]            # uniform: constant log(b-a) (param stays in [a,b])
+    for row in eachrow(params_df)
+        ptype = _norm_cell(row[:objectivePriorType], Symbol(""))
+        ptype === Symbol("") && continue                # blank => no prior
+        pid = string(row[:parameterId])
+        haskey(dict_pidx, pid) || continue              # only estimated params are decision vars
+        idx = dict_pidx[pid]
+        pp  = strip.(split(string(row[:objectivePriorParameters]), ";"))
+        a   = parse(Float64, pp[1]); b = length(pp) >= 2 ? parse(Float64, pp[2]) : NaN
+        if     ptype === :parameterscalenormal  ; push!(psnorm, (idx, a, b))
+        elseif ptype === :parameterscalelaplace ; push!(pslap,  (idx, a, b))
+        elseif ptype === :uniform               ; push!(unif,   (idx, log(b - a)))
+        elseif ptype === :normal
+            @warn "objectivePriorType 'normal' (linear-scale Gaussian) not yet implemented for param $pid — prior OMITTED"
+        elseif ptype === :laplace
+            sc = _norm_cell(row[:parameterScale], :lin)
+            sc === :log10 ? push!(lap_10, (idx, a, b)) :
+            sc === :log   ? push!(lap_e,  (idx, a, b)) :
+                            push!(lap_li, (idx, a, b))   # :lin (and any non-log scale)
+        else
+            @warn "objectivePriorType '$ptype' (parameter $pid) not supported — prior OMITTED; " *
+                  "objective will NOT match PEtab.nllh for this model"
+        end
+    end
+    # Each @add_obj accumulates into the objective (capture the rebound core). abs is a registered
+    # ExaModels op (subgradient at the kink); the value is exact so the objective matches PEtab.nllh.
+    isempty(psnorm) || ExaModels.@add_obj(c, 0.5*((p[i]-mu)/sg)^2 + log(sg) + HALF_LOG2PI for (i,mu,sg) in psnorm)
+    isempty(pslap)  || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in pslap)
+    isempty(lap_li) || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in lap_li)
+    isempty(lap_10) || ExaModels.@add_obj(c, abs(exp(LN10*p[i])-mu)/b + log(2*b)     for (i,mu,b) in lap_10)
+    isempty(lap_e)  || ExaModels.@add_obj(c, abs(exp(p[i])-mu)/b + log(2*b)          for (i,mu,b) in lap_e)
+    isempty(unif)   || ExaModels.@add_obj(c, cst + 0.0*p[i]                          for (i,cst) in unif)  # constant; 0·p keeps a var ref
+    return c
+end
+
 # (*) Main function for creating ExaModels objective function (*)
 function _create_objective(
         c::ExaCore,
@@ -125,6 +185,7 @@ function _create_objective(
     # NOTE: @add_obj/@add_con REBIND the core (core, obj = add_obj(core, ...)), so the new
     # core returned by the helper MUST be captured — discarding it orphans the objective.
     c = _add_nll_objective(c, PEmodel, PEinfo)
+    c = _add_prior_objective(c, PEmodel, PEprob)   # MAP: add -log prior(θ) terms (matches PEtab.nllh)
 
     ###############################################
     # Auxiliary variable constraints for y, sigma

@@ -25,6 +25,7 @@ const TOL           = 1e-6            # Optim g_tol (matches MadNLP tol)
 const SOLVE_LIMIT   = 7200.0         # Optim time_limit [s] (2 hr, matches MadNLP; longest true success ~0.74 hr)
 const COMPILE_LIMIT = parse(Float64, get(ENV, "PETAB_COMPILE_LIMIT", "1800.0"))  # hard compile deadline [s] (default 30 min; override via PETAB_COMPILE_LIMIT env)
 const MAX_ITER      = 100_000_000     # large so wall time is always the bottleneck
+const N_SGM_RERUNS  = parse(Int, get(ENV, "PETAB_SGM_N", "5"))  # PEtab SGM rerun count for the geometric-mean head-to-head vs exa (canonical n=5; set 0 to disable)
 const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_examodels.jl; excluded from ALL_MODELS below — benchmark Bruno via benchmark_bruno.jl (Crauste-warmed)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,36 @@ optim_opts() = Optim.Options(
     show_trace     = false,
     x_abstol       = 0.0,
 )
+
+# ─── PEtab SGM solve reruns ─────────────────────────────────────────────────────
+# Mirrors the exa SGM pass: re-solve the SAME compiled PEtabODEProblem from the SAME nominal
+# start N_SGM_RERUNS times and store the geometric mean solve time under petab_sgm_* — so the
+# PEtab column is an n=10 head-to-head against exa_sgm_solve_time. Only meaningful after a
+# converged first solve (petab_optimum_found=true); skipped otherwise.
+function run_petab_sgm(rp, PEprob)
+    write_result(rp, Dict("petab_sgm_status" => "running", "petab_sgm_n" => N_SGM_RERUNS))
+    solve_times = Float64[]
+    for i in 1:N_SGM_RERUNS
+        @info "[petab SGM] solve $i/$N_SGM_RERUNS ..."
+        try
+            t0 = time()
+            with_hard_deadline(SOLVE_LIMIT + 600.0) do
+                calibrate(PEprob, get_x(PEprob), Optim.IPNewton(); options=optim_opts())
+            end
+            push!(solve_times, round(time() - t0; digits=2))
+        catch e
+            @error "[petab SGM] solve $i failed" exception=(e, catch_backtrace())
+            write_result(rp, Dict("petab_sgm_status" => "error",
+                                  "petab_sgm_error"  => sprint(showerror, e)))
+            return
+        end
+    end
+    sgm_solve = round(exp(sum(log, solve_times) / length(solve_times)); digits=2)
+    write_result(rp, Dict("petab_sgm_status"     => "ok",
+                          "petab_sgm_n"          => N_SGM_RERUNS,
+                          "petab_sgm_solve_time" => sgm_solve))
+    @info "[petab SGM] done: solve=$sgm_solve s (n=$N_SGM_RERUNS)"
+end
 
 function run_worker(m)
     mkpath(RESULTDIR)
@@ -169,6 +200,18 @@ function run_worker(m)
             "petab_solve_status" => "error",
             "petab_error"        => sprint(showerror, e),
         ))
+    end
+
+    # ── SGM SOLVE RERUNS (timing-only; needs a converged first solve) ─────────────
+    if N_SGM_RERUNS > 0
+        d = read_result(rp)
+        if get(d, "petab_optimum_found", "") == "true" &&
+           get(d, "petab_sgm_status", "") ∉ ("ok", "error")
+            run_petab_sgm(rp, PEprob)
+        elseif get(d, "petab_optimum_found", "") != "true"
+            write_result(rp, Dict("petab_sgm_status" => "skipped",
+                "petab_sgm_error" => "first solve optimum_found=$(get(d,"petab_optimum_found",""))≠true; SGM skipped"))
+        end
     end
 end
 

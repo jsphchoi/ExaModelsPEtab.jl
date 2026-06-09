@@ -5,6 +5,7 @@ function _create_variables(
         PEprob::PEtabODEProblem,
         K::Int
     )
+    _assert_supported_events(PEmodel)   # reject true SBML <event> models (silently-wrong otherwise)
     # Create necessary variables (discretized state, unknown params) and obtain problem details (::PEInfo)
     c, Np = _create_p(c, PEprob)
     c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1 = _create_z(c, PEmodel, PEprob, K)
