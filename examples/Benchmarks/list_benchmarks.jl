@@ -26,6 +26,34 @@
 # every other in-loop model, so it is timed normally in the main loops. Only Bruno is special —
 # EXA_SUPPORTED_MODELS minus {Bruno} = the 24 timed in-loop models.
 
+# ══════════════════════════════════════════════════════════════════════════════
+# BENCHMARK + SOLVER CONFIGURATION — single source of truth.
+# benchmark_examodels.jl, benchmark_petab.jl, and final_report.jl ALL read these so
+# both backends run under IDENTICAL settings. CHANGE SETTINGS HERE, NOWHERE ELSE.
+# ══════════════════════════════════════════════════════════════════════════════
+# ── Shared (apply to BOTH backends) ──
+const BENCH_SGM_N       = 5            # SGM warm-rerun count for the geometric-mean solve timing (exa & PEtab; 0 disables)
+const BENCH_TOL         = 1e-6         # convergence tolerance — MadNLP `tol` == Optim `g_tol`
+const BENCH_SOLVE_LIMIT = 7200.0       # solve wall cap [s] (2 hr) — MadNLP `max_wall_time` / Optim `time_limit`
+const BENCH_MAX_ITER    = 100_000_000  # max solver iterations (large so wall time is the bottleneck)
+const BENCH_WARMUP_MODEL = "Bruno_JExpBot2016"  # shared JIT-warmup model; excluded from both timed loops
+
+# ── ExaModels / MadNLP-only ──
+const BENCH_K             = 4          # collocation points per mesh interval
+const BENCH_COMPILE_LIMIT = 14400.0    # exa build wall cap [s] (4 hr)
+# acceptable-level termination: accept an ε-optimal KKT point when the strict tol can't be reached
+# (boundary optima / ill-conditioning floor inf_du just above tol). 1e-4 = 100× looser than tol;
+# certifies true-but-boundary optima (Schwen) while rejecting genuinely non-converged solves.
+const BENCH_ACCEPT_TOL    = 1e-4       # MadNLP acceptable_tol (ε-optimal fallback) → SOLVED_TO_ACCEPTABLE_LEVEL
+const BENCH_ACCEPT_ITER   = 10         # iters at acceptable_tol before accepting
+
+# ── PEtab / Optim.IPNewton-only ──
+const BENCH_PETAB_COMPILE_LIMIT   = 1800.0  # PEtab build wall cap [s] (30 min; PEtab compile is CPU/codegen, separate from exa's 4 hr)
+const BENCH_PETAB_F_RELTOL        = 1e-8    # Optim.Options fine-tuning ↓
+const BENCH_PETAB_SUCCESSIVE_FTOL = 3
+const BENCH_PETAB_X_ABSTOL        = 0.0
+# ══════════════════════════════════════════════════════════════════════════════
+
 const BENCHMARK_MODELS = [
     "Alkan_SciSignal2018", "Armistead_CellDeathDis2024", "Bachmann_MSB2011",
     "Beer_MolBioSystems2014", "Bertozzi_PNAS2020", "Blasi_CellSystems2016",

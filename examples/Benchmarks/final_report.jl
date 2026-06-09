@@ -57,13 +57,7 @@ end
 
 # The SGM rerun count actually used (read from the data; falls back to "?" if no SGM ran).
 # Used in the header label so it reflects the real n instead of a hardcoded value.
-function sgm_n_used(all_d)
-    for d in all_d
-        n = g(d, "exa_sgm_n"); !isempty(n) && return n
-        p = g(d, "petab_sgm_n"); !isempty(p) && return p
-    end
-    return "?"
-end
+# SGM rerun count is the single shared BENCH_SGM_N from list_benchmarks.jl (both backends use it).
 
 function center_str(s, n)
     len = length(s); len >= n && return s[1:n]
@@ -150,7 +144,7 @@ buf = IOBuffer()
 
 all_d           = [read_result(m) for m in ALL_MODELS]              # rerun target rows
 exa_supported_d = [read_result(m) for m in EXA_SUPPORTED_MODELS]    # 25 exa-representable (context only)
-const SGM_N     = sgm_n_used(all_d)
+const SGM_N = BENCH_SGM_N   # shared rerun count for both backends (single knob in list_benchmarks.jl)
 
 # Labels are kept within the column inner widths (34 / 27) so center_str never truncates them
 # mid-string (the old "[solve=SGM n=3]" label overflowed 34 chars → a dangling unclosed '[').
@@ -228,7 +222,7 @@ println(buf, "  EXA(%)         : fraction of compile time spent on ExaModels bui
 println(buf, "                   (remainder = PEtab setup + ODE presolve at nominal θ)")
 println(buf, "                   '-' for results from earlier benchmarks (presolve not tracked then)")
 println(buf, "  rel.gap(%)     : (ExaModels_obj - PEtab_obj) / |PEtab_obj| × 100%  (negative = ExaModels lower)")
-USE_SGM && println(buf, "  Timing mode    : both Solve(s) columns = SGM geometric mean over n=$SGM_N reruns (exa_sgm_* / petab_sgm_* keys)")
+USE_SGM && println(buf, "  Timing mode    : Solve(s) = SGM geometric mean (warm) over n=$SGM_N reruns, both backends (exa_sgm_* / petab_sgm_* keys)")
 
 # ─── output ───────────────────────────────────────────────────────────────────
 report = String(take!(buf))

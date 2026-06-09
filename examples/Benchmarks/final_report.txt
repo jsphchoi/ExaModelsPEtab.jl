@@ -48,4 +48,4 @@ STATUS KEY
                    (remainder = PEtab setup + ODE presolve at nominal θ)
                    '-' for results from earlier benchmarks (presolve not tracked then)
   rel.gap(%)     : (ExaModels_obj - PEtab_obj) / |PEtab_obj| × 100%  (negative = ExaModels lower)
-  Timing mode    : both Solve(s) columns = SGM geometric mean over n=5 reruns (exa_sgm_* / petab_sgm_* keys)
+  Timing mode    : Solve(s) = SGM geometric mean (warm) over n=5 reruns, both backends (exa_sgm_* / petab_sgm_* keys)

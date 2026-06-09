@@ -19,23 +19,30 @@
 
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels, Optim
 
-# ─── CONFIGURABLE SETTINGS (must match the two parent scripts) ──────────────────
-const TARGET        = (length(ARGS) >= 1 && !occursin(r"^\d+$", ARGS[1])) ? ARGS[1] : "Bruno_JExpBot2016"  # model under test (arg 1)
-const WARMUP_MODEL  = TARGET == "Crauste_CellSystems2017" ? "Bruno_JExpBot2016" : "Crauste_CellSystems2017"  # warmup ≠ target ⇒ valid timing
-const K             = parse(Int, get(ENV, "EXA_K", "4"))       # collocation points per mesh interval (env-overridable; matches benchmark_examodels.jl)
-const TOL           = 1e-6             # solver tolerance (both)
-const COMPILE_LIMIT = 14400.0          # exa compile deadline [s] (4 hr)
-const PETAB_COMPILE_LIMIT = 1800.0     # petab compile deadline [s] (30 min)
-const SOLVE_LIMIT   = 7200.0          # max_wall_time / time_limit [s] (2 hr; matches the parent scripts)
-const MAX_ITER      = 100_000_000
-const N_SGM_RERUNS  = parse(Int, get(ENV, "EXA_SGM_N", "5"))   # exa rerun count for geometric mean timing (env-overridable; canonical n=5)
-const ACCEPT_TOL    = parse(Float64, get(ENV, "EXA_ACCEPT_TOL", "1e-4"))   # ε-optimal acceptable termination (see benchmark_examodels.jl)
-const ACCEPT_ITER   = parse(Int,     get(ENV, "EXA_ACCEPT_ITER", "10"))
-const PETAB_SGM_N   = parse(Int, get(ENV, "PETAB_SGM_N", "5")) # petab rerun count for geometric mean timing (env-overridable)
-# ────────────────────────────────────────────────────────────────────────────────
-
+# ─── CONFIGURABLE SETTINGS ──────────────────────────────────────────────────────
+# ALL solver/benchmark settings live in list_benchmarks.jl (single source of truth, shared with
+# benchmark_examodels.jl and benchmark_petab.jl). Change them THERE — below we only alias BENCH_*.
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
+
+include(joinpath(@__DIR__, "list_benchmarks.jl"))  # model lists + BENCH_* config (K, TOL, SGM_N, limits, ...)
+
+# Bruno-specific: TARGET is the model under test; its warmup must DIFFER from it for valid timing
+# (a model warmed-on then benchmarked by the same process gets an invalid, pre-warmed compile time).
+const TARGET        = (length(ARGS) >= 1 && !occursin(r"^\d+$", ARGS[1])) ? ARGS[1] : "Bruno_JExpBot2016"
+const WARMUP_MODEL  = TARGET == "Crauste_CellSystems2017" ? "Bruno_JExpBot2016" : "Crauste_CellSystems2017"
+
+const K             = BENCH_K
+const TOL           = BENCH_TOL
+const COMPILE_LIMIT = BENCH_COMPILE_LIMIT
+const PETAB_COMPILE_LIMIT = BENCH_PETAB_COMPILE_LIMIT
+const SOLVE_LIMIT   = BENCH_SOLVE_LIMIT
+const MAX_ITER      = BENCH_MAX_ITER
+const N_SGM_RERUNS  = BENCH_SGM_N    # exa rerun count
+const ACCEPT_TOL    = BENCH_ACCEPT_TOL
+const ACCEPT_ITER   = BENCH_ACCEPT_ITER
+const PETAB_SGM_N   = BENCH_SGM_N    # petab rerun count — same shared knob
+# ────────────────────────────────────────────────────────────────────────────────
 
 get_yaml(m) = begin
     d = joinpath(MODELDIR, m); isdir(d) || return nothing
@@ -190,11 +197,11 @@ optim_opts() = Optim.Options(
     iterations     = MAX_ITER,
     time_limit     = SOLVE_LIMIT,
     g_tol          = TOL,
-    f_reltol       = 1e-8,
+    f_reltol       = BENCH_PETAB_F_RELTOL,
     allow_f_increases = true,
-    successive_f_tol  = 3,
+    successive_f_tol  = BENCH_PETAB_SUCCESSIVE_FTOL,
     show_trace     = false,
-    x_abstol       = 0.0,
+    x_abstol       = BENCH_PETAB_X_ABSTOL,
 )
 
 function has_events(PEprob)
