@@ -8,7 +8,7 @@ function _create_variables(
     _assert_supported_events(PEmodel)   # reject true SBML <event> models (silently-wrong otherwise)
     # Create necessary variables (discretized state, unknown params) and obtain problem details (::PEInfo)
     c, Np = _create_p(c, PEprob)
-    c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1 = _create_z(c, PEmodel, PEprob, K)
+    c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes = _create_z(c, PEmodel, PEprob, K)
 
     Ncv = length(_get_cv_syms(PEmodel)) # number of condition-dependent variables
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
@@ -17,9 +17,9 @@ function _create_variables(
     # Fixed-time event gates: keep piecewise(time) gates live and resolve their per-(interval,
     # condition) values from a stepped warm-start integrator (no-op / empty when the model has none).
     gate_syms = _get_gate_syms(PEprob)
-    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, gate_syms, h, taus)
+    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, gate_syms, h, taus, t_nodes)
     PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale,
-                    gate_syms, gate_vals, gate_vals_ss)
+                    gate_syms, gate_vals, gate_vals_ss, t_nodes)
 
     # OBJECTIVE FUNCTION VARIABLES
     # Create auxiliary variables for model observables, y
@@ -71,7 +71,7 @@ end
 # Creates ExaModels decision variables for discretized states
 # z[1:Nz,1:N,0:K,1:Nc]
 function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
-    z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1 = _get_z_init(PEmodel, PEprob, K)
+    z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes = _get_z_init(PEmodel, PEprob, K)
     ExaModels.@add_var(c,
         z,
         1:Nz, 1:N, 0:K, 1:Nc;
@@ -79,7 +79,7 @@ function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::
         lvar = -Inf,    # unbounded: state sign/range is model-dependent (not assumed >= 0)
         uvar = Inf
     )
-    return c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1
+    return c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes
 end
 
 # Creates ExaModels decision variables for condition-dependent variables

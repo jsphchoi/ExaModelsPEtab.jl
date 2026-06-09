@@ -230,6 +230,29 @@ end
 # numeric (resolves nested initialAssignments), then reading off the fixed params. If a fixed
 # param cannot be reduced to a number, we fall back to its raw parametermap value (the previous
 # behavior) so models that relied on the symbolic form are unaffected.
+# PEtab parameter-table parameters that are NON-estimated and NOT condition (cv) or gate variables —
+# crucially INCLUDING observable/noise-only params (e.g. a fixed scale `s_…` or noise sd `sd_…`) that
+# never appear in the SBML model, hence are absent from the parametermap and would otherwise leak as
+# UNBOUND symbols in the observable/noise build_function. Each is bound to its numeric nominalValue.
+# Returns Dict(symbolic value => Float64) suitable for Symbolics.substitute. Keys are built the same
+# way the formula parser makes bare symbols (Symbolics.variable(name)) so substitution matches.
+function _get_table_fixed_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Dict{Any,Any}
+    params_df = PEmodel.petab_tables[:parameters]
+    estimated = Set(string.(PEprob.xnames))                                  # decision vars p
+    cv_names  = Set(string(Symbolics.value(s)) for s in _get_cv_syms(PEmodel))   # condition vars
+    out = Dict{Any,Any}()
+    for row in eachrow(params_df)
+        pid = string(row[:parameterId])
+        (pid in estimated || pid in cv_names || occursin("__parameter_ifelse", pid)) && continue
+        nv  = row[:nominalValue]
+        (ismissing(nv) || (nv isa AbstractString && isempty(strip(nv)))) && continue
+        val = nv isa AbstractString ? tryparse(Float64, strip(nv)) : Float64(nv)
+        val === nothing && continue
+        out[Symbolics.value(Symbolics.variable(Symbol(pid)))] = val
+    end
+    return out
+end
+
 function _resolve_fixed_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     dict_all_val = Dict(PEprob.model_info.model.parametermap)
     defaults = Dict{Any,Any}(dict_all_val)
@@ -320,6 +343,50 @@ function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
     ]
 end
 
+# Fixed-time gate toggle times: the t at which any __parameter_ifelse gate flips, across all
+# simulation conditions. _get_z_init forces these into the collocation mesh (as tstops) so every
+# event lands on a mesh node — otherwise _get_gate_vals rejects a mid-interval toggle (Isensee's
+# t=45 was a measurement-free time). Detected by stepping a callback-applied integrator and
+# watching the gate parameters change: SBMLImporter's time callback forces a stop exactly at the
+# toggle, so integ.t at the change IS the event time. Empty for non-event models (no mesh change).
+function _get_event_times(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{Float64}
+    gate_syms = _get_gate_syms(PEprob)
+    isempty(gate_syms) && return Float64[]
+    si        = PEprob.model_info.simulation_info
+    has_preeq = si.has_pre_equilibration
+    sim_ids   = si.conditionids[:simulation]
+    preeq_ids = si.conditionids[:pre_equilibration]
+    p_nominal = PEtab.get_x(PEprob)
+    solver    = PEprob.probinfo.solver.solver
+    abstol    = PEprob.probinfo.solver.abstol
+    reltol    = PEprob.probinfo.solver.reltol
+    gate_raw  = [Symbolics.value(g) for g in gate_syms]
+    read_gates(integ) = Float64[Float64(integ.ps[g]) for g in gate_raw]
+    t_events = Float64[]
+    for cid in Symbol.(_get_cids(PEmodel))
+        cond_arg = cid
+        if has_preeq
+            pos = findfirst(==(cid), sim_ids); pos === nothing && continue
+            cond_arg = preeq_ids[pos] => sim_ids[pos]
+        end
+        oprob, cbs = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
+        integ = ODE.init(oprob, solver; callback = cbs, abstol = abstol, reltol = reltol)
+        cur   = read_gates(integ)
+        tend  = oprob.tspan[2]
+        while integ.t < tend
+            tprev = integ.t
+            ODE.step!(integ)
+            (isfinite(integ.t) && integ.t > tprev) || break   # integrator stalled/failed
+            new = read_gates(integ)
+            if new != cur
+                push!(t_events, integ.t)
+                cur = new
+            end
+        end
+    end
+    return sort(unique(t_events))
+end
+
 # Per-(interval, condition) values of the live gating parameters gate_syms, plus the per-condition
 # value to use in the steady-state residual. SBMLImporter's init callback sets each gate at t=0 to
 # its triggered value (e.g. 1.0), which the bare ODEProblem does NOT reflect (it carries the
@@ -332,7 +399,8 @@ end
 # Asserts every in-window gate toggle lands on a mesh node (cumsum(h)); a mid-interval toggle would
 # make a single per-interval value wrong and is rejected with a clear error.
 function _get_gate_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
-                        gate_syms::Vector{Symbolics.Num}, h::Vector{Float64}, taus::Vector{Float64})
+                        gate_syms::Vector{Symbolics.Num}, h::Vector{Float64}, taus::Vector{Float64},
+                        t_nodes::Vector{Float64})
     Ng   = length(gate_syms)
     cids = Symbol.(_get_cids(PEmodel))
     Nc   = length(cids)
@@ -350,9 +418,10 @@ function _get_gate_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
     abstol    = PEprob.probinfo.solver.abstol
     reltol    = PEprob.probinfo.solver.reltol
 
-    h_cum      = cumsum(h) .- h
-    bnds       = cumsum(h)                                   # mesh nodes = where events may live
-    t_interior = [h_cum[i] + taus[2] * h[i] for i in 1:N]    # strictly inside interval i (past left node)
+    # EXACT mesh nodes from t_nodes (T_0..T_N) — no cumsum(h) round-off. Interval i = [t_nodes[i],
+    # t_nodes[i+1]]; bnds = the right-node times (where a toggle may live).
+    bnds       = t_nodes[2:end]                              # mesh nodes (interval right endpoints)
+    t_interior = [t_nodes[i] + taus[2] * h[i] for i in 1:N]  # strictly inside interval i (past left node)
     tstops     = sort(unique(vcat(t_interior, bnds)))        # stop at every interior sample and node
 
     gate_raw = [Symbolics.value(g) for g in gate_syms]   # unwrap Num for the .ps[] indexing interface
@@ -387,12 +456,14 @@ function _get_gate_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
             end
             gate_vals[:, i, cidx] = cur
         end
-        # Reject any toggle that does not coincide with a mesh node (would split an interval).
+        # Every toggle must coincide EXACTLY with a mesh node — guaranteed because _get_event_times
+        # forces each event time into the mesh tstops (so it appears bit-identically in t_nodes).
+        # Exact `==` (no isapprox): both tc and t_nodes derive from the same fixed callback time.
         for tc in change_ts
-            any(b -> isapprox(b, tc; atol = 1.0e-6, rtol = 1.0e-6), bnds) || error(
-                "Condition '$cid' has a fixed-time event at t=$tc that does not coincide with a " *
-                "collocation mesh node; mid-interval events are not supported. (Mesh nodes come " *
-                "from measurement times; add a measurement/tstop at t=$tc to support it.)")
+            any(==(tc), t_nodes) || error(
+                "Condition '$cid' has a fixed-time event at t=$tc not on a collocation mesh node. " *
+                "This should be impossible (events are forced into the mesh by _get_event_times); " *
+                "indicates the toggle time wasn't captured at mesh-build time.")
         end
 
         # Steady-state residual / initial-condition gate value: the gate at the IC (t=0+), i.e. the
@@ -474,12 +545,17 @@ end
 # where T_k = cumsum(h)[k] is the right endpoint of interval k (T_0 = 0). A measurement
 # at time T_k corresponds to the state at that mesh point; consumers map k to a z node:
 # k=0 -> initial node z[·,1,0,·]; 1<=k<=N-1 -> z[·,k+1,0,·]; k=N -> L1 endpoint of interval N.
-function _get_dict_t_tidx(h,t_meas)::Dict{Float64, Int64}
-    return merge(
-        Dict(0.0 => 0),   # t = T_0 = 0 -> initial-condition mesh point
-        Dict(
-            t_data => findfirst(x -> isapprox(x, t_data; rtol = 1e-10), cumsum(h))
-            for t_data in t_meas
-        )
-    )
+function _get_dict_t_tidx(t_nodes::AbstractVector, t_meas)::Dict{Float64, Int64}
+    # EXACT map. t_nodes = the original mesh boundary times sol.t (T_k = t_nodes[k+1], T_0 = tstart).
+    # Every measurement time was a solver tstop, so it appears verbatim in t_nodes ⇒ match with `==`
+    # (no isapprox). Previously this matched against cumsum(diff(sol.t)), whose rounding drift grows
+    # with node index and, on a fine mesh, can match the WRONG adjacent node.
+    d = Dict{Float64, Int64}(0.0 => 0)   # t = T_0 = 0 -> initial-condition mesh point
+    for t_data in t_meas
+        k = findfirst(==(t_data), t_nodes)
+        k === nothing && error("measurement time t=$t_data is not a mesh node — it should have been " *
+            "forced as a solver tstop in _get_z_init. (t_nodes range $(first(t_nodes))..$(last(t_nodes)).)")
+        d[t_data] = k - 1   # 1-based position -> 0-based mesh-node index k in 0:N
+    end
+    return d
 end

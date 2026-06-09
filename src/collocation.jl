@@ -16,7 +16,7 @@ function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     ########################################################################
     # Unpack problem info
     ########################################################################
-    (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale, gate_syms, gate_vals) = PEinfo
+    (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale, gate_syms, gate_vals, t_nodes) = PEinfo
     Ng = length(gate_syms)
     z = c.z
     p = c.p
@@ -36,8 +36,8 @@ function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
 
     # Create constraint: hᵢf(...) = (...). t_ij = start of interval i + tau_k * h_i (collocation time).
-    h_cum    = cumsum(h) .- h  # start time of each interval
-    itr_coll = [(i,k,cidx,h[i],h_cum[i] + taus[k+1]*h[i], ntuple(g->gate_vals[g,i,cidx],Ng))
+    # t_nodes[i] = the EXACT start time of interval i (original mesh node, no cumsum(h) round-off drift).
+    itr_coll = [(i,k,cidx,h[i],t_nodes[i] + taus[k+1]*h[i], ntuple(g->gate_vals[g,i,cidx],Ng))
                 for i in 1:N, k in 1:K, cidx in 1:Nc]
     c_coll   = [
         ExaModels.@add_con(c,

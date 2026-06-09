@@ -96,7 +96,7 @@ function _create_variables_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
 
     # The mesh fields (N, K, t_meas, t_vec_mesh, h, taus, L1) are never read on this path.
     PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, 0, 0, [Inf], Float64[], Float64[], Float64[], Float64[], pscale,
-                    gate_syms, zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss)
+                    gate_syms, zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss, Float64[])  # t_nodes unused (no mesh)
 
     c = _create_y(c, PEmodel, PEinfo)
     c = _create_sigma(c, PEinfo)

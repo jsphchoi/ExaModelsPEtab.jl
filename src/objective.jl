@@ -154,7 +154,7 @@ function _create_objective(
     ###############################################
     # Unpack problem info
     ###############################################
-    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, h, L1, pscale) = PEinfo
+    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, h, L1, pscale, t_nodes) = PEinfo
     z = c.z
     p = c.p
     y = c.y
@@ -192,7 +192,7 @@ function _create_objective(
     ###############################################
     # Parsed table values => ExaModels variable index mappings
     dict_cid_cidx = _get_dict_cid_cidx(PEmodel)
-    dict_t_tidx   = _get_dict_t_tidx(h, t_meas)
+    dict_t_tidx   = _get_dict_t_tidx(t_nodes, t_meas)
 
     # Substitute in fixed constant values
     dict_all_val = Dict(PEprob.model_info.model.parametermap)
@@ -200,7 +200,12 @@ function _create_objective(
         keys(Dict(dict_all_val)),
         union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
     )
-    dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms))
+    # SBML-parametermap fixed values, PLUS PEtab-table-only fixed params (observable/noise scale/sd
+    # params absent from the SBML model). merge: parametermap-derived values win on any overlap.
+    dict_fixed_val = merge(
+        _get_table_fixed_vals(PEmodel, PEprob),
+        Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)),
+    )
 
     # Resolves SBML assignment rules (derived/algebraic variables, e.g. pY1173 = Σspecies/c1)
     # that appear inside observable / noise formulas, to a fixpoint. No-op for models without

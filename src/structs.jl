@@ -22,6 +22,9 @@ struct PEInfo{T <: Number}
     gate_syms::Vector{Symbolics.Num}  # (g = 1,...,Ng) gating parameters kept live in the RHS
     gate_vals::Array{Float64,3}       # Ng×N×Nc gate value on each (interval i, condition cidx)
     gate_vals_ss::Array{Float64,2}    # Ng×Nc gate value for the steady-state residual per condition
+    t_nodes::Vector{Float64}          # ORIGINAL mesh boundary times T_0..T_N (sol.t of the finest
+                                      # condition); measurement/event tstops appear bit-exactly, so
+                                      # _get_dict_t_tidx maps times -> node index by exact `==`.
 end
-# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale, gate_syms, gate_vals, gate_vals_ss)
-# (; Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale, gate_syms, gate_vals, gate_vals_ss) = PEinfo
+# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale, gate_syms, gate_vals, gate_vals_ss, t_nodes)
+# (; Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale, gate_syms, gate_vals, gate_vals_ss, t_nodes) = PEinfo

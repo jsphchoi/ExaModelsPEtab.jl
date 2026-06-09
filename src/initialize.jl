@@ -4,19 +4,30 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     PEtable = PEmodel.petab_tables
     t_meas = sort(unique(filter(t -> !iszero(t), PEtable[:measurements][!,:time])))
 
-    # Solve all experimental conditions at nominal values
+    # Fixed-time event toggles must land on a mesh node (else _get_gate_vals rejects a mid-interval
+    # toggle). Force them in by making the mesh tstops the UNION of measurement times and event
+    # times. t_events is empty for non-event models, so the mesh is byte-identical there.
+    t_events = _get_event_times(PEmodel, PEprob)
+    t_stops  = sort(unique(vcat(t_meas, t_events)))
+
+    # Solve all experimental conditions at nominal values (tstops = measurements ∪ events ⇒ nodes)
     p_nominal = PEtab.get_x(PEprob)
-    sol = _solve_conds(p_nominal, PEmodel, PEprob, t_meas)
+    sol = _solve_conds(p_nominal, PEmodel, PEprob, t_stops)
 
     # Construct the mesh from the finest (most-points) condition's solution. Every condition is
     # integrated over the SAME span [tstart, max(t_meas)] (see _solve_conds), so whichever
     # condition we pick spans the full mesh and — because tstops = the union of all measurement
     # times was forced on every solve — contains every measurement time as a node, so every
     # t_meas lands on a mesh boundary.
-    h = diff(sol[argmax(k -> length(sol[k].t), keys(sol))].t)
+    # t_nodes = the ORIGINAL mesh boundary times (T_0..T_N) of the finest condition. Because t_meas
+    # and t_events are forced solver tstops, the integrator lands on them bit-exactly, so they appear
+    # verbatim in t_nodes — letting _get_dict_t_tidx map measurement times to node indices by exact
+    # `==` (NOT isapprox against cumsum(h), which drifts by accumulated rounding on a fine mesh).
+    t_nodes = collect(Float64, sol[argmax(k -> length(sol[k].t), keys(sol))].t)
+    h = diff(t_nodes)
     N = length(h) # number of intervals
     taus = _taus(K) # get interpolation points
-    t_mesh = [(cumsum(h) .- h)[i] + taus[j+1]*h[i] for i in 1:N, j in 0:K] # construct t_ij mesh
+    t_mesh = [t_nodes[i] + taus[j+1]*h[i] for i in 1:N, j in 0:K] # t_ij mesh; t_nodes[i]=exact left node (no cumsum drift)
     t_vec_mesh = Array(reshape(t_mesh',N*(K+1))) # vectorize t_ij mesh
 
     # Get constants
@@ -38,7 +49,7 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     # used everywhere else. (The previous identity permutedims left i and j transposed.)
     z_init = permutedims(reshape(stack(sol_at_mesh), Nz, K+1, N, Nc), (1, 3, 2, 4))
 
-    return z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1
+    return z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes
 end
 
 # Returns ::Dict{(condition id)::Symbol, (solution)}
