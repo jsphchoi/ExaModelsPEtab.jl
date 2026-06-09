@@ -8,8 +8,8 @@ fixing the model features that block compilation/convergence along the way.
 This doc is **stable reference only**. Live per-model pass/fail is NOT snapshotted here (it rots) —
 read it from the source of truth:
 - `examples/Benchmarks/results/{Model}_results.txt` — combined `petab_*` + `exa_*` key=value per model.
-- `julia --project=. examples/Benchmarks/final_report.jl --sgm` — regenerates the canonical table.
-- `ps aux | grep benchmark_examodels` — is the run live, and which PID (it changes on each auto-restart).
+- `julia --project=. examples/Benchmarks/results.jl --sgm` — regenerates the canonical table.
+- `ps aux | grep run_examodels` — is the run live, and which PID (it changes on each auto-restart).
 
 ## Git state
 - Fixes #1–#10 below are COMMITTED on `main`. #5/#6 in `95e7729`; **#7 fixed-time events in `7454a85`**
@@ -19,15 +19,15 @@ read it from the source of truth:
   branches/worktrees deleted — single `main`, working tree clean). Benchmark scripts (K=6, SGM reruns,
   **Bruno** warmup) committed.
 - **Canonical model lists + results layout (2026-06-05; committed in `be131ce`).** All three
-  scripts now `include("examples/Benchmarks/list_benchmarks.jl")` — the single source of truth: `BENCHMARK_MODELS` (35) ⊇
+  scripts now `include("examples/Benchmarks/options.jl")` — the single source of truth: `BENCHMARK_MODELS` (35) ⊇
   `PETAB_SOLVED_MODELS` (28, drops the 7 PEtab-side failures) ⊇ `EXA_SUPPORTED_MODELS` (26, drops Beer +
-  Liu). benchmark_examodels.jl derives its 24 in-loop models = `EXA_SUPPORTED − {Bruno, Crauste}`;
-  final_report.jl rows = `PETAB_SOLVED_MODELS`. `results/` now holds ONLY the 35 benchmark-model
+  Liu). run_examodels.jl derives its 24 in-loop models = `EXA_SUPPORTED − {Bruno, Crauste}`;
+  results.jl rows = `PETAB_SOLVED_MODELS`. `results/` now holds ONLY the 35 benchmark-model
   `*_results.txt`; `scratch_tests/` renamed to `debugging/`, run logs moved to `examples/debugging/logs/`;
   the Bachmann-K=3 scratch test (`benchmark_bachmann_k3.jl` + its result/log) moved to `examples/debugging/`
   + `debugging/results/`. Solve wall-time cap also lowered 24h→**2h** (7200s) — see Critical harness notes.
 - **NEEDS A FRESH BENCHMARK RUN.** Fix #10 changes the observable/IC transcription (ov/zN); the result
-  files predate it. Re-run `benchmark_examodels.sh` and re-run `validate_events.jl <Model>` for the event
+  files predate it. Re-run `run_examodels.sh` and re-run `validate_events.jl <Model>` for the event
   models (whose solves drifted off θ* on the OLD objective).
 - Detailed change history lives in git, not here — `git log`/`git show <sha>` rather than re-narrating.
 
@@ -142,10 +142,10 @@ residual + conservation, no collocation mesh). Blasi now `SOLVE_SUCCEEDED` −10
 
 ### 9. Benchmark warmup restructure — Bruno is the shared JIT warmup (`08273a3`)
 Old design warmed examodels on Crauste and petab on Bruno, but Bruno wasn't excluded from the petab loop →
-its `petab_compile_time` was pre-warmed garbage (4.96 s vs ~225 s real). Now BOTH `benchmark_examodels.jl`
-and `benchmark_petab.jl` warm on **Bruno** and exclude it from their timed lists; **`benchmark_bruno.jl`**
+its `petab_compile_time` was pre-warmed garbage (4.96 s vs ~225 s real). Now BOTH `run_examodels.jl`
+and `run_petab.jl` warm on **Bruno** and exclude it from their timed lists; **`run_bruno.jl`**
 (Crauste-warmed) benchmarks Bruno itself with both backends; old `benchmark_crauste.jl` deleted.
-`benchmark_petab.jl` `COMPILE_LIMIT` is env-overridable via `PETAB_COMPILE_LIMIT` (default 1800 s).
+`run_petab.jl` `COMPILE_LIMIT` is env-overridable via `PETAB_COMPILE_LIMIT` (default 1800 s).
 `benchmark_bachmann_k3.jl` (NEW) = the one-off Bachmann K=3 OOM-fit test → separate `*_K3_results.txt`.
 
 ### 10. Observable build_function blowups — `ov` (assignment-rule binding) + `zN` (final-time aux) (`399fb43`)
@@ -266,18 +266,18 @@ with the warm-start constraint-violation check above.
 Results in `results/`, combined key=value `{Model}_results.txt` per model (petab_* + exa_* coexist).
 
 ### Scripts
-- `benchmark_petab.jl / .sh` — one Julia process per model; builds PEtabODEProblem, solves with
-  Optim.IPNewton(), 1-hr cap. Writes `petab_*`. `bash examples/Benchmarks/benchmark_petab.sh` from root.
-- `benchmark_examodels.jl / .sh` — long-lived Julia process(es), strided over the 24 `ALL_MODELS`
+- `run_petab.jl / .sh` — one Julia process per model; builds PEtabODEProblem, solves with
+  Optim.IPNewton(), 1-hr cap. Writes `petab_*`. `bash examples/Benchmarks/run_petab.sh` from root.
+- `run_examodels.jl / .sh` — long-lived Julia process(es), strided over the 24 `ALL_MODELS`
   (18 non-event + 6 fixed-time event, Fix #7). Warmup = **Bruno** (Fix #9; excluded from ALL_MODELS,
   pre-warms generic JIT). K=6, compile deadline 4 hr. Writes `exa_*`.
-  `bash examples/Benchmarks/benchmark_examodels.sh` from root (**no trailing `&`**).
-- `benchmark_bruno.jl` (Crauste-warmed, benchmarks Bruno both backends) — see Fix #9. (The Bachmann K=3
+  `bash examples/Benchmarks/run_examodels.sh` from root (**no trailing `&`**).
+- `run_bruno.jl` (Crauste-warmed, benchmarks Bruno both backends) — see Fix #9. (The Bachmann K=3
   OOM-fit scratch test moved to `examples/debugging/benchmark_bachmann_k3.jl`, writing to
   `debugging/results/Bachmann_MSB2011_K3_results.txt`.)
-- `list_benchmarks.jl` — canonical BENCHMARK_MODELS (35) / PETAB_SOLVED_MODELS (28) / EXA_SUPPORTED_MODELS (26),
-  included by benchmark_examodels.jl, benchmark_petab.jl, and final_report.jl.
-- `final_report.jl [--sgm]` — prints/writes `final_report.txt`; `--sgm` uses SGM solve times.
+- `options.jl` — canonical BENCHMARK_MODELS (35) / PETAB_SOLVED_MODELS (28) / EXA_SUPPORTED_MODELS (26),
+  included by run_examodels.jl, run_petab.jl, and results.jl.
+- `results.jl [--sgm]` — prints/writes `results.txt`; `--sgm` uses SGM solve times.
 
 ### Per-model examodels sequence
 1. **Warmup** (Bruno, once per process; Fix #9).
@@ -293,9 +293,9 @@ Results in `results/`, combined key=value `{Model}_results.txt` per model (petab
 `exa_iter`, `exa_nvar`, `exa_ncon`, `exa_error`. `%EXA = (compile−presolve)/compile×100`.
 
 ### Models benchmarked (26 total pipeline = 24 `ALL_MODELS` + Bruno + Crauste)
-**Canonical lists now live in `list_benchmarks.jl`** (`EXA_SUPPORTED_MODELS` = these 26).
+**Canonical lists now live in `options.jl`** (`EXA_SUPPORTED_MODELS` = these 26).
 **Bruno is now the JIT warmup** (Fix #9), so it's excluded from the timed `ALL_MODELS` loop and
-benchmarked via `benchmark_bruno.jl`; **Crauste** is also benchmarked outside the loop (its data captured).
+benchmarked via `run_bruno.jl`; **Crauste** is also benchmarked outside the loop (its data captured).
 **Non-event (19, original)** — petab_optimum_found=true AND petab_has_events=false:
 Armistead, Bachmann, Bertozzi, Blasi, Boehm, Borghans, Bruno, Elowitz, Fiedler, Laske, Lucarelli,
 Okuonghae, Perelson, Rahman, SalazarCavazos, Schwen, Sneyd, Zhao, Zheng.
@@ -347,7 +347,7 @@ Hessian — chosen. `res.converged` is Bool for Optim, an Int status for Ipopt. 
 ## Outstanding / next steps (post-campaign, 2026-06-05)
 1. **RE-RUN THE BENCHMARK with the new objective (Fix #10 just merged).** The `exa_*` result files predate
    `ov`/`zN`, so the campaign snapshot below is stale for the affected models. Re-run
-   `benchmark_examodels.sh` (SalazarCavazos should now compile; Lucarelli should now build) and re-run
+   `run_examodels.sh` (SalazarCavazos should now compile; Lucarelli should now build) and re-run
    `validate_events.jl <Model>` for the 6 event models (their solves drifted off θ* on the OLD objective —
    the integration is verified at iter 0; confirm end-to-end convergence now). Regression-re-check an
    assignment-rule model (Rahman/Okuonghae) + Boehm (objective-match unchanged after merge, but confirm at K=6).

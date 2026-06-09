@@ -1,14 +1,14 @@
-# benchmark_examodels.jl — ExaModelsPEtab + MadNLP GPU benchmark
+# run_examodels.jl — ExaModelsPEtab + MadNLP GPU benchmark
 #
 # Builds petab_examodel (with CUDABackend) and solves with MadNLP on GPU for the
-# ExaModelsPEtab-supported models (EXA_SUPPORTED_MODELS in list_benchmarks.jl, minus the
+# ExaModelsPEtab-supported models (EXA_SUPPORTED_MODELS in options.jl, minus the
 # warmup/separately-benchmarked ones). Results are written to Benchmarks/results/{Model}_results.txt
 # using prefixed keys (exa_*) so petab results in the same file are preserved.
 #
 # Compilation timing is split into two phases:
 #   Phase 1 (presolve)   — PEtab setup + ODE solve at nominal θ to init the mesh
 #   Phase 2 (ExaModels)  — collocation/continuity/objective setup + ExaModel(c) build
-# Both timings are stored; final_report.jl computes the %ExaModels column from them.
+# Both timings are stored; results.jl computes the %ExaModels column from them.
 #
 # After a successful first compile+solve, N_SGM_RERUNS additional reruns are performed and
 # the geometric mean (SGM, n=10 by default) of the solve times is stored under exa_sgm_*
@@ -16,23 +16,23 @@
 # SOLVE_SUCCEEDED (timing a diverged / walltime-capped solve is meaningless).
 #
 # The run is resumable: models with a terminal result are skipped. Wrap with
-# benchmark_examodels.sh to restart after a watchdog SIGKILL on compile timeout.
+# run_examodels.sh to restart after a watchdog SIGKILL on compile timeout.
 #
 # Two-GPU usage (strided partition, one instance per GPU):
-#   julia --project=. -t 1 examples/Benchmarks/benchmark_examodels.jl <gpu_id> <num_instances> <instance_idx>
+#   julia --project=. -t 1 examples/Benchmarks/run_examodels.jl <gpu_id> <num_instances> <instance_idx>
 # Single-GPU usage:
-#   julia --project=. -t 1 examples/Benchmarks/benchmark_examodels.jl 0 1 0
+#   julia --project=. -t 1 examples/Benchmarks/run_examodels.jl 0 1 0
 
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels
 
 # ─── CONFIGURABLE SETTINGS ────────────────────────────────────────────────────
-# ALL solver/benchmark settings live in list_benchmarks.jl (single source of truth, shared with
-# benchmark_petab.jl). Change them THERE, not here — below we only alias the BENCH_* constants to
+# ALL solver/benchmark settings live in options.jl (single source of truth, shared with
+# run_petab.jl). Change them THERE, not here — below we only alias the BENCH_* constants to
 # the local names this script uses.
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
 
-include(joinpath(@__DIR__, "list_benchmarks.jl"))  # model lists + BENCH_* config (K, TOL, SGM_N, limits, ...)
+include(joinpath(@__DIR__, "options.jl"))  # model lists + BENCH_* config (K, TOL, SGM_N, limits, ...)
 
 const K             = BENCH_K
 const TOL           = BENCH_TOL
@@ -45,9 +45,9 @@ const ACCEPT_ITER   = BENCH_ACCEPT_ITER
 const WARMUP_MODEL  = BENCH_WARMUP_MODEL
 # ──────────────────────────────────────────────────────────────────────────────
 
-# The timed in-loop set = EXA_RERUN_INLOOP in list_benchmarks.jl, ordered clean-success →
+# The timed in-loop set = EXA_RERUN_INLOOP in options.jl, ordered clean-success →
 # least-reliable so the high-confidence results land first. It excludes ONLY Bruno (the shared
-# JIT warmup), benchmarked separately via benchmark_bruno.jl. Crauste is timed here normally
+# JIT warmup), benchmarked separately via run_bruno.jl. Crauste is timed here normally
 # (warmed on Bruno, like every other in-loop model).
 # Override with the BENCH_SUBSET env var (comma-separated, order-preserving) for an ad-hoc set.
 const ALL_MODELS = haskey(ENV, "BENCH_SUBSET") ?

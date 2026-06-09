@@ -1,7 +1,7 @@
-# benchmark_bruno.jl — dedicated Bruno benchmark, warmed up on Crauste.
+# run_bruno.jl — dedicated Bruno benchmark, warmed up on Crauste.
 #
-# Bruno_JExpBot2016 is the SHARED JIT-warmup model for both benchmark_examodels.jl and
-# benchmark_petab.jl, so it is excluded from both of their timed runs: a model that is
+# Bruno_JExpBot2016 is the SHARED JIT-warmup model for both run_examodels.jl and
+# run_petab.jl, so it is excluded from both of their timed runs: a model that is
 # benchmarked by the same script that warms up on it gets a pre-warmed, invalid compile
 # time (Bruno's petab_compile_time came out 4.96 s vs ~200-300 s for its cold peers).
 #
@@ -11,8 +11,8 @@
 #
 # CANONICAL USE: Bruno only. Bruno is the sole model that cannot be timed by its own warming
 # scripts, so it is benchmarked here, warmed on Crauste:
-#   julia --project=. -t 1 examples/Benchmarks/benchmark_bruno.jl Bruno_JExpBot2016   [gpu_id]
-# Crauste itself is now timed normally in the main loops (benchmark_examodels.jl + _petab.jl,
+#   julia --project=. -t 1 examples/Benchmarks/run_bruno.jl Bruno_JExpBot2016   [gpu_id]
+# Crauste itself is now timed normally in the main loops (run_examodels.jl + _petab.jl,
 # warmed on Bruno) and no longer needs this script. The TARGET arg still accepts Crauste (warmed
 # on Bruno) for ad-hoc parity checks, but the canonical Crauste numbers come from the main loops.
 # (no target arg ⇒ defaults to Bruno, warmed on Crauste.)
@@ -20,12 +20,12 @@
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels, Optim
 
 # ─── CONFIGURABLE SETTINGS ──────────────────────────────────────────────────────
-# ALL solver/benchmark settings live in list_benchmarks.jl (single source of truth, shared with
-# benchmark_examodels.jl and benchmark_petab.jl). Change them THERE — below we only alias BENCH_*.
+# ALL solver/benchmark settings live in options.jl (single source of truth, shared with
+# run_examodels.jl and run_petab.jl). Change them THERE — below we only alias BENCH_*.
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
 
-include(joinpath(@__DIR__, "list_benchmarks.jl"))  # model lists + BENCH_* config (K, TOL, SGM_N, limits, ...)
+include(joinpath(@__DIR__, "options.jl"))  # model lists + BENCH_* config (K, TOL, SGM_N, limits, ...)
 
 # Bruno-specific: TARGET is the model under test; its warmup must DIFFER from it for valid timing
 # (a model warmed-on then benchmarked by the same process gets an invalid, pre-warmed compile time).
@@ -79,7 +79,7 @@ function with_hard_deadline(f, seconds::Real)
     try; return f(); finally; try; kill(w); catch; end; end
 end
 
-# ─── ExaModels build (copied from benchmark_examodels.jl) ───────────────────────
+# ─── ExaModels build (copied from run_examodels.jl) ───────────────────────
 function build_model(yaml, t_origin)
     PEmodel = PEtab.PEtabModel(yaml)
     PEprob  = PEtab.PEtabODEProblem(PEmodel)
@@ -96,7 +96,7 @@ function build_model(yaml, t_origin)
     return mdl, mdl.meta.nvar, mdl.meta.ncon, t_phase1
 end
 
-# ─── SGM solve reruns (copied from benchmark_examodels.jl) ──────────────────────
+# ─── SGM solve reruns (copied from run_examodels.jl) ──────────────────────
 function run_sgm_reruns(m, rp, model)
     write_result(rp, Dict("exa_sgm_status" => "running", "exa_sgm_n" => N_SGM_RERUNS))
     solve_times = Float64[]
@@ -192,7 +192,7 @@ function bench_exa(m)
     @info "[$m] EXA done"
 end
 
-# ─── PEtab benchmark for the target (copied from benchmark_petab.jl run_worker) ─
+# ─── PEtab benchmark for the target (copied from run_petab.jl run_worker) ─
 optim_opts() = Optim.Options(
     iterations     = MAX_ITER,
     time_limit     = SOLVE_LIMIT,
@@ -333,7 +333,7 @@ function main()
     gpu_id  = gpu_idx === nothing ? 0 : parse(Int, ARGS[gpu_idx])
     CUDA.device!(gpu_id)
     mkpath(RESULTDIR)
-    @info "benchmark_bruno: target=$TARGET warmup=$WARMUP_MODEL on GPU $gpu_id ($(CUDA.name(CUDA.device())))"
+    @info "run_bruno: target=$TARGET warmup=$WARMUP_MODEL on GPU $gpu_id ($(CUDA.name(CUDA.device())))"
 
     warmup_exa()
     bench_exa(TARGET)
@@ -341,7 +341,7 @@ function main()
     warmup_petab()
     bench_petab(TARGET)
 
-    @info "benchmark_bruno complete"
+    @info "run_bruno complete"
 end
 
 main()

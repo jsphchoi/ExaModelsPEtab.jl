@@ -30,7 +30,7 @@ build time, and (2) re-launching a killed model and having the harness silently 
 ```bash
 cd /home/jsphchoi/.julia/dev/ExaModelsPEtab
 nvidia-smi --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader   # GPUs free?
-pgrep -af benchmark_examodels | grep -v grep                                     # competing run?
+pgrep -af run_examodels | grep -v grep                                     # competing run?
 ```
 - Both GPUs should be ~idle (a few MiB, 0%). Other users' julia procs that don't touch the GPU
   are fine.
@@ -53,17 +53,16 @@ With no `exa_compile_status`, `exa_finished` → false → the model lands in `t
 
 ```bash
 BENCH_SUBSET=Raimundez_PCB2020 \
-  julia -t1 --project=. examples/Benchmarks/benchmark_examodels.jl 0 1 0 \
+  julia -t1 --project=. examples/Benchmarks/run_examodels.jl 0 1 0 \
   > /tmp/raimundez_bench.log 2>&1 &
 ```
 - Args: `<gpu_id> <ninst> <idx>` (single model: `0 1 0`).
-- `BENCH_SUBSET` = comma-separated model list; default is `EXA_RERUN_INLOOP`.
+- `BENCH_SUBSET` = comma-separated model list; default is `EXA_RERUN_INLOOP`. This is the ONLY
+  runtime env knob — all solver/benchmark settings (K, SGM_N, tols, limits) live in `options.jl`.
 - `-t1` (single thread) is REQUIRED: the Julia watchdog thread hangs the cuDSS GPU solve;
   timeouts are enforced by an external `with_hard_deadline` kill, not a Julia thread.
-- Env overrides: `EXA_K` (default 4), `EXA_SGM_N` (default 5), `EXA_ACCEPT_TOL`,
-  `EXA_ACCEPT_ITER`.
 - **Bruno is the warmup** (built+solved first, discarded). Never benchmark Bruno this way — it
-  is timed separately via `benchmark_bruno.jl`.
+  is timed separately via `run_bruno.jl`.
 
 ## 4. Track the RIGHT signals (live)
 
@@ -104,16 +103,16 @@ Cold vs warm matters: e.g. Zheng `exa_solve_time=128.76` (cold, ~108s of it is k
 
 ## 6. PEtab (CPU) side + SGM
 
-PEtab numbers come from `benchmark_petab.jl` (same `BENCH_SUBSET` mechanism). SGM (warm) reruns
+PEtab numbers come from `run_petab.jl` (same `BENCH_SUBSET` mechanism). SGM (warm) reruns
 fill `petab_sgm_solve_time`. **Models currently missing `petab_sgm`** (need an SGM rerun):
 Bachmann, Borghans, Brannmark, Elowitz, Fujita, Giordano, Isensee, Oliveira, Raimundez, Zheng.
-(Some PEtab solves are slow — Lucarelli SGM ~2659s — so n=10 reruns there are long.)
+(Some PEtab solves are slow — Lucarelli SGM ~2659s — so n=5 reruns there are still long.)
 
 ## 7. Regenerate the report
 
 ```bash
-julia --project=. examples/Benchmarks/final_report.jl          # SGM (warm) — DEFAULT, fair comparison
-julia --project=. examples/Benchmarks/final_report.jl --cold   # cold first-run solve times
+julia --project=. examples/Benchmarks/results.jl          # SGM (warm) — DEFAULT, fair comparison
+julia --project=. examples/Benchmarks/results.jl --cold   # cold first-run solve times
 ```
 - Rows = `sort(EXA_SUPPORTED_MODELS)` (full scoreboard). Status codes: `0`=clean optimum,
   `0A`=acceptable-level, `0S`/`0AS`=succeeded/acceptable but suboptimal (obj ≥ +1.5% vs PEtab,
@@ -122,6 +121,6 @@ julia --project=. examples/Benchmarks/final_report.jl --cold   # cold first-run 
 
 ## 8. Canonical model lists
 
-`list_benchmarks.jl` is the single source of truth (included by all three scripts):
+`options.jl` is the single source of truth (included by all three scripts):
 `BENCHMARK_MODELS` (35) ⊇ `PETAB_SOLVED_MODELS` (28) ⊇ `EXA_SUPPORTED_MODELS` (25);
 `EXA_RERUN_INLOOP` (15) is the timed exa loop (Bruno excluded as warmup).

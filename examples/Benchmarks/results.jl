@@ -1,9 +1,9 @@
-# final_report.jl — reads Benchmarks/results/{Model}_results.txt and prints a
+# results.jl — reads Benchmarks/results/{Model}_results.txt and prints a
 # formatted benchmark table comparing ExaModelsPEtab (MadNLP/GPU) vs PEtab.jl
-# (Optim.IPNewton). Also writes the same report to Benchmarks/final_report.txt.
+# (Optim.IPNewton). Also writes the same report to Benchmarks/results.txt.
 # Run from the repo root:
-#   julia --project=. examples/Benchmarks/final_report.jl          # SGM (warm) solve times — DEFAULT
-#   julia --project=. examples/Benchmarks/final_report.jl --cold   # cold first-run solve times instead
+#   julia --project=. examples/Benchmarks/results.jl          # SGM (warm) solve times — DEFAULT
+#   julia --project=. examples/Benchmarks/results.jl --cold   # cold first-run solve times instead
 #
 # SGM is the DEFAULT because it is the fair warm-vs-warm comparison: the cold first solve includes a
 # one-time GPU-kernel JIT tax on the exa side (e.g. Zheng cold 128.8s vs SGM 20.4s) that PEtab (CPU)
@@ -13,13 +13,13 @@
 using Printf
 
 const RESULTDIR  = joinpath(@__DIR__, "results")
-const REPORT_TXT = joinpath(@__DIR__, "final_report.txt")
+const REPORT_TXT = joinpath(@__DIR__, "results.txt")
 const USE_SGM    = !("--cold" in ARGS)   # SGM (warm) by default; pass --cold for first-run solve times
 
-include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
+include(joinpath(@__DIR__, "options.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
 
 # The report rows are the CANONICAL exa-supported set — every model ExaModelsPEtab's collocation
-# transcription can represent (EXA_SUPPORTED_MODELS in list_benchmarks.jl, 25), in ALPHABETICAL
+# transcription can represent (EXA_SUPPORTED_MODELS in options.jl, 25), in ALPHABETICAL
 # order. Models without a (recent) result row simply show blank/failed status, so the report is a
 # complete, stable scoreboard of the supported set rather than just the rerun-target subset.
 const ALL_MODELS = sort(EXA_SUPPORTED_MODELS)  # 25 (canonical exa-supported, alphabetical)
@@ -57,7 +57,7 @@ end
 
 # The SGM rerun count actually used (read from the data; falls back to "?" if no SGM ran).
 # Used in the header label so it reflects the real n instead of a hardcoded value.
-# SGM rerun count is the single shared BENCH_SGM_N from list_benchmarks.jl (both backends use it).
+# SGM rerun count is the single shared BENCH_SGM_N from options.jl (both backends use it).
 
 function center_str(s, n)
     len = length(s); len >= n && return s[1:n]
@@ -144,7 +144,7 @@ buf = IOBuffer()
 
 all_d           = [read_result(m) for m in ALL_MODELS]              # rerun target rows
 exa_supported_d = [read_result(m) for m in EXA_SUPPORTED_MODELS]    # 25 exa-representable (context only)
-const SGM_N = BENCH_SGM_N   # shared rerun count for both backends (single knob in list_benchmarks.jl)
+const SGM_N = BENCH_SGM_N   # shared rerun count for both backends (single knob in options.jl)
 
 # Labels are kept within the column inner widths (34 / 27) so center_str never truncates them
 # mid-string (the old "[solve=SGM n=3]" label overflowed 34 chars → a dangling unclosed '[').

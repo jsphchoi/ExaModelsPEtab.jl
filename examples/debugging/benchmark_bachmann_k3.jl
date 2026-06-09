@@ -52,7 +52,7 @@ function with_hard_deadline(f, seconds::Real)
     try; return f(); finally; try; kill(w); catch; end; end
 end
 
-# build_model copied from benchmark_examodels.jl (incl. the steady-state branch); K=3.
+# build_model copied from run_examodels.jl (incl. the steady-state branch); K=3.
 function build_model(yaml, t_origin)
     PEmodel = PEtab.PEtabModel(yaml)
     PEprob  = PEtab.PEtabODEProblem(PEmodel)

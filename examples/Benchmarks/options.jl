@@ -1,5 +1,5 @@
-# list_benchmarks.jl — canonical benchmark model lists (single source of truth).
-# Included by benchmark_examodels.jl, benchmark_petab.jl, and final_report.jl so the three
+# options.jl — canonical benchmark model lists (single source of truth).
+# Included by run_examodels.jl, run_petab.jl, and results.jl so the three
 # scripts never drift. Three NESTED canonical lists (1 ⊇ 2 ⊇ 3):
 #
 #   1. BENCHMARK_MODELS (35)     — every PEtab benchmark-collection model attempted.
@@ -22,13 +22,13 @@
 # WARMUP note: Bruno_JExpBot2016 is the shared JIT-warmup model for both benchmark scripts and
 # is therefore excluded from their TIMED loops — a model warmed-up-on then benchmarked by the
 # same process gets an invalid, pre-warmed compile time. Bruno is benchmarked on its own (warmed
-# on Crauste) by benchmark_bruno.jl. Crauste needs NO such exception: it is warmed by Bruno like
+# on Crauste) by run_bruno.jl. Crauste needs NO such exception: it is warmed by Bruno like
 # every other in-loop model, so it is timed normally in the main loops. Only Bruno is special —
 # EXA_SUPPORTED_MODELS minus {Bruno} = the 24 timed in-loop models.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # BENCHMARK + SOLVER CONFIGURATION — single source of truth.
-# benchmark_examodels.jl, benchmark_petab.jl, and final_report.jl ALL read these so
+# run_examodels.jl, run_petab.jl, and results.jl ALL read these so
 # both backends run under IDENTICAL settings. CHANGE SETTINGS HERE, NOWHERE ELSE.
 # ══════════════════════════════════════════════════════════════════════════════
 # ── Shared (apply to BOTH backends) ──
@@ -92,7 +92,7 @@ const EXA_SUPPORTED_MODELS = filter(m -> m ∉ _EXA_UNSUPPORTED, PETAB_SOLVED_MO
 # ── K=10 / SGM n=10 rerun target set ────────────────────────────────────────────
 # The models on which ExaModelsPEtab reached (or nearly reached) a converged solve, targeted
 # for the K=10 + SGM-n=10 head-to-head rerun against PEtab. ORDERED clean-success → least-
-# reliable so the high-confidence results land first (benchmark_examodels.jl runs in this order,
+# reliable so the high-confidence results land first (run_examodels.jl runs in this order,
 # and the unreliable tail's 2 h solve caps don't delay the clean numbers). Membership rationale:
 #   Clean SOLVE_SUCCEEDED matching/near PEtab : Boehm, Blasi, Rahman, Sneyd, Perelson, Armistead,
 #                                               SalazarCavazos (Fix #10 ov win), Zheng (x0SSpre cv
@@ -109,9 +109,9 @@ const EXA_SUPPORTED_MODELS = filter(m -> m ∉ _EXA_UNSUPPORTED, PETAB_SOLVED_MO
 #
 # Bruno is the shared JIT-warmup model — excluded from the in-loop scripts (a model warmed-on
 # then benchmarked by the same process gets an invalid compile time) and benchmarked on its own
-# via benchmark_bruno.jl (warmed on Crauste). Crauste needs no such exception: it is warmed by
+# via run_bruno.jl (warmed on Crauste). Crauste needs no such exception: it is warmed by
 # Bruno like every other in-loop model, so it lives in EXA_RERUN_INLOOP. Only Bruno is omitted.
-const EXA_RERUN_INLOOP = [   # benchmark_examodels.jl timed loop, clean → unreliable order
+const EXA_RERUN_INLOOP = [   # run_examodels.jl timed loop, clean → unreliable order
     "Boehm_JProteomeRes2014", "Blasi_CellSystems2016", "Rahman_MBS2016",
     "Sneyd_PNAS2002", "Perelson_Science1996", "Armistead_CellDeathDis2024",
     "SalazarCavazos_MBoC2020", "Zheng_PNAS2012", "Crauste_CellSystems2017",
@@ -120,7 +120,7 @@ const EXA_RERUN_INLOOP = [   # benchmark_examodels.jl timed loop, clean → unre
     "Zhao_QuantBiol2020", "Laske_PLOSComputBiol2019",
 ]
 # Bruno is the ONLY model benchmarked outside the in-loop scripts (it is their shared warmup),
-# via benchmark_bruno.jl. Crauste needs no exception — it is warmed by Bruno like every other
+# via run_bruno.jl. Crauste needs no exception — it is warmed by Bruno like every other
 # in-loop model — so it lives in EXA_RERUN_INLOOP above.
 const EXA_RERUN_MODELS = [EXA_RERUN_INLOOP; "Bruno_JExpBot2016"]  # 16 (in-loop 15 + Bruno)
 
