@@ -23,24 +23,24 @@ Perelson         |      91.19    63%      25.29      0 |     191.29      13.14  
 Rahman           |     155.84    75%      87.12      0 |     233.24      14.24      0 |   -1.96e-04
 Raimundez        |          -      -          -      - |     215.81     182.71      0 |           -
 SalazarCavazos   |    1241.73    90%     869.29      0 |     462.02     605.76      0 |   +8.80e-02
-Schwen           |     176.44    78%     149.92      A |     269.94     205.27      0 |   -1.84e-02
+Schwen           |     176.44    78%     149.92     0A |     269.94     205.27      0 |   -1.84e-02
 Sneyd            |     178.46    78%     143.95      0 |     209.07       34.3      0 |   -3.65e-01
-Zhao             |      348.9    82%     234.77      A |     117.27     159.02      0 |   +8.19e+00
+Zhao             |      348.9    82%     234.77    0AS |     117.27     159.02      0 |   +8.19e+00
 Zheng            |     496.95    80%     128.76      0 |     179.45       23.4      0 |   -8.32e-01
 ---------------------------------------------------------------------------------------------------
 
 SUMMARY  (exa-supported set)
   Exa-supported models   : 25  (of 35 benchmark / 28 PEtab-solved / 25 exa-supported)
-  ExaModels solved       : 11 / 25  (TRUE status 0 only — clean optimum matching PEtab)
-  Succeeded-suboptimal   :  3       (0S — SOLVE_SUCCEEDED but obj >= +1.5% vs PEtab; excluded above)
+  ExaModels solved       : 12 / 25  (status 0 + 0A — full or acceptable-level optimum matching PEtab)
+  Solved-but-suboptimal  :  4       (0S / 0AS — converged but obj >= +1.5% vs PEtab; excluded above)
 
 RELATIVE OBJECTIVE GAP  (exa_obj - petab_obj) / |petab_obj| × 100%  [negative = ExaModels lower]:
   n=18  median=-5.78e-04%  max_abs=+1.73e+07%  (|gap|<1%: 9)
 ===================================================================================================
 
 STATUS KEY
-  MadNLP (Status): 0=SOLVE_SUCCEEDED (clean optimum, matches PEtab)  0S=SUCCEEDED but suboptimal (obj >= +1.5% vs PEtab)
-                   A=SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal)  1=WALLTIME_EXCEEDED  2=RESTORATION_FAILED
+  MadNLP (Status): 0=SOLVE_SUCCEEDED (clean optimum)  0A=SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal); both count as solved
+                   0S/0AS=solved (full/acceptable) but suboptimal (obj >= +1.5% vs PEtab)  1=WALLTIME_EXCEEDED  2=RESTORATION_FAILED
                    3=INVALID_NUMBER_JACOBIAN  4=MAX_ITER_EXCEEDED  5=other
                    E=exception  T=process_timeout  -=compile_failed/not_run
   PEtab  (Status): 0=converged  1=ran_not_converged  E=error  T=timeout  -=compile_failed/not_run

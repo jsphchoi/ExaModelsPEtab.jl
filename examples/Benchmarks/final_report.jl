@@ -80,10 +80,14 @@ function madnlp_code(d)
     ss == "timeout" && return "T"
     term = uppercase(g(d, "exa_term_status"))
     isempty(term)                          && return "-"
-    occursin("ACCEPTABLE",     term)       && return "A"   # SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal; valid solve)
-    if occursin("SUCCEEDED", term)                          # SOLVE_SUCCEEDED: split clean vs suboptimal by gap
-        gp = rel_gap_val(d)
-        return (gp !== nothing && gp >= SUBOPT_GAP_PCT) ? "0S" : "0"
+    # A successful solve has two orthogonal axes: convergence tier (full SUCCEEDED -> "0" vs
+    # acceptable-level ε-optimal -> "0A") and objective quality (clean vs suboptimal). Suboptimal
+    # (positive rel.gap >= SUBOPT_GAP_PCT, i.e. obj worse than PEtab) appends an "S" suffix. Both
+    # base codes count as solved; the "S" variants (0S / 0AS) are excluded.
+    if occursin("SUCCEEDED", term) || occursin("ACCEPTABLE", term)
+        base = occursin("ACCEPTABLE", term) ? "0A" : "0"
+        gp   = rel_gap_val(d)
+        return (gp !== nothing && gp >= SUBOPT_GAP_PCT) ? base * "S" : base
     end
     occursin("WALLTIME",       term)       && return "1"
     occursin("RESTORATION",    term)       && return "2"
@@ -180,8 +184,8 @@ println(buf, sep)
 
 # ─── summary ──────────────────────────────────────────────────────────────────
 # Scoped to the canonical exa-supported set (ALL_MODELS = sort(EXA_SUPPORTED_MODELS)), not all 35.
-exa_opt(d)    = madnlp_code(d) == "0"    # TRUE status 0 only — clean optimum matching PEtab
-exa_subopt(d) = madnlp_code(d) == "0S"   # SUCCEEDED but suboptimal (positive gap >= SUBOPT_GAP_PCT)
+exa_opt(d)    = madnlp_code(d) in ("0", "0A")    # full (0) or acceptable-level (0A) optimum matching PEtab
+exa_subopt(d) = madnlp_code(d) in ("0S", "0AS")  # solved but suboptimal (positive gap >= SUBOPT_GAP_PCT)
 
 n_target     = length(ALL_MODELS)            # 25 exa-supported (rows)
 n_exa_opt    = count(exa_opt, all_d)         # clean status-0 solves among the targets
@@ -190,8 +194,8 @@ n_exa_subopt = count(exa_subopt, all_d)      # converged-but-suboptimal (0S)
 println(buf, "\nSUMMARY  (exa-supported set)")
 @printf(buf, "  Exa-supported models   : %2d  (of %d benchmark / %d PEtab-solved / %d exa-supported)\n",
         n_target, length(BENCHMARK_MODELS), length(PETAB_SOLVED_MODELS), length(EXA_SUPPORTED_MODELS))
-@printf(buf, "  ExaModels solved       : %2d / %2d  (TRUE status 0 only — clean optimum matching PEtab)\n", n_exa_opt, n_target)
-@printf(buf, "  Succeeded-suboptimal   : %2d       (0S — SOLVE_SUCCEEDED but obj >= +%.1f%% vs PEtab; excluded above)\n", n_exa_subopt, SUBOPT_GAP_PCT)
+@printf(buf, "  ExaModels solved       : %2d / %2d  (status 0 + 0A — full or acceptable-level optimum matching PEtab)\n", n_exa_opt, n_target)
+@printf(buf, "  Solved-but-suboptimal  : %2d       (0S / 0AS — converged but obj >= +%.1f%% vs PEtab; excluded above)\n", n_exa_subopt, SUBOPT_GAP_PCT)
 
 get_gap(d) = begin
     eo = fparse(g(d, "exa_objective")); po = fparse(g(d, "petab_objective"))
@@ -210,8 +214,8 @@ end
 println(buf, bar)
 println(buf, "")
 println(buf, "STATUS KEY")
-println(buf, "  MadNLP (Status): 0=SOLVE_SUCCEEDED (clean optimum, matches PEtab)  0S=SUCCEEDED but suboptimal (obj >= +$(SUBOPT_GAP_PCT)% vs PEtab)")
-println(buf, "                   A=SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal)  1=WALLTIME_EXCEEDED  2=RESTORATION_FAILED")
+println(buf, "  MadNLP (Status): 0=SOLVE_SUCCEEDED (clean optimum)  0A=SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal); both count as solved")
+println(buf, "                   0S/0AS=solved (full/acceptable) but suboptimal (obj >= +$(SUBOPT_GAP_PCT)% vs PEtab)  1=WALLTIME_EXCEEDED  2=RESTORATION_FAILED")
 println(buf, "                   3=INVALID_NUMBER_JACOBIAN  4=MAX_ITER_EXCEEDED  5=other")
 println(buf, "                   E=exception  T=process_timeout  -=compile_failed/not_run")
 println(buf, "  PEtab  (Status): 0=converged  1=ran_not_converged  E=error  T=timeout  -=compile_failed/not_run")
