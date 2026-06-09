@@ -2,14 +2,19 @@
 # formatted benchmark table comparing ExaModelsPEtab (MadNLP/GPU) vs PEtab.jl
 # (Optim.IPNewton). Also writes the same report to Benchmarks/final_report.txt.
 # Run from the repo root:
-#   julia --project=. examples/Benchmarks/final_report.jl          # first-run times (default)
-#   julia --project=. examples/Benchmarks/final_report.jl --sgm    # SGM (n=3) rerun times
+#   julia --project=. examples/Benchmarks/final_report.jl          # SGM (warm) solve times — DEFAULT
+#   julia --project=. examples/Benchmarks/final_report.jl --cold   # cold first-run solve times instead
+#
+# SGM is the DEFAULT because it is the fair warm-vs-warm comparison: the cold first solve includes a
+# one-time GPU-kernel JIT tax on the exa side (e.g. Zheng cold 128.8s vs SGM 20.4s) that PEtab (CPU)
+# does not pay, so cold solve times systematically flatter PEtab. A "-" in a Solve(s) cell means that
+# backend has no SGM time recorded (didn't converge, or its SGM rerun hasn't been run yet).
 
 using Printf
 
 const RESULTDIR  = joinpath(@__DIR__, "results")
 const REPORT_TXT = joinpath(@__DIR__, "final_report.txt")
-const USE_SGM    = "--sgm" in ARGS
+const USE_SGM    = !("--cold" in ARGS)   # SGM (warm) by default; pass --cold for first-run solve times
 
 include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
 
