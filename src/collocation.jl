@@ -18,6 +18,29 @@ function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     ########################################################################
     (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale, gate_syms, gate_vals, t_nodes) = PEinfo
     Ng = length(gate_syms)
+
+    ########################################################################
+    # Mesh geometry as MUTABLE PARAMETERS (enables rebuild-free r-refinement)
+    ########################################################################
+    # The interval widths h[i], the collocation times t_ij, and the piecewise(time) gate
+    # values all depend on node PLACEMENT, not on the variable/constraint STRUCTURE. Lifting
+    # them from baked iterator literals to ExaModels parameters (c.θ) lets an outer moving-mesh
+    # loop relocate nodes and re-solve via set_value! WITHOUT rebuilding the model. taus/DLDTAU/
+    # L1 depend only on K (invariant under node relocation), so they stay baked.
+    #   h_mesh[i]        interval widths             (length N)
+    #   t_mesh[i,k]      collocation time t_ij       (N×K), = t_nodes[i] + taus[k+1]*h[i]
+    #   g_mesh[g,i,cidx] piecewise(time) gate value  (Ng×N×Nc); absent when Ng==0
+    # Named (Val(:…)) so the outer loop can recover the handle as model.h_mesh / .t_mesh / .g_mesh.
+    c, h_par = ExaModels.add_par(c, h; name = Val(:h_mesh))
+    t_init   = [t_nodes[i] + taus[k+1]*h[i] for i in 1:N, k in 1:K]  # exact mesh, no cumsum drift
+    c, t_par = ExaModels.add_par(c, t_init; name = Val(:t_mesh))
+    g_par = nothing
+    if Ng >= 1
+        c, g_par = ExaModels.add_par(c, gate_vals; name = Val(:g_mesh))
+    end
+
+    # Capture variable handles AFTER add_par (add_par returns a fresh ExaCore; handles are
+    # layout-stable, but read from the final core for clarity).
     z = c.z
     p = c.p
     if Ncv >= 1
@@ -28,27 +51,24 @@ function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     # Lagrange collocation equations
     ########################################################################
     # ODE RHS functions; t is always the final arg (autonomous RHS just ignores it — see
-    # _get_rhs_funcs), and the live piecewise(time) gates are trailing args before it. Their
-    # per-(interval,condition) values gate_vals[:,i,cidx] are carried in the iterator tuple as an
-    # NTuple field `gv` (exactly like h[i]/t_ij), then splatted into f via ntuple(g->gv[g],Ng)...
-    # (ExaModels supports getindex on a tuple data field but NOT splatting it directly). Ng==0 makes
-    # `gv` an empty tuple and the splat a no-op, so non-event models are unchanged.
+    # _get_rhs_funcs), and the live piecewise(time) gates are trailing args before it. The
+    # iterator now carries only INTEGER indices (i,k,cidx); h[i], t_ij and the gate values all
+    # flow through the parameter buffer c.θ, indexed symbolically (h_par[i], t_par[i,k],
+    # g_par[g,i,cidx]). Ng==0 makes the gate splat a no-op, so non-event models are unchanged.
     fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
 
     # Create constraint: hᵢf(...) = (...). t_ij = start of interval i + tau_k * h_i (collocation time).
-    # t_nodes[i] = the EXACT start time of interval i (original mesh node, no cumsum(h) round-off drift).
-    itr_coll = [(i,k,cidx,h[i],t_nodes[i] + taus[k+1]*h[i], ntuple(g->gate_vals[g,i,cidx],Ng))
-                for i in 1:N, k in 1:K, cidx in 1:Nc]
+    itr_coll = [(i,k,cidx) for i in 1:N, k in 1:K, cidx in 1:Nc]
     c_coll   = [
         ExaModels.@add_con(c,
-            -hi*f(
+            -h_par[i]*f(
                 ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
                 ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
                 ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
-                ntuple(g -> gv[g], Ng)...,                 # piecewise(time) gate values
-                t_ij                                       # time at collocation point
+                ntuple(g -> g_par[g,i,cidx], Ng)...,       # piecewise(time) gate values (θ)
+                t_par[i,k]                                 # time at collocation point (θ)
             )
-            for (i,k,cidx,hi,t_ij,gv) in itr_coll
+            for (i,k,cidx) in itr_coll
         )
         for f in fs
     ]
