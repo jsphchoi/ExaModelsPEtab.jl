@@ -47,9 +47,10 @@ const RESULTDIR = joinpath(@__DIR__, "results")
 
 include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
 
-# The timed in-loop set = the K=10 rerun target subset (EXA_RERUN_INLOOP in list_benchmarks.jl),
-# ordered clean-success → least-reliable so the high-confidence results land first. It already
-# excludes Bruno (the shared JIT warmup) and Crauste, which are benchmarked via benchmark_bruno.jl.
+# The timed in-loop set = EXA_RERUN_INLOOP in list_benchmarks.jl, ordered clean-success →
+# least-reliable so the high-confidence results land first. It excludes ONLY Bruno (the shared
+# JIT warmup), benchmarked separately via benchmark_bruno.jl. Crauste is timed here normally
+# (warmed on Bruno, like every other in-loop model).
 # Override with the BENCH_SUBSET env var (comma-separated, order-preserving) for an ad-hoc set.
 const ALL_MODELS = haskey(ENV, "BENCH_SUBSET") ?
     String.(split(ENV["BENCH_SUBSET"], ',')) : EXA_RERUN_INLOOP

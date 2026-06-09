@@ -8,10 +8,14 @@
 # This script benchmarks the TARGET with BOTH backends in a single process, warming up on a
 # DIFFERENT model (never the target), so the target's exa_* and petab_* numbers are valid and
 # comparable. The measurement logic is copied verbatim from the two parent scripts to keep parity.
-# Bruno and Crauste are each the other's warmup, so this script benchmarks BOTH:
+#
+# CANONICAL USE: Bruno only. Bruno is the sole model that cannot be timed by its own warming
+# scripts, so it is benchmarked here, warmed on Crauste:
 #   julia --project=. -t 1 examples/Benchmarks/benchmark_bruno.jl Bruno_JExpBot2016   [gpu_id]
-#   julia --project=. -t 1 examples/Benchmarks/benchmark_bruno.jl Crauste_CellSystems2017 [gpu_id]
-# (no target arg ⇒ defaults to Bruno, warmed on Crauste, for backwards compatibility)
+# Crauste itself is now timed normally in the main loops (benchmark_examodels.jl + _petab.jl,
+# warmed on Bruno) and no longer needs this script. The TARGET arg still accepts Crauste (warmed
+# on Bruno) for ad-hoc parity checks, but the canonical Crauste numbers come from the main loops.
+# (no target arg ⇒ defaults to Bruno, warmed on Crauste.)
 
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels, Optim
 

@@ -13,11 +13,11 @@ const USE_SGM    = "--sgm" in ARGS
 
 include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
 
-# The report rows are the K=10 / SGM n=10 rerun TARGET set — the models ExaModelsPEtab reached
-# (or nearly reached) a converged solve on (EXA_RERUN_MODELS in list_benchmarks.jl, 15 incl.
-# Bruno/Crauste), ordered clean-success → least-reliable. This scopes the report to the examodels
-# targets only (per the rerun request), not all 28 PEtab-solved models.
-const ALL_MODELS = EXA_RERUN_MODELS  # 15 (K=10 rerun targets, ordered)
+# The report rows are the CANONICAL exa-supported set — every model ExaModelsPEtab's collocation
+# transcription can represent (EXA_SUPPORTED_MODELS in list_benchmarks.jl, 25), in ALPHABETICAL
+# order. Models without a (recent) result row simply show blank/failed status, so the report is a
+# complete, stable scoreboard of the supported set rather than just the rerun-target subset.
+const ALL_MODELS = sort(EXA_SUPPORTED_MODELS)  # 25 (canonical exa-supported, alphabetical)
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 function read_result(m)
@@ -125,7 +125,7 @@ const W_PETAB_INNER = W_CTIME + 1 + W_STIME + 1 + W_STAT                # 27
 buf = IOBuffer()
 
 all_d           = [read_result(m) for m in ALL_MODELS]              # rerun target rows
-exa_supported_d = [read_result(m) for m in EXA_SUPPORTED_MODELS]    # 26 exa-representable (context only)
+exa_supported_d = [read_result(m) for m in EXA_SUPPORTED_MODELS]    # 25 exa-representable (context only)
 const SGM_N     = sgm_n_used(all_d)
 
 # Labels are kept within the column inner widths (34 / 27) so center_str never truncates them
@@ -164,16 +164,16 @@ end
 println(buf, sep)
 
 # ─── summary ──────────────────────────────────────────────────────────────────
-# Scoped to the rerun TARGET set (ALL_MODELS = EXA_RERUN_MODELS), not all 35 benchmark models.
+# Scoped to the canonical exa-supported set (ALL_MODELS = sort(EXA_SUPPORTED_MODELS)), not all 35.
 exa_opt(d) = madnlp_code(d) in ("0", "A")   # certified or acceptable-level optimum both count as solved
 
-n_target  = length(ALL_MODELS)               # 15 rerun targets (rows)
+n_target  = length(ALL_MODELS)               # 25 exa-supported (rows)
 n_exa_opt = count(exa_opt, all_d)            # exa SOLVE_SUCCEEDED among the targets
 
-println(buf, "\nSUMMARY  (rerun target set)")
-@printf(buf, "  Rerun target models    : %2d  (of %d benchmark / %d PEtab-solved / %d exa-supported)\n",
+println(buf, "\nSUMMARY  (exa-supported set)")
+@printf(buf, "  Exa-supported models   : %2d  (of %d benchmark / %d PEtab-solved / %d exa-supported)\n",
         n_target, length(BENCHMARK_MODELS), length(PETAB_SOLVED_MODELS), length(EXA_SUPPORTED_MODELS))
-@printf(buf, "  ExaModels solved       : %2d / %2d  (SOLVE_SUCCEEDED=0 or ACCEPTABLE=A among targets)\n", n_exa_opt, n_target)
+@printf(buf, "  ExaModels solved       : %2d / %2d  (SOLVE_SUCCEEDED=0 or ACCEPTABLE=A among supported)\n", n_exa_opt, n_target)
 
 get_gap(d) = begin
     eo = fparse(g(d, "exa_objective")); po = fparse(g(d, "petab_objective"))
