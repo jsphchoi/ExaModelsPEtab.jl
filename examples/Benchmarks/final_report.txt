@@ -1,30 +1,40 @@
 ===================================================================================================
-                 |   ExaModels + MadNLPGPU (SGM n=5)   |  PEtab + IPNewton (SGM n=5)  |            
+                 |        ExaModels + MadNLPGPU        |       PEtab + IPNewton       |            
 Model            | Compile(s) EXA(%)   Solve(s) Status | Compile(s)   Solve(s) Status |  rel.gap(%)
 ---------------------------------------------------------------------------------------------------
-Boehm            |     137.89    69%       0.47      0 |     280.59       0.01      0 |   -5.78e-04
-Blasi            |     140.17    65%       0.39      0 |     130.64       1.64      0 |   -3.22e-02
-Rahman           |     155.84    75%       0.34      0 |     233.24       1.37      0 |   -1.96e-04
-Sneyd            |     178.46    78%       3.42      0 |     209.07      24.72      0 |   -3.65e-01
-Perelson         |      91.19    63%       1.96      0 |     191.29       0.45      0 |   -1.78e+00
-Armistead        |     115.01    65%       0.71      0 |      76.92       2.98      0 |   -1.49e+00
-SalazarCavazos   |    1241.73    90%      32.74      0 |     462.02      571.9      0 |   +8.80e-02
-Okuonghae        |     102.68    74%        7.2      0 |     203.71      26.06      0 |   +1.90e+00
-Bertozzi         |     102.63    61%       0.24      0 |     210.76      97.11      0 |   +1.94e+02
-Schwen           |     176.44    78%       68.2      A |     269.94     193.85      0 |   -1.84e-02
-Lucarelli        |    1017.41    91%          -      T |     229.42    2658.93      0 |           -
-Zhao             |      348.9    82%      59.16      A |     117.27      140.7      0 |   +8.19e+00
-Laske            |    1075.69    90%      24.71      0 |     184.95       36.7      0 |   +3.57e+00
-Bruno            |     123.27    66%       0.31      0 |     230.24       6.41      0 |   -3.81e-02
-Crauste          |     105.84    65%       0.31      0 |      274.5       8.27      0 |   -3.04e-05
+Armistead        |     115.01    65%      30.86      0 |      76.92      14.28      0 |   -1.49e+00
+Bachmann         |    1108.14    94%          -      E |     143.38      82.58      0 |           -
+Bertozzi         |     102.63    61%      20.14      0 |     210.76     110.46      0 |   +1.94e+02
+Blasi            |     140.17    65%      61.68      0 |     130.64      18.16      0 |   -3.22e-02
+Boehm            |     137.89    69%      56.28      0 |     280.59      10.11      0 |   -5.78e-04
+Borghans         |      83.09    55%          -      T |     294.06     1975.9      0 |           -
+Brannmark        |     200.39    63%     406.02      5 |     307.17      79.12      0 |   +1.73e+07
+Bruno            |     123.27    66%      37.75      0 |     230.24      18.72      0 |   -3.81e-02
+Crauste          |     105.84    65%      30.88      0 |      274.5      21.79      0 |   -3.04e-05
+Elowitz          |      97.34    62%          -      T |     258.96      50.25      0 |           -
+Fujita           |     143.96    61%     116.09      0 |     317.65      10.28      0 |   -5.09e+02
+Giordano         |     275.17    45%      87.49      5 |     239.16      54.38      0 |   +7.23e+01
+Isensee          |          -      -          -      - |     251.73    1238.06      0 |           -
+Laske            |    1075.69    90%     229.97      0 |     184.95      54.47      0 |   +3.57e+00
+Lucarelli        |    1017.41    91%          -      T |     229.42    2680.48      0 |           -
+Okuonghae        |     102.68    74%      60.21      0 |     203.71      35.77      0 |   +1.90e+00
+Oliveira         |          -      -          -      - |      319.3      32.24      0 |           -
+Perelson         |      91.19    63%      25.29      0 |     191.29      13.14      0 |   -1.78e+00
+Rahman           |     155.84    75%      87.12      0 |     233.24      14.24      0 |   -1.96e-04
+Raimundez        |          -      -          -      - |     215.81     182.71      0 |           -
+SalazarCavazos   |    1241.73    90%     869.29      0 |     462.02     605.76      0 |   +8.80e-02
+Schwen           |     176.44    78%     149.92      A |     269.94     205.27      0 |   -1.84e-02
+Sneyd            |     178.46    78%     143.95      0 |     209.07       34.3      0 |   -3.65e-01
+Zhao             |      348.9    82%     234.77      A |     117.27     159.02      0 |   +8.19e+00
+Zheng            |     496.95    80%     128.76      0 |     179.45       23.4      0 |   -8.32e-01
 ---------------------------------------------------------------------------------------------------
 
-SUMMARY  (rerun target set)
-  Rerun target models    : 15  (of 35 benchmark / 28 PEtab-solved / 26 exa-supported)
-  ExaModels solved       : 14 / 15  (SOLVE_SUCCEEDED=0 or ACCEPTABLE=A among targets)
+SUMMARY  (exa-supported set)
+  Exa-supported models   : 25  (of 35 benchmark / 28 PEtab-solved / 25 exa-supported)
+  ExaModels solved       : 16 / 25  (SOLVE_SUCCEEDED=0 or ACCEPTABLE=A among supported)
 
 RELATIVE OBJECTIVE GAP  (exa_obj - petab_obj) / |petab_obj| × 100%  [negative = ExaModels lower]:
-  n=14  median=-5.78e-04%  max_abs=+1.94e+02%  (|gap|<1%: 8)
+  n=18  median=-5.78e-04%  max_abs=+1.73e+07%  (|gap|<1%: 9)
 ===================================================================================================
 
 STATUS KEY
@@ -36,4 +46,3 @@ STATUS KEY
                    (remainder = PEtab setup + ODE presolve at nominal θ)
                    '-' for results from earlier benchmarks (presolve not tracked then)
   rel.gap(%)     : (ExaModels_obj - PEtab_obj) / |PEtab_obj| × 100%  (negative = ExaModels lower)
-  Timing mode    : both Solve(s) columns = SGM geometric mean over n=5 reruns (exa_sgm_* / petab_sgm_* keys)
