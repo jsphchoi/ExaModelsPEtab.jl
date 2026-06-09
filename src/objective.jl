@@ -171,7 +171,10 @@ function _create_objective(
     z0  = reshape(_var_starts(c, z), Nz, N, K + 1, Nc) # z0[v, i, j+1, cidx]
     θ0  = _var_starts(c, p)                            # decision var p := θ (estimation scale)
     p0  = [_p_phys_val(θ0, m, pscale) for m in 1:Np]   # PHYSICAL parameter starts (10^θ)
-    cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, Nc) : zeros(Float64, 0, Nc)
+    # cv has Ncc >= Nc columns (extra pre-equilibration columns for x0SSpre; see _get_cv_cond_ids).
+    # Infer the column count with `:`; the objective only reads cv0[:, cidx] for cidx in 1:Nc (the
+    # simulation conditions, which occupy the first Nc columns).
+    cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, Nc)
     y0     = zeros(Float64, Nm) # computed observable values at the initial guess
     sigma0 = zeros(Float64, Nm) # computed noise (std) values at the initial guess
 
