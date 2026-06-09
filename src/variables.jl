@@ -89,19 +89,22 @@ end
 # start accordingly — numeric literal, or the parameter's own initial guess — so cv
 # (and any observable/noise formula that references it) is warm-started consistently.
 function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    (; Np, Nc, Ncv, pscale) = PEinfo
+    (; Np, Ncv, pscale) = PEinfo
     conditions_df  = PEmodel.petab_tables[:conditions]
     cv_cols        = _get_cv_colnames(PEmodel)          # cv column names, aligned 1:Ncv
-    cond_rows      = _get_cond_rows(PEmodel)            # cidx => conditions-table row
+    # cv columns span the simulation conditions (1:Nc) PLUS any distinct pre-equilibration
+    # conditions (so the steady-state residual can read the pre-eq inputs); see _get_cv_cond_ids.
+    cv_rows        = _get_cv_cond_rows(PEmodel, PEprob)  # cv column => conditions-table row
+    Ncc            = length(cv_rows)
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)        # parameter name => p decision-var index
     θ0             = _var_starts(c, c.p)                # p (= θ, estimation scale) initial guesses
     # physical parameter starts (cv == p means cv equals the PHYSICAL parameter value)
     p0             = [_p_phys_val(θ0, m, pscale) for m in 1:Np]
 
-    cv_init = zeros(Float64, Ncv, Nc)
-    for cidx in 1:Nc
+    cv_init = zeros(Float64, Ncv, Ncc)
+    for cidx in 1:Ncc
         for cvidx in 1:Ncv
-            val = conditions_df[cond_rows[cidx], cv_cols[cvidx]]
+            val = conditions_df[cv_rows[cidx], cv_cols[cvidx]]
             if val isa Number
                 cv_init[cvidx, cidx] = Float64(val)
             elseif val isa String || val isa Symbol
@@ -120,7 +123,7 @@ function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PE
 
     ExaModels.@add_var(c,
         cv,
-        1:Ncv, 1:Nc;
+        1:Ncv, 1:Ncc;
         start = cv_init
     )
     return c

@@ -141,6 +141,26 @@ function _get_cond_rows(PEmodel::PEtabModel)::Vector{Int}
     return [cid2row[cid] for cid in _get_cids(PEmodel)]
 end
 
+# cv-column conditions: the Nc simulation conditions (positions 1:Nc — the cv column layout used
+# everywhere else, so cv[:,1:Nc] is byte-identical) FOLLOWED BY any DISTINCT pre-equilibration
+# conditions that are NOT themselves simulation conditions. The extra columns let the steady-state
+# residual f(zss)=0 be evaluated under the PRE-EQUILIBRATION inputs (e.g. Zheng dilution=1) instead
+# of the simulation condition's (dilution=0) — see _get_dict_cidx_sscidx / _add_ss_residual. For
+# models without pre-equilibration this returns exactly _get_cids (no extra columns).
+function _get_cv_cond_ids(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{String}
+    sim_cids = _get_cids(PEmodel)
+    si = PEprob.model_info.simulation_info
+    preeq = si.has_pre_equilibration ? unique(string.(si.conditionids[:pre_equilibration])) : String[]
+    extra = [c for c in preeq if !(c in sim_cids)]
+    return [sim_cids; extra]
+end
+
+function _get_cv_cond_rows(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{Int}
+    conditions_df = PEmodel.petab_tables[:conditions]
+    cid2row = Dict(string(conditions_df[r, :conditionId]) => r for r in 1:size(conditions_df, 1))
+    return [cid2row[cid] for cid in _get_cv_cond_ids(PEmodel, PEprob)]
+end
+
 # (!!!) Returns ::Vector{String} of observableIds
 # "y","[1:Ny]"
 function _get_obsids(PEmodel::PEtabModel)::Vector{String}
@@ -507,18 +527,19 @@ end
 # index of its pre-equilibration condition (sscidx). Conditions that are not simulation
 # conditions map to themselves.
 function _get_dict_cidx_sscidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{Int64}
-    cids = _get_cids(PEmodel)
+    cids        = _get_cids(PEmodel)                          # simulation conditions, cv cols 1:Nc
+    cv_cond_ids = _get_cv_cond_ids(PEmodel, PEprob)           # [sim; distinct extra pre-eq]
+    pos_of      = Dict(cv_cond_ids[i] => i for i in eachindex(cv_cond_ids))
     sim_ids = PEprob.model_info.simulation_info.conditionids[:simulation]
     ssc_ids = PEprob.model_info.simulation_info.conditionids[:pre_equilibration]
-    dict_cid_cidx = Dict(cids[i] => i for i in eachindex(cids))
+    # Map each simulation condition cidx -> the cv COLUMN of its pre-equilibration condition, so
+    # the steady-state residual f(zss)=0 is evaluated under the PRE-EQ inputs. Because cv now
+    # carries a column for every distinct pre-eq condition (see _get_cv_cond_ids), pos_of always
+    # resolves it; the cidx fallback only triggers for a (nonexistent) non-simulation cidx.
     return map(eachindex(cids)) do cidx
         sim_idx = findfirst(==(Symbol(cids[cidx])), sim_ids)
-        # Map cidx -> the canonical index of its pre-equilibration condition. If that pre-eq
-        # condition is not itself a simulation condition (so it's not in `cids`), fall back to
-        # cidx — the steady-state residual then uses this condition's own cv. (Exact only when
-        # the pre-eq condition's cv equals the sim condition's, or the cv is absent from the
-        # ODE RHS; the pre-eq steady-state *start* is always correct via PEtab's u0.)
-        sim_idx === nothing ? cidx : get(dict_cid_cidx, string(ssc_ids[sim_idx]), cidx)
+        sim_idx === nothing && return cidx
+        get(pos_of, string(ssc_ids[sim_idx]), cidx)
     end
 end
 

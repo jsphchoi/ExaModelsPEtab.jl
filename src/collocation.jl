@@ -94,7 +94,7 @@ function _create_cv_constraints(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabOD
     ########################################################################
     # Unpack problem info
     ########################################################################
-    (; Np, Ncv, Nc, pscale) = PEinfo
+    (; Np, Ncv, pscale) = PEinfo
     Ncv >= 1 || return c
     p  = c.p
     cv = c.cv
@@ -106,15 +106,18 @@ function _create_cv_constraints(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabOD
     # Unpack DataFrame: row = experimental condition, col = condition-dependent variable
     conditions_df = PEmodel.petab_tables[:conditions]
     cv_cols = _get_cv_colnames(PEmodel) # cv column names, aligned 1:Ncv (no positional offset)
-    cond_rows = _get_cond_rows(PEmodel) # cidx => conditions-table row (cidx ≠ row when pre-eq-only rows exist)
+    # cv columns = simulation conditions (1:Nc) + distinct pre-equilibration conditions; bind ALL
+    # of them so the extra pre-eq columns the steady-state residual reads are constrained too.
+    cv_rows = _get_cv_cond_rows(PEmodel, PEprob) # cv column => conditions-table row
+    Ncc = length(cv_rows)
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob) # string of unknown parameter, p => index of decision variable, p
 
     # Create iterators
     itr_cv_fix  = Tuple{Int, Int, Float64}[]
     itr_cv_p    = Tuple{Int, Int, Int}[]
-    for cidx in 1:Nc
+    for cidx in 1:Ncc
         for cvidx in 1:Ncv
-            val = conditions_df[cond_rows[cidx], cv_cols[cvidx]] # by conditionId-aligned row
+            val = conditions_df[cv_rows[cidx], cv_cols[cvidx]] # by conditionId-aligned row
             if val isa Number
                 # If the value is a numeric value...
                 push!(itr_cv_fix, (cvidx, cidx, Float64(val)))
