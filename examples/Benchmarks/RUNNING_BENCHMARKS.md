@@ -19,9 +19,9 @@ build time, and (2) re-launching a killed model and having the harness silently 
 2. **A killed run leaves a stale `compiling` sentinel that makes the next run SKIP the model.**
    On startup `main()` converts a leftover `exa_compile_status=compiling` → `timeout` (a
    *terminal* status), and `exa_finished()` then treats the model as done → `nothing to do` →
-   clean exit, **without building anything**. The `exa_compile_time=14400.0` it writes is a
-   bookkeeping artifact, NOT a real 4-hour compile. **Always clear stale exa state first**
-   (§2). A 14400.0 compile_time with a fast process exit = this artifact, not a timeout.
+   clean exit, **without building anything**. The `exa_compile_time=3600.0` it writes is a
+   bookkeeping artifact, NOT a real 1-hour compile. **Always clear stale exa state first**
+   (§2). A 3600.0 compile_time with a fast process exit = this artifact, not a timeout.
 
 ---
 
@@ -72,8 +72,8 @@ instance 0/1 on GPU 0 (...)
 instance 0: 1 models assigned, 1 remaining   <- MUST say "1 remaining", not "0 / nothing to do"
 warmup: JIT build+solve on Bruno_JExpBot2016 ...   (warmup — excluded)
 warmup done
-[Model] compiling (K=4, compile_limit=14400s)...   <- BUILD CLOCK STARTS HERE
-[Model] solving with MadNLP (max_wall_time=7200s)...
+[Model] compiling (K=4, compile_limit=3600s)...   <- BUILD CLOCK STARTS HERE
+[Model] solving with MadNLP (max_wall_time=3600s)...
 [Model] SGM solve i/5 ...
 [Model] done
 ```
@@ -96,7 +96,7 @@ Cold vs warm matters: e.g. Zheng `exa_solve_time=128.76` (cold, ~108s of it is k
 
 ## 5. Watchdog caps (distinguish real timeout from artifact)
 
-- `COMPILE_LIMIT = 14400s` (4 h), `SOLVE_LIMIT = 7200s` (2 h).
+- `COMPILE_LIMIT = 3600s` (1 h), `SOLVE_LIMIT = 3600s` (1 h).
 - A **real** timeout is consistent with elapsed wall-clock AND logged (`compiling...` then killed).
 - A `timeout` written in the first seconds with no `compiling` log line = the stale-sentinel
   reset artifact (§0.2), not a real timeout.
