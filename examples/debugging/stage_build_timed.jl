@@ -10,6 +10,8 @@
 #   defaults: K=2, models = Perelson_Science1996 (fast baseline) + SalazarCavazos_MBoC2020
 
 using ExaModelsPEtab, PEtab, ExaModels
+import CUDA
+const _BACKEND = haskey(ENV, "GPU") ? CUDA.CUDABackend() : nothing
 import ModelingToolkitBase as MTK
 using Symbolics
 import OrdinaryDiffEq as ODE
@@ -37,7 +39,7 @@ function build_timed(model, K; quiet=false)
     quiet || (println("\n=== $model (K=$K) ==="); flush(stdout))
     t0 = time(); PEmodel = PEtab.PEtabModel(yaml);          pr("PEtabModel", time()-t0)
     t0 = time(); PEprob  = PEtab.PEtabODEProblem(PEmodel);  pr("PEtabODEProblem", time()-t0)
-    c = ExaModels.ExaCore(; backend=nothing, concrete=Val(true))
+    c = ExaModels.ExaCore(; backend=_BACKEND, concrete=Val(true))
     t0 = time(); (c, PEinfo)     = _create_variables(c, PEmodel, PEprob, K);  pr("_create_variables[mesh]", time()-t0)
     t0 = time(); c               = _create_collocation(c, PEmodel, PEprob, PEinfo); pr("_create_collocation", time()-t0)
     t0 = time(); c               = _create_continuity(c, PEmodel, PEprob, PEinfo);  pr("_create_continuity", time()-t0)

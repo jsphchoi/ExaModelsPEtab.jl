@@ -44,7 +44,6 @@ function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
     _assert_normal_noise(PEmodel)
     transforms = _get_meas_transforms(PEmodel)
     HALF_LOG2PI = 0.5 * log(2π)
-    LN10        = log(10.0)
     itr_obj_lin   = Tuple{Int, Float64, Float64}[]  # (midx, ymeas,     const)
     itr_obj_log   = Tuple{Int, Float64, Float64}[]  # (midx, ln(ymeas), const)
     itr_obj_log10 = Tuple{Int, Float64, Float64}[]  # (midx, log10(ymeas), const)
@@ -58,7 +57,7 @@ function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
             push!(itr_obj_log, (midx, log(ymeas), HALF_LOG2PI + log(ymeas)))
         elseif tr === :log10
             @assert ymeas > 0 "log10-transformed observable needs ymeas>0 (midx=$midx)"
-            push!(itr_obj_log10, (midx, log10(ymeas), HALF_LOG2PI + log(ymeas) + log(LN10)))
+            push!(itr_obj_log10, (midx, log10(ymeas), HALF_LOG2PI + log(ymeas) + log(log(10.0))))
         else
             error("Unsupported observableTransformation '$tr' (midx=$midx)")
         end
@@ -77,7 +76,7 @@ function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
     end
     if !isempty(itr_obj_log10)
         ExaModels.@add_obj(c,
-            0.5*(log(y[midx])/LN10 - l10ym)^2/sigma[midx]^2 + log(sigma[midx]) + cst
+            0.5*(log(y[midx])/log(10.0) - l10ym)^2/sigma[midx]^2 + log(sigma[midx]) + cst
             for (midx, l10ym, cst) in itr_obj_log10
         )
     end
@@ -98,7 +97,6 @@ function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     (:objectivePriorType in propertynames(params_df)) || return c   # no priors in this model
     p           = c.p
     HALF_LOG2PI = 0.5 * log(2π)
-    LN10        = log(10.0)
     dict_pidx   = _get_dict_pstr_pidx(PEprob)            # estimated-param name => p[pidx]
     # `x_scale=true` priors (parameterScale*) act on the DECISION variable p[pidx] (the estimation-
     # scale value). `x_scale=false` priors (normal/laplace/uniform) act on the PHYSICAL/linear value,
@@ -138,7 +136,7 @@ function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     isempty(psnorm) || ExaModels.@add_obj(c, 0.5*((p[i]-mu)/sg)^2 + log(sg) + HALF_LOG2PI for (i,mu,sg) in psnorm)
     isempty(pslap)  || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in pslap)
     isempty(lap_li) || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in lap_li)
-    isempty(lap_10) || ExaModels.@add_obj(c, abs(exp(LN10*p[i])-mu)/b + log(2*b)     for (i,mu,b) in lap_10)
+    isempty(lap_10) || ExaModels.@add_obj(c, abs(exp(log(10.0)*p[i])-mu)/b + log(2*b)     for (i,mu,b) in lap_10)
     isempty(lap_e)  || ExaModels.@add_obj(c, abs(exp(p[i])-mu)/b + log(2*b)          for (i,mu,b) in lap_e)
     isempty(unif)   || ExaModels.@add_obj(c, cst + 0.0*p[i]                          for (i,cst) in unif)  # constant; 0·p keeps a var ref
     return c
