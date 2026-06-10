@@ -8,7 +8,7 @@ function _create_variables(
     _assert_supported_events(PEmodel)   # reject true SBML <event> models (silently-wrong otherwise)
     # Create necessary variables (discretized state, unknown params) and obtain problem details (::PEInfo)
     c, Np = _create_p(c, PEprob)
-    c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1 = _create_z(c, PEmodel, PEprob, K)
+    c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes = _create_z(c, PEmodel, PEprob, K)
 
     Ncv = length(_get_cv_syms(PEmodel)) # number of condition-dependent variables
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
@@ -17,9 +17,9 @@ function _create_variables(
     # Fixed-time event gates: keep piecewise(time) gates live and resolve their per-(interval,
     # condition) values from a stepped warm-start integrator (no-op / empty when the model has none).
     gate_syms = _get_gate_syms(PEprob)
-    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, gate_syms, h, taus)
+    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, gate_syms, h, taus, t_nodes)
     PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale,
-                    gate_syms, gate_vals, gate_vals_ss)
+                    gate_syms, gate_vals, gate_vals_ss, t_nodes)
 
     # OBJECTIVE FUNCTION VARIABLES
     # Create auxiliary variables for model observables, y
@@ -71,7 +71,7 @@ end
 # Creates ExaModels decision variables for discretized states
 # z[1:Nz,1:N,0:K,1:Nc]
 function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
-    z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1 = _get_z_init(PEmodel, PEprob, K)
+    z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes = _get_z_init(PEmodel, PEprob, K)
     ExaModels.@add_var(c,
         z,
         1:Nz, 1:N, 0:K, 1:Nc;
@@ -79,7 +79,7 @@ function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::
         lvar = -Inf,    # unbounded: state sign/range is model-dependent (not assumed >= 0)
         uvar = Inf
     )
-    return c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1
+    return c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes
 end
 
 # Creates ExaModels decision variables for condition-dependent variables
@@ -89,19 +89,22 @@ end
 # start accordingly — numeric literal, or the parameter's own initial guess — so cv
 # (and any observable/noise formula that references it) is warm-started consistently.
 function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    (; Np, Nc, Ncv, pscale) = PEinfo
+    (; Np, Ncv, pscale) = PEinfo
     conditions_df  = PEmodel.petab_tables[:conditions]
     cv_cols        = _get_cv_colnames(PEmodel)          # cv column names, aligned 1:Ncv
-    cond_rows      = _get_cond_rows(PEmodel)            # cidx => conditions-table row
+    # cv columns span the simulation conditions (1:Nc) PLUS any distinct pre-equilibration
+    # conditions (so the steady-state residual can read the pre-eq inputs); see _get_cv_cond_ids.
+    cv_rows        = _get_cv_cond_rows(PEmodel, PEprob)  # cv column => conditions-table row
+    Ncc            = length(cv_rows)
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)        # parameter name => p decision-var index
     θ0             = _var_starts(c, c.p)                # p (= θ, estimation scale) initial guesses
     # physical parameter starts (cv == p means cv equals the PHYSICAL parameter value)
     p0             = [_p_phys_val(θ0, m, pscale) for m in 1:Np]
 
-    cv_init = zeros(Float64, Ncv, Nc)
-    for cidx in 1:Nc
+    cv_init = zeros(Float64, Ncv, Ncc)
+    for cidx in 1:Ncc
         for cvidx in 1:Ncv
-            val = conditions_df[cond_rows[cidx], cv_cols[cvidx]]
+            val = conditions_df[cv_rows[cidx], cv_cols[cvidx]]
             if val isa Number
                 cv_init[cvidx, cidx] = Float64(val)
             elseif val isa String || val isa Symbol
@@ -120,7 +123,7 @@ function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PE
 
     ExaModels.@add_var(c,
         cv,
-        1:Ncv, 1:Nc;
+        1:Ncv, 1:Ncc;
         start = cv_init
     )
     return c

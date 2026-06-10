@@ -1,20 +1,25 @@
-# final_report.jl — reads Benchmarks/results/{Model}_results.txt and prints a
+# results.jl — reads Benchmarks/results/{Model}_results.txt and prints a
 # formatted benchmark table comparing ExaModelsPEtab (MadNLP/GPU) vs PEtab.jl
-# (Optim.IPNewton). Also writes the same report to Benchmarks/final_report.txt.
+# (Optim.IPNewton). Also writes the same report to Benchmarks/results.txt.
 # Run from the repo root:
-#   julia --project=. examples/Benchmarks/final_report.jl          # first-run times (default)
-#   julia --project=. examples/Benchmarks/final_report.jl --sgm    # SGM (n=3) rerun times
+#   julia --project=. examples/Benchmarks/results.jl          # SGM (warm) solve times — DEFAULT
+#   julia --project=. examples/Benchmarks/results.jl --cold   # cold first-run solve times instead
+#
+# SGM is the DEFAULT because it is the fair warm-vs-warm comparison: the cold first solve includes a
+# one-time GPU-kernel JIT tax on the exa side (e.g. Zheng cold 128.8s vs SGM 20.4s) that PEtab (CPU)
+# does not pay, so cold solve times systematically flatter PEtab. A "-" in a Solve(s) cell means that
+# backend has no SGM time recorded (didn't converge, or its SGM rerun hasn't been run yet).
 
 using Printf
 
 const RESULTDIR  = joinpath(@__DIR__, "results")
-const REPORT_TXT = joinpath(@__DIR__, "final_report.txt")
-const USE_SGM    = "--sgm" in ARGS
+const REPORT_TXT = joinpath(@__DIR__, "results.txt")
+const USE_SGM    = !("--cold" in ARGS)   # SGM (warm) by default; pass --cold for first-run solve times
 
-include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
+include(joinpath(@__DIR__, "options.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
 
 # The report rows are the CANONICAL exa-supported set — every model ExaModelsPEtab's collocation
-# transcription can represent (EXA_SUPPORTED_MODELS in list_benchmarks.jl, 25), in ALPHABETICAL
+# transcription can represent (EXA_SUPPORTED_MODELS in options.jl, 25), in ALPHABETICAL
 # order. Models without a (recent) result row simply show blank/failed status, so the report is a
 # complete, stable scoreboard of the supported set rather than just the rerun-target subset.
 const ALL_MODELS = sort(EXA_SUPPORTED_MODELS)  # 25 (canonical exa-supported, alphabetical)
@@ -35,15 +40,24 @@ g(d, k)   = get(d, k, "")
 fparse(s) = tryparse(Float64, s)
 short_name(m) = split(m, '_')[1]
 
+# A SOLVE_SUCCEEDED whose objective is meaningfully WORSE than PEtab's (positive rel.gap above
+# this %) is a converged-but-suboptimal local minimum (e.g. Bertozzi +194%, Laske +3.6%,
+# Okuonghae +1.9%), NOT a clean optimum. It gets the "0S" marker and is EXCLUDED from the
+# "ExaModels solved" count (only true status 0 counts). Negative gaps (ExaModels lower than
+# PEtab) are the collocation relaxation "ghost", not suboptimality, so they stay "0".
+const SUBOPT_GAP_PCT = 1.5
+
+# rel.gap (%) = (exa_obj - petab_obj)/|petab_obj| * 100; positive = ExaModels objective WORSE
+# (higher, for an NLL minimization) than PEtab. nothing when either objective is missing/non-finite.
+function rel_gap_val(d)
+    eo = fparse(g(d, "exa_objective")); po = fparse(g(d, "petab_objective"))
+    (eo === nothing || po === nothing || !isfinite(eo) || !isfinite(po) || po == 0.0) && return nothing
+    (eo - po) / abs(po) * 100.0
+end
+
 # The SGM rerun count actually used (read from the data; falls back to "?" if no SGM ran).
 # Used in the header label so it reflects the real n instead of a hardcoded value.
-function sgm_n_used(all_d)
-    for d in all_d
-        n = g(d, "exa_sgm_n"); !isempty(n) && return n
-        p = g(d, "petab_sgm_n"); !isempty(p) && return p
-    end
-    return "?"
-end
+# SGM rerun count is the single shared BENCH_SGM_N from options.jl (both backends use it).
 
 function center_str(s, n)
     len = length(s); len >= n && return s[1:n]
@@ -65,8 +79,15 @@ function madnlp_code(d)
     ss == "timeout" && return "T"
     term = uppercase(g(d, "exa_term_status"))
     isempty(term)                          && return "-"
-    occursin("ACCEPTABLE",     term)       && return "A"   # SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal; valid solve)
-    occursin("SUCCEEDED",      term)       && return "0"
+    # A successful solve has two orthogonal axes: convergence tier (full SUCCEEDED -> "0" vs
+    # acceptable-level ε-optimal -> "0A") and objective quality (clean vs suboptimal). Suboptimal
+    # (positive rel.gap >= SUBOPT_GAP_PCT, i.e. obj worse than PEtab) appends an "S" suffix. Both
+    # base codes count as solved; the "S" variants (0S / 0AS) are excluded.
+    if occursin("SUCCEEDED", term) || occursin("ACCEPTABLE", term)
+        base = occursin("ACCEPTABLE", term) ? "0A" : "0"
+        gp   = rel_gap_val(d)
+        return (gp !== nothing && gp >= SUBOPT_GAP_PCT) ? base * "S" : base
+    end
     occursin("WALLTIME",       term)       && return "1"
     occursin("RESTORATION",    term)       && return "2"
     occursin("INVALID_NUMBER", term)       && return "3"
@@ -87,11 +108,8 @@ function petab_code(d)
 end
 
 function rel_gap_str(d)
-    eo = fparse(g(d, "exa_objective"))
-    po = fparse(g(d, "petab_objective"))
-    (eo === nothing || po === nothing ||
-     !isfinite(eo) || !isfinite(po) || po == 0.0) && return "-"
-    @sprintf("%+.2e", (eo - po) / abs(po) * 100.0)
+    gp = rel_gap_val(d)
+    gp === nothing ? "-" : @sprintf("%+.2e", gp)
 end
 
 fmt_cmp(d, pfx) = begin
@@ -126,7 +144,7 @@ buf = IOBuffer()
 
 all_d           = [read_result(m) for m in ALL_MODELS]              # rerun target rows
 exa_supported_d = [read_result(m) for m in EXA_SUPPORTED_MODELS]    # 25 exa-representable (context only)
-const SGM_N     = sgm_n_used(all_d)
+const SGM_N = BENCH_SGM_N   # shared rerun count for both backends (single knob in options.jl)
 
 # Labels are kept within the column inner widths (34 / 27) so center_str never truncates them
 # mid-string (the old "[solve=SGM n=3]" label overflowed 34 chars → a dangling unclosed '[').
@@ -165,15 +183,18 @@ println(buf, sep)
 
 # ─── summary ──────────────────────────────────────────────────────────────────
 # Scoped to the canonical exa-supported set (ALL_MODELS = sort(EXA_SUPPORTED_MODELS)), not all 35.
-exa_opt(d) = madnlp_code(d) in ("0", "A")   # certified or acceptable-level optimum both count as solved
+exa_opt(d)    = madnlp_code(d) in ("0", "0A")    # full (0) or acceptable-level (0A) optimum matching PEtab
+exa_subopt(d) = madnlp_code(d) in ("0S", "0AS")  # solved but suboptimal (positive gap >= SUBOPT_GAP_PCT)
 
-n_target  = length(ALL_MODELS)               # 25 exa-supported (rows)
-n_exa_opt = count(exa_opt, all_d)            # exa SOLVE_SUCCEEDED among the targets
+n_target     = length(ALL_MODELS)            # 25 exa-supported (rows)
+n_exa_opt    = count(exa_opt, all_d)         # clean status-0 solves among the targets
+n_exa_subopt = count(exa_subopt, all_d)      # converged-but-suboptimal (0S)
 
 println(buf, "\nSUMMARY  (exa-supported set)")
 @printf(buf, "  Exa-supported models   : %2d  (of %d benchmark / %d PEtab-solved / %d exa-supported)\n",
         n_target, length(BENCHMARK_MODELS), length(PETAB_SOLVED_MODELS), length(EXA_SUPPORTED_MODELS))
-@printf(buf, "  ExaModels solved       : %2d / %2d  (SOLVE_SUCCEEDED=0 or ACCEPTABLE=A among supported)\n", n_exa_opt, n_target)
+@printf(buf, "  ExaModels solved       : %2d / %2d  (status 0 + 0A — full or acceptable-level optimum matching PEtab)\n", n_exa_opt, n_target)
+@printf(buf, "  Solved-but-suboptimal  : %2d       (0S / 0AS — converged but obj >= +%.1f%% vs PEtab; excluded above)\n", n_exa_subopt, SUBOPT_GAP_PCT)
 
 get_gap(d) = begin
     eo = fparse(g(d, "exa_objective")); po = fparse(g(d, "petab_objective"))
@@ -192,7 +213,8 @@ end
 println(buf, bar)
 println(buf, "")
 println(buf, "STATUS KEY")
-println(buf, "  MadNLP (Status): 0=SOLVE_SUCCEEDED  A=SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal)  1=WALLTIME_EXCEEDED  2=RESTORATION_FAILED")
+println(buf, "  MadNLP (Status): 0=SOLVE_SUCCEEDED (clean optimum)  0A=SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal); both count as solved")
+println(buf, "                   0S/0AS=solved (full/acceptable) but suboptimal (obj >= +$(SUBOPT_GAP_PCT)% vs PEtab)  1=WALLTIME_EXCEEDED  2=RESTORATION_FAILED")
 println(buf, "                   3=INVALID_NUMBER_JACOBIAN  4=MAX_ITER_EXCEEDED  5=other")
 println(buf, "                   E=exception  T=process_timeout  -=compile_failed/not_run")
 println(buf, "  PEtab  (Status): 0=converged  1=ran_not_converged  E=error  T=timeout  -=compile_failed/not_run")
@@ -200,7 +222,7 @@ println(buf, "  EXA(%)         : fraction of compile time spent on ExaModels bui
 println(buf, "                   (remainder = PEtab setup + ODE presolve at nominal θ)")
 println(buf, "                   '-' for results from earlier benchmarks (presolve not tracked then)")
 println(buf, "  rel.gap(%)     : (ExaModels_obj - PEtab_obj) / |PEtab_obj| × 100%  (negative = ExaModels lower)")
-USE_SGM && println(buf, "  Timing mode    : both Solve(s) columns = SGM geometric mean over n=$SGM_N reruns (exa_sgm_* / petab_sgm_* keys)")
+USE_SGM && println(buf, "  Timing mode    : Solve(s) = SGM geometric mean (warm) over n=$SGM_N reruns, both backends (exa_sgm_* / petab_sgm_* keys)")
 
 # ─── output ───────────────────────────────────────────────────────────────────
 report = String(take!(buf))

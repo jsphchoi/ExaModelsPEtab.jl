@@ -1,4 +1,4 @@
-# benchmark_petab.jl — PEtab.jl + Optim.IPNewton benchmark
+# run_petab.jl — PEtab.jl + Optim.IPNewton benchmark
 #
 # Compiles and solves each PEtab model with Optim.IPNewton (PEtab.jl's recommended
 # optimizer). Results written to Benchmarks/results/{Model}_results.txt using prefixed
@@ -6,36 +6,38 @@
 #
 # Intended to be launched once per model (many in parallel from a shell loop):
 #   for m in <model_list>; do
-#     julia --project=. -t 1 examples/Benchmarks/benchmark_petab.jl "$m" &
+#     julia --project=. -t 1 examples/Benchmarks/run_petab.jl "$m" &
 #   done
 # Or run serially:
-#   julia --project=. -t 1 examples/Benchmarks/benchmark_petab.jl Bachmann_MSB2011
+#   julia --project=. -t 1 examples/Benchmarks/run_petab.jl Bachmann_MSB2011
 #
 # To run all 35 models in parallel (up to PAR concurrent workers):
 #   PAR=12
-#   for m in $(julia --project=. -e 'include("examples/Benchmarks/benchmark_petab.jl"); print_models()'); do
+#   for m in $(julia --project=. -e 'include("examples/Benchmarks/run_petab.jl"); print_models()'); do
 #     while [ $(jobs -rp | wc -l) -ge $PAR ]; do sleep 2; done
-#     julia --project=. -t 1 examples/Benchmarks/benchmark_petab.jl "$m" &
+#     julia --project=. -t 1 examples/Benchmarks/run_petab.jl "$m" &
 #   done; wait
 
 using PEtab, Optim
 
 # ─── CONFIGURABLE SETTINGS ────────────────────────────────────────────────────
-const TOL           = 1e-6            # Optim g_tol (matches MadNLP tol)
-const SOLVE_LIMIT   = 7200.0         # Optim time_limit [s] (2 hr, matches MadNLP; longest true success ~0.74 hr)
-const COMPILE_LIMIT = parse(Float64, get(ENV, "PETAB_COMPILE_LIMIT", "1800.0"))  # hard compile deadline [s] (default 30 min; override via PETAB_COMPILE_LIMIT env)
-const MAX_ITER      = 100_000_000     # large so wall time is always the bottleneck
-const N_SGM_RERUNS  = parse(Int, get(ENV, "PETAB_SGM_N", "5"))  # PEtab SGM rerun count for the geometric-mean head-to-head vs exa (canonical n=5; set 0 to disable)
-const WARMUP_MODEL  = "Bruno_JExpBot2016"  # shared warmup w/ benchmark_examodels.jl; excluded from ALL_MODELS below — benchmark Bruno via benchmark_bruno.jl (Crauste-warmed)
-# ──────────────────────────────────────────────────────────────────────────────
-
+# ALL solver/benchmark settings live in options.jl (single source of truth, shared with
+# run_examodels.jl). Change them THERE, not here — below we only alias the BENCH_* constants.
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
 
-include(joinpath(@__DIR__, "list_benchmarks.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
+include(joinpath(@__DIR__, "options.jl"))  # model lists + BENCH_* config (TOL, SGM_N, limits, ...)
+
+const TOL           = BENCH_TOL                  # Optim g_tol (== MadNLP tol)
+const SOLVE_LIMIT   = BENCH_SOLVE_LIMIT          # Optim time_limit [s] (== MadNLP max_wall_time)
+const COMPILE_LIMIT = BENCH_PETAB_COMPILE_LIMIT  # PEtab build wall cap [s]
+const MAX_ITER      = BENCH_MAX_ITER
+const N_SGM_RERUNS  = BENCH_SGM_N                 # shared SGM rerun count (== exa's)
+const WARMUP_MODEL  = BENCH_WARMUP_MODEL          # benchmark Bruno separately via run_bruno.jl (Crauste-warmed)
+# ──────────────────────────────────────────────────────────────────────────────
 
 # PEtab attempts EVERY benchmark model (optimum-found is only known after solving), minus the
-# shared JIT warmup Bruno (benchmarked via benchmark_bruno.jl). Only used by print_models() /
+# shared JIT warmup Bruno (benchmarked via run_bruno.jl). Only used by print_models() /
 # the .sh driver; run_worker() benchmarks whatever model name is passed as ARGS[1].
 const ALL_MODELS = filter(!=(WARMUP_MODEL), BENCHMARK_MODELS)  # 34
 
@@ -89,11 +91,11 @@ optim_opts() = Optim.Options(
     iterations     = MAX_ITER,
     time_limit     = SOLVE_LIMIT,
     g_tol          = TOL,
-    f_reltol       = 1e-8,
+    f_reltol       = BENCH_PETAB_F_RELTOL,
     allow_f_increases = true,
-    successive_f_tol  = 3,
+    successive_f_tol  = BENCH_PETAB_SUCCESSIVE_FTOL,
     show_trace     = false,
-    x_abstol       = 0.0,
+    x_abstol       = BENCH_PETAB_X_ABSTOL,
 )
 
 # ─── PEtab SGM solve reruns ─────────────────────────────────────────────────────
@@ -215,5 +217,5 @@ function run_worker(m)
     end
 end
 
-isempty(ARGS) && error("usage: benchmark_petab.jl <model_name>")
+isempty(ARGS) && error("usage: run_petab.jl <model_name>")
 run_worker(ARGS[1])

@@ -96,7 +96,7 @@ function _create_variables_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
 
     # The mesh fields (N, K, t_meas, t_vec_mesh, h, taus, L1) are never read on this path.
     PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, 0, 0, [Inf], Float64[], Float64[], Float64[], Float64[], pscale,
-                    gate_syms, zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss)
+                    gate_syms, zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss, Float64[])  # t_nodes unused (no mesh)
 
     c = _create_y(c, PEmodel, PEinfo)
     c = _create_sigma(c, PEinfo)
@@ -136,7 +136,7 @@ end
 function _ss_conservation(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nz, Nc, Np, Ncv, pscale, gate_syms, gate_vals_ss) = PEinfo
     zss0 = reshape(_var_starts(c, c.zss), Nz, Nc)
-    cv0  = Ncv >= 1 ? reshape(_var_starts(c, c.cv), Ncv, Nc) : zeros(Float64, 0, Nc)
+    cv0  = Ncv >= 1 ? reshape(_var_starts(c, c.cv), Ncv, :) : zeros(Float64, 0, Nc)
     θ    = PEtab.get_x(PEprob)
     p0   = [_p_phys_val(θ, m, pscale) for m in 1:Np]
 
@@ -249,7 +249,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     zss0 = reshape(_var_starts(c, zss), Nz, Nc)
     θ0   = _var_starts(c, p)
     p0   = [_p_phys_val(θ0, m, pscale) for m in 1:Np]
-    cv0  = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, Nc) : zeros(Float64, 0, Nc)
+    cv0  = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, Nc)
     y0     = zeros(Float64, Nm)
     sigma0 = zeros(Float64, Nm)
 

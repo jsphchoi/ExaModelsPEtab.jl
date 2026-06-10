@@ -1,7 +1,7 @@
-# benchmark_bruno.jl — dedicated Bruno benchmark, warmed up on Crauste.
+# run_bruno.jl — dedicated Bruno benchmark, warmed up on Crauste.
 #
-# Bruno_JExpBot2016 is the SHARED JIT-warmup model for both benchmark_examodels.jl and
-# benchmark_petab.jl, so it is excluded from both of their timed runs: a model that is
+# Bruno_JExpBot2016 is the SHARED JIT-warmup model for both run_examodels.jl and
+# run_petab.jl, so it is excluded from both of their timed runs: a model that is
 # benchmarked by the same script that warms up on it gets a pre-warmed, invalid compile
 # time (Bruno's petab_compile_time came out 4.96 s vs ~200-300 s for its cold peers).
 #
@@ -11,31 +11,38 @@
 #
 # CANONICAL USE: Bruno only. Bruno is the sole model that cannot be timed by its own warming
 # scripts, so it is benchmarked here, warmed on Crauste:
-#   julia --project=. -t 1 examples/Benchmarks/benchmark_bruno.jl Bruno_JExpBot2016   [gpu_id]
-# Crauste itself is now timed normally in the main loops (benchmark_examodels.jl + _petab.jl,
+#   julia --project=. -t 1 examples/Benchmarks/run_bruno.jl Bruno_JExpBot2016   [gpu_id]
+# Crauste itself is now timed normally in the main loops (run_examodels.jl + _petab.jl,
 # warmed on Bruno) and no longer needs this script. The TARGET arg still accepts Crauste (warmed
 # on Bruno) for ad-hoc parity checks, but the canonical Crauste numbers come from the main loops.
 # (no target arg ⇒ defaults to Bruno, warmed on Crauste.)
 
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels, Optim
 
-# ─── CONFIGURABLE SETTINGS (must match the two parent scripts) ──────────────────
-const TARGET        = (length(ARGS) >= 1 && !occursin(r"^\d+$", ARGS[1])) ? ARGS[1] : "Bruno_JExpBot2016"  # model under test (arg 1)
-const WARMUP_MODEL  = TARGET == "Crauste_CellSystems2017" ? "Bruno_JExpBot2016" : "Crauste_CellSystems2017"  # warmup ≠ target ⇒ valid timing
-const K             = parse(Int, get(ENV, "EXA_K", "4"))       # collocation points per mesh interval (env-overridable; matches benchmark_examodels.jl)
-const TOL           = 1e-6             # solver tolerance (both)
-const COMPILE_LIMIT = 14400.0          # exa compile deadline [s] (4 hr)
-const PETAB_COMPILE_LIMIT = 1800.0     # petab compile deadline [s] (30 min)
-const SOLVE_LIMIT   = 7200.0          # max_wall_time / time_limit [s] (2 hr; matches the parent scripts)
-const MAX_ITER      = 100_000_000
-const N_SGM_RERUNS  = parse(Int, get(ENV, "EXA_SGM_N", "5"))   # exa rerun count for geometric mean timing (env-overridable; canonical n=5)
-const ACCEPT_TOL    = parse(Float64, get(ENV, "EXA_ACCEPT_TOL", "1e-4"))   # ε-optimal acceptable termination (see benchmark_examodels.jl)
-const ACCEPT_ITER   = parse(Int,     get(ENV, "EXA_ACCEPT_ITER", "10"))
-const PETAB_SGM_N   = parse(Int, get(ENV, "PETAB_SGM_N", "5")) # petab rerun count for geometric mean timing (env-overridable)
-# ────────────────────────────────────────────────────────────────────────────────
-
+# ─── CONFIGURABLE SETTINGS ──────────────────────────────────────────────────────
+# ALL solver/benchmark settings live in options.jl (single source of truth, shared with
+# run_examodels.jl and run_petab.jl). Change them THERE — below we only alias BENCH_*.
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
+
+include(joinpath(@__DIR__, "options.jl"))  # model lists + BENCH_* config (K, TOL, SGM_N, limits, ...)
+
+# Bruno-specific: TARGET is the model under test; its warmup must DIFFER from it for valid timing
+# (a model warmed-on then benchmarked by the same process gets an invalid, pre-warmed compile time).
+const TARGET        = (length(ARGS) >= 1 && !occursin(r"^\d+$", ARGS[1])) ? ARGS[1] : "Bruno_JExpBot2016"
+const WARMUP_MODEL  = TARGET == "Crauste_CellSystems2017" ? "Bruno_JExpBot2016" : "Crauste_CellSystems2017"
+
+const K             = BENCH_K
+const TOL           = BENCH_TOL
+const COMPILE_LIMIT = BENCH_COMPILE_LIMIT
+const PETAB_COMPILE_LIMIT = BENCH_PETAB_COMPILE_LIMIT
+const SOLVE_LIMIT   = BENCH_SOLVE_LIMIT
+const MAX_ITER      = BENCH_MAX_ITER
+const N_SGM_RERUNS  = BENCH_SGM_N    # exa rerun count
+const ACCEPT_TOL    = BENCH_ACCEPT_TOL
+const ACCEPT_ITER   = BENCH_ACCEPT_ITER
+const PETAB_SGM_N   = BENCH_SGM_N    # petab rerun count — same shared knob
+# ────────────────────────────────────────────────────────────────────────────────
 
 get_yaml(m) = begin
     d = joinpath(MODELDIR, m); isdir(d) || return nothing
@@ -72,7 +79,7 @@ function with_hard_deadline(f, seconds::Real)
     try; return f(); finally; try; kill(w); catch; end; end
 end
 
-# ─── ExaModels build (copied from benchmark_examodels.jl) ───────────────────────
+# ─── ExaModels build (copied from run_examodels.jl) ───────────────────────
 function build_model(yaml, t_origin)
     PEmodel = PEtab.PEtabModel(yaml)
     PEprob  = PEtab.PEtabODEProblem(PEmodel)
@@ -89,7 +96,7 @@ function build_model(yaml, t_origin)
     return mdl, mdl.meta.nvar, mdl.meta.ncon, t_phase1
 end
 
-# ─── SGM solve reruns (copied from benchmark_examodels.jl) ──────────────────────
+# ─── SGM solve reruns (copied from run_examodels.jl) ──────────────────────
 function run_sgm_reruns(m, rp, model)
     write_result(rp, Dict("exa_sgm_status" => "running", "exa_sgm_n" => N_SGM_RERUNS))
     solve_times = Float64[]
@@ -185,16 +192,16 @@ function bench_exa(m)
     @info "[$m] EXA done"
 end
 
-# ─── PEtab benchmark for the target (copied from benchmark_petab.jl run_worker) ─
+# ─── PEtab benchmark for the target (copied from run_petab.jl run_worker) ─
 optim_opts() = Optim.Options(
     iterations     = MAX_ITER,
     time_limit     = SOLVE_LIMIT,
     g_tol          = TOL,
-    f_reltol       = 1e-8,
+    f_reltol       = BENCH_PETAB_F_RELTOL,
     allow_f_increases = true,
-    successive_f_tol  = 3,
+    successive_f_tol  = BENCH_PETAB_SUCCESSIVE_FTOL,
     show_trace     = false,
-    x_abstol       = 0.0,
+    x_abstol       = BENCH_PETAB_X_ABSTOL,
 )
 
 function has_events(PEprob)
@@ -326,7 +333,7 @@ function main()
     gpu_id  = gpu_idx === nothing ? 0 : parse(Int, ARGS[gpu_idx])
     CUDA.device!(gpu_id)
     mkpath(RESULTDIR)
-    @info "benchmark_bruno: target=$TARGET warmup=$WARMUP_MODEL on GPU $gpu_id ($(CUDA.name(CUDA.device())))"
+    @info "run_bruno: target=$TARGET warmup=$WARMUP_MODEL on GPU $gpu_id ($(CUDA.name(CUDA.device())))"
 
     warmup_exa()
     bench_exa(TARGET)
@@ -334,7 +341,7 @@ function main()
     warmup_petab()
     bench_petab(TARGET)
 
-    @info "benchmark_bruno complete"
+    @info "run_bruno complete"
 end
 
 main()

@@ -154,7 +154,7 @@ function _create_objective(
     ###############################################
     # Unpack problem info
     ###############################################
-    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, h, L1, pscale) = PEinfo
+    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, h, L1, pscale, t_nodes) = PEinfo
     z = c.z
     p = c.p
     y = c.y
@@ -171,7 +171,10 @@ function _create_objective(
     z0  = reshape(_var_starts(c, z), Nz, N, K + 1, Nc) # z0[v, i, j+1, cidx]
     θ0  = _var_starts(c, p)                            # decision var p := θ (estimation scale)
     p0  = [_p_phys_val(θ0, m, pscale) for m in 1:Np]   # PHYSICAL parameter starts (10^θ)
-    cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, Nc) : zeros(Float64, 0, Nc)
+    # cv has Ncc >= Nc columns (extra pre-equilibration columns for x0SSpre; see _get_cv_cond_ids).
+    # Infer the column count with `:`; the objective only reads cv0[:, cidx] for cidx in 1:Nc (the
+    # simulation conditions, which occupy the first Nc columns).
+    cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, Nc)
     y0     = zeros(Float64, Nm) # computed observable values at the initial guess
     sigma0 = zeros(Float64, Nm) # computed noise (std) values at the initial guess
 
@@ -192,7 +195,7 @@ function _create_objective(
     ###############################################
     # Parsed table values => ExaModels variable index mappings
     dict_cid_cidx = _get_dict_cid_cidx(PEmodel)
-    dict_t_tidx   = _get_dict_t_tidx(h, t_meas)
+    dict_t_tidx   = _get_dict_t_tidx(t_nodes, t_meas)
 
     # Substitute in fixed constant values
     dict_all_val = Dict(PEprob.model_info.model.parametermap)
@@ -200,7 +203,12 @@ function _create_objective(
         keys(Dict(dict_all_val)),
         union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
     )
-    dict_fixed_val = Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms))
+    # SBML-parametermap fixed values, PLUS PEtab-table-only fixed params (observable/noise scale/sd
+    # params absent from the SBML model). merge: parametermap-derived values win on any overlap.
+    dict_fixed_val = merge(
+        _get_table_fixed_vals(PEmodel, PEprob),
+        Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)),
+    )
 
     # Resolves SBML assignment rules (derived/algebraic variables, e.g. pY1173 = Σspecies/c1)
     # that appear inside observable / noise formulas, to a fixpoint. No-op for models without

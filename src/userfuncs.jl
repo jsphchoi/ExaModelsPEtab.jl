@@ -20,18 +20,20 @@ julia> madnlp(m)
 function petab_examodel(
         filename::String;
         backend = nothing,
-        K = 10
+        K = 10,
+        mutable_mesh::Bool = false
     )
     PEmodel = PEtab.PEtabModel(filename)    # TODO trim dependencies
     PEprob = PEtab.PEtabODEProblem(PEmodel) # TODO trim dependencies
-    return _build_petab_examodel(PEmodel, PEprob, backend, K)
+    return _build_petab_examodel(PEmodel, PEprob, backend, K; mutable_mesh = mutable_mesh)
 end
 
 function _build_petab_examodel(
         PEmodel::PEtabModel,
         PEprob::PEtabODEProblem,
         backend,
-        K
+        K;
+        mutable_mesh::Bool = false
     )
     # Steady-state models (all measurements at time = inf) carry no time-course information:
     # the data observe the t→∞ steady state, not a trajectory. They take a separate path with
@@ -48,7 +50,7 @@ function _build_petab_examodel(
     c, PEinfo = _create_variables(c, PEmodel, PEprob, K)
     
     # Create constraints
-    c = _create_collocation(c, PEmodel, PEprob, PEinfo)
+    c = _create_collocation(c, PEmodel, PEprob, PEinfo; mutable_mesh = mutable_mesh)
     c = _create_continuity(c, PEmodel, PEprob, PEinfo)
 
     # Create objective (also returns feasible initial guesses for the auxiliary
