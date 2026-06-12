@@ -33,10 +33,10 @@ if pgrep -f "run_examodels.jl" >/dev/null 2>&1; then
     [ "${FORCE:-0}" = 1 ] || { echo "Aborting (set FORCE=1 to override)."; exit 1; }
 fi
 echo "Pre-flight GPU free memory (CUDA.jl):"
-timeout 120 julia --project=. -e 'using CUDA
-    for d in CUDA.devices(); CUDA.device!(d)
-        println("  GPU ", CUDA.deviceid(d), " ", CUDA.name(d), ": free=",
-                round(CUDA.available_memory()/2^30; digits=1), " / ",
+timeout 120 julia --project=examples -e 'using CUDA
+    for i in 0:length(CUDA.devices())-1; CUDA.device!(i)
+        println("  GPU ", i, " ", CUDA.name(CUDA.device()), ": free=",
+                round(CUDA.free_memory()/2^30; digits=1), " / ",
                 round(CUDA.total_memory()/2^30; digits=1), " GiB")
     end' 2>/dev/null || echo "  (CUDA query unavailable — proceed with caution; check for the GPU0 tenant manually)"
 
@@ -44,7 +44,7 @@ run_instance() {  # $1=gpu_id  $2=instance_idx  $3=ninst
     local gpu=$1 idx=$2 ninst=$3
     for attempt in $(seq 1 100); do
         echo "#### exa instance $idx/$ninst (GPU $gpu) attempt $attempt $(date) ####"
-        julia --project=. -t 1 examples/Benchmarks/run_examodels.jl "$gpu" "$ninst" "$idx"
+        julia --project=examples -t 1 examples/Benchmarks/run_examodels.jl "$gpu" "$ninst" "$idx"
         local code=$?
         echo "#### instance $idx exit $code (attempt $attempt) ####"
         [ $code -eq 0 ] && { echo "#### instance $idx DONE ####"; return 0; }

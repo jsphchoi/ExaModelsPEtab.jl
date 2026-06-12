@@ -1,17 +1,3 @@
-exa_K=4
-exa_compile_status=ok
-exa_compile_time=333.16
-exa_error=
-exa_iter=1922
-exa_ncon=11646
-exa_nvar=11696
-exa_objective=-415.953028779097
-exa_presolve_time=179.14
-exa_sgm_error=first solve term=SEARCH_DIRECTION_BECOMES_TOO_SMALL∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
-exa_sgm_status=skipped
-exa_solve_status=ok
-exa_solve_time=212.13
-exa_term_status=SEARCH_DIRECTION_BECOMES_TOO_SMALL
 petab_compile_status=ok
 petab_compile_time=231.57
 petab_error=

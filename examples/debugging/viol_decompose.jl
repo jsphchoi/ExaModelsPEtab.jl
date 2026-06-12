@@ -9,7 +9,7 @@
 #   continuity rows  : ncon_coll+1 .. ncon_cont   (interval continuity + initial conditions)
 #   objective aux    : ncon_cont+1 .. ncon
 #
-# Usage: julia --project=. examples/debugging/viol_decompose.jl [model] [K]
+# Usage: julia --project=examples examples/debugging/viol_decompose.jl [model] [K]
 
 using ExaModelsPEtab, PEtab, ExaModels
 import ModelingToolkitBase as MTK

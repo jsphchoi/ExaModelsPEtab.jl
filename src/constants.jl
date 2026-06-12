@@ -1,11 +1,11 @@
-# Evaluates lⱼ(τ) given {τⱼ...}
+# Evaluates the Lagrange basis polynomial lⱼ(τ) given {τⱼ...}
 function _eval_l(
         j::Int64,
         tau::Float64,
         taus::Vector{Float64}
     )::Float64
-    # j ∈ {0,...,K} : Index for the legendre basis polynomial at the interpolation point τⱼ.
-    # tau ∈ [0,1]   : Evaluate the legendre basis polynomial at τ.
+    # j ∈ {0,...,K} : Index for the Lagrange basis polynomial at the interpolation point τⱼ.
+    # tau ∈ [0,1]   : Evaluate the Lagrange basis polynomial at τ.
     # taus          : Vector of shifted Gauss-Legendre roots (including τ₀ = 0)
     @assert 0 <= j <= length(taus)-1 "Index j must be in {0,...,K}."
     return prod(
@@ -14,14 +14,14 @@ function _eval_l(
     )
 end
 
-# Evaluates dlⱼ(τₖ)/dτ given {τⱼ...} 
+# Evaluates the τ derivatie of the Lagrange basis polynomial dlⱼ(τₖ)/dτ given {τⱼ...} 
 function _eval_dldtau(
         j::Int64,
         k::Int64,
         taus::Vector{Float64}
     )::Float64
-    # j ∈ {0,...,K} : Index for the legendre basis polynomial at the interpolation point τⱼ.
-    # k ∈ {0,...,K} : Evaluate the legendre basis polynomial at τₖ.
+    # j ∈ {0,...,K} : Index for the Lagrange basis polynomial at the interpolation point τⱼ.
+    # tau ∈ [0,1]   : Evaluate the Lagrange basis polynomial at τ.
     # taus          : Vector of shifted Gauss-Legendre roots (including τ₀ = 0)
     @assert 0 <= j <= length(taus)-1 "Index j must be in {0,...,K}."
     if j == k

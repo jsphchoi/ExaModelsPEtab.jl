@@ -11,7 +11,7 @@
 #
 # CANONICAL USE: Bruno only. Bruno is the sole model that cannot be timed by its own warming
 # scripts, so it is benchmarked here, warmed on Crauste:
-#   julia --project=. -t 1 examples/Benchmarks/run_bruno.jl Bruno_JExpBot2016   [gpu_id]
+#   julia --project=examples -t 1 examples/Benchmarks/run_bruno.jl Bruno_JExpBot2016   [gpu_id]
 # Crauste itself is now timed normally in the main loops (run_examodels.jl + _petab.jl,
 # warmed on Bruno) and no longer needs this script. The TARGET arg still accepts Crauste (warmed
 # on Bruno) for ad-hoc parity checks, but the canonical Crauste numbers come from the main loops.

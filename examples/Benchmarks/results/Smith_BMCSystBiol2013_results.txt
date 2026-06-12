@@ -1,6 +1,3 @@
-exa_compile_status=error
-exa_error=MethodError: no method matching isless(::Float64, ::Var{…}) The function `isless` exists, but no method is defined for this combination of argument types.  Closest candidates are:   isless(!Matched::Missing, ::Any)    @ Base missing.jl:87   isless(::AbstractFloat, !Matched::Symbolics.Num)    @ Symbolics ~/.julia/packages/Symbolics/0y0te/src/num.jl:251   isless(::AbstractFloat, !Matched::Static.StaticFloat64{Y}) where Y    @ Static ~/.julia/packages/Static/TjBVO/src/float.jl:89   ... 
-exa_solve_status=skipped
 petab_compile_status=ok
 petab_compile_time=1261.71
 petab_has_events=true

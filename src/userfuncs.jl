@@ -1,26 +1,30 @@
 """
-    petab_examodel(
-        filename::String;
-        backend = nothing
-        K = 10
-    )
+    petab_examodel(filename::String; backend = nothing, K = 3, mutable_mesh = false)
 
-Returns an ExaModel applying orthogonal collocation to problem in PEtab .yaml file.
+Build an `ExaModel` that applies orthogonal collocation to the PEtab parameter-estimation
+problem in the PEtab problem YAML at `filename`. The result is a standard `NLPModels`
+model, ready to solve with MadNLP.
 
-## Example
-```jldoctest
-julia> m = petab_examodel("Crause_CellSystems2017.yaml", backend = CUDABackend())
-An ExaModel{Float64, CuArray{Float64, 1, CUDA.DeviceMemory}, ...}
-[...]
+- `backend` — array backend: `nothing` for CPU, or `CUDA.CUDABackend()` for GPU. Pass it
+  from your own `using CUDA`; ExaModelsPEtab itself does not depend on CUDA.
+- `K` — number of collocation points per mesh interval.
 
-julia> madnlp(m)
-"Execution stats: Optimal Solution Found (tol = 1.0e-06)."
+# Example
+```julia
+using ExaModelsPEtab, MadNLP
+m = petab_examodel("Crauste_CellSystems2017.yaml")   # CPU
+stats = madnlp(m)
+
+# GPU (CUDSS sparse solver from MadNLPGPU):
+using CUDA, MadNLPGPU
+m = petab_examodel("Crauste_CellSystems2017.yaml"; backend = CUDA.CUDABackend())
+stats = madnlp(m; linear_solver = MadNLPGPU.CUDSSSolver)
 ```
 """
 function petab_examodel(
         filename::String;
         backend = nothing,
-        K = 10,
+        K = 3,
         mutable_mesh::Bool = false
     )
     PEmodel = PEtab.PEtabModel(filename)    # TODO trim dependencies

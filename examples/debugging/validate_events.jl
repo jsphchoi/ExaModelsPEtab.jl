@@ -1,5 +1,5 @@
 # Validate fixed-time event support: build (GPU) + solve with MadNLP/cuDSS, compare to PEtab.
-# Usage: julia --project=. examples/validate_events.jl <ModelDir>
+# Usage: julia --project=examples examples/validate_events.jl <ModelDir>
 using ExaModelsPEtab, PEtab, ExaModels
 using CUDA, MadNLPGPU, CUDSS
 

@@ -6,16 +6,16 @@
 #
 # Intended to be launched once per model (many in parallel from a shell loop):
 #   for m in <model_list>; do
-#     julia --project=. -t 1 examples/Benchmarks/run_petab.jl "$m" &
+#     julia --project=examples -t 1 examples/Benchmarks/run_petab.jl "$m" &
 #   done
 # Or run serially:
-#   julia --project=. -t 1 examples/Benchmarks/run_petab.jl Bachmann_MSB2011
+#   julia --project=examples -t 1 examples/Benchmarks/run_petab.jl Bachmann_MSB2011
 #
 # To run all 35 models in parallel (up to PAR concurrent workers):
 #   PAR=12
-#   for m in $(julia --project=. -e 'include("examples/Benchmarks/run_petab.jl"); print_models()'); do
+#   for m in $(julia --project=examples -e 'include("examples/Benchmarks/run_petab.jl"); print_models()'); do
 #     while [ $(jobs -rp | wc -l) -ge $PAR ]; do sleep 2; done
-#     julia --project=. -t 1 examples/Benchmarks/run_petab.jl "$m" &
+#     julia --project=examples -t 1 examples/Benchmarks/run_petab.jl "$m" &
 #   done; wait
 
 using PEtab, Optim

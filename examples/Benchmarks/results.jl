@@ -2,8 +2,8 @@
 # formatted benchmark table comparing ExaModelsPEtab (MadNLP/GPU) vs PEtab.jl
 # (Optim.IPNewton). Also writes the same report to Benchmarks/results.txt.
 # Run from the repo root:
-#   julia --project=. examples/Benchmarks/results.jl          # SGM (warm) solve times — DEFAULT
-#   julia --project=. examples/Benchmarks/results.jl --cold   # cold first-run solve times instead
+#   julia --project=examples examples/Benchmarks/results.jl          # SGM (warm) solve times — DEFAULT
+#   julia --project=examples examples/Benchmarks/results.jl --cold   # cold first-run solve times instead
 #
 # SGM is the DEFAULT because it is the fair warm-vs-warm comparison: the cold first solve includes a
 # one-time GPU-kernel JIT tax on the exa side (e.g. Zheng cold 128.8s vs SGM 20.4s) that PEtab (CPU)
@@ -18,11 +18,11 @@ const USE_SGM    = !("--cold" in ARGS)   # SGM (warm) by default; pass --cold fo
 
 include(joinpath(@__DIR__, "options.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
 
-# The report rows are the CANONICAL exa-supported set — every model ExaModelsPEtab's collocation
-# transcription can represent (EXA_SUPPORTED_MODELS in options.jl, 25), in ALPHABETICAL
-# order. Models without a (recent) result row simply show blank/failed status, so the report is a
-# complete, stable scoreboard of the supported set rather than just the rerun-target subset.
-const ALL_MODELS = sort(EXA_SUPPORTED_MODELS)  # 25 (canonical exa-supported, alphabetical)
+# The report rows are ALL 35 benchmark models, in ALPHABETICAL order — a complete scoreboard.
+# The PEtab column shows every model PEtab solved (status 0) AND the PEtab-side failures (E/T/1/-);
+# the ExaModels column shows the 25 exa-supported models (the 10 PEtab-failed / exa-unsupported
+# models show "-" there). Models without a result row simply show blank/failed status.
+const ALL_MODELS = sort(BENCHMARK_MODELS)  # 35 (full benchmark collection, alphabetical)
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 function read_result(m)
@@ -186,14 +186,17 @@ println(buf, sep)
 exa_opt(d)    = madnlp_code(d) in ("0", "0A")    # full (0) or acceptable-level (0A) optimum matching PEtab
 exa_subopt(d) = madnlp_code(d) in ("0S", "0AS")  # solved but suboptimal (positive gap >= SUBOPT_GAP_PCT)
 
-n_target     = length(ALL_MODELS)            # 25 exa-supported (rows)
-n_exa_opt    = count(exa_opt, all_d)         # clean status-0 solves among the targets
-n_exa_subopt = count(exa_subopt, all_d)      # converged-but-suboptimal (0S)
+n_rows         = length(ALL_MODELS)              # 35 (all benchmark models, rows)
+n_exa_supported= length(EXA_SUPPORTED_MODELS)    # 25 exa-representable
+n_exa_opt      = count(exa_opt, all_d)           # clean status-0/0A solves (only supported can qualify)
+n_exa_subopt   = count(exa_subopt, all_d)        # converged-but-suboptimal (0S/0AS)
+n_petab_solved = count(d -> petab_code(d) == "0", all_d)  # PEtab converged (status 0)
 
-println(buf, "\nSUMMARY  (exa-supported set)")
-@printf(buf, "  Exa-supported models   : %2d  (of %d benchmark / %d PEtab-solved / %d exa-supported)\n",
-        n_target, length(BENCHMARK_MODELS), length(PETAB_SOLVED_MODELS), length(EXA_SUPPORTED_MODELS))
-@printf(buf, "  ExaModels solved       : %2d / %2d  (status 0 + 0A — full or acceptable-level optimum matching PEtab)\n", n_exa_opt, n_target)
+println(buf, "\nSUMMARY  (all $(n_rows) benchmark models)")
+@printf(buf, "  Benchmark models       : %2d  (PEtab-solved %d / exa-supported %d)\n",
+        n_rows, length(PETAB_SOLVED_MODELS), n_exa_supported)
+@printf(buf, "  PEtab converged        : %2d / %2d  (status 0)\n", n_petab_solved, n_rows)
+@printf(buf, "  ExaModels solved       : %2d / %2d  (status 0 + 0A — full/acceptable optimum; of the exa-supported set)\n", n_exa_opt, n_exa_supported)
 @printf(buf, "  Solved-but-suboptimal  : %2d       (0S / 0AS — converged but obj >= +%.1f%% vs PEtab; excluded above)\n", n_exa_subopt, SUBOPT_GAP_PCT)
 
 get_gap(d) = begin

@@ -11,14 +11,12 @@ module ExaModelsPEtab
 
     # Imports
     import ExaModels: ExaCore, ExaModels
-
-    # LONG-TERM TODO TRIM DEPENDENCY: ONLY import the PEtab .yaml file parser
-    import PEtab: PEtabModel, PEtabODEProblem, PEtab
+    import PEtab: PEtabModel, PEtabODEProblem, PEtab    # TODO trim dependency: only import the PEtab .yaml file parser
     import ModelingToolkitBase as MTK 
     import Symbolics
-    import OrdinaryDiffEq as ODE # for solving ode at nominal guess to obtain intiail guess for discretized
-    import SteadyStateDiffEq as SSDE # for solving steady-state pre-equilibration initial states
-    import LinearAlgebra # conservation-law detection for steady-state models (svd/qr null space)
+    import OrdinaryDiffEq as ODE        # used to solve ODE using stiff solver at nominal p to obtain mesh and good initial guess
+    import SteadyStateDiffEq as SSDE    # used to solve the ODE model at steady-state to obtain initial guess for x0SSpre
+    import LinearAlgebra                # used to detect and eliminate conservation law redundant DOF in steady-state model
     
     # Includes
     include("structs.jl")       # data structure for parameter estimation problem
@@ -34,6 +32,6 @@ module ExaModelsPEtab
     # Exports
     include("userfuncs.jl")     # user-end functions
     export petab_examodel
-    # TODO want to support plot(filename, result) or something similar using specified data visualization file in the future
+    # TODO add plot(filename, result) or something similar using specified data visualization file in the future
 
 end

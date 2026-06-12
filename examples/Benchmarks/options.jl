@@ -39,7 +39,7 @@ const BENCH_MAX_ITER    = 100_000_000  # max solver iterations (large so wall ti
 const BENCH_WARMUP_MODEL = "Bruno_JExpBot2016"  # shared JIT-warmup model; excluded from both timed loops
 
 # ── ExaModels / MadNLP-only ──
-const BENCH_K             = 4          # collocation points per mesh interval
+const BENCH_K             = 3          # collocation points per mesh interval
 const BENCH_COMPILE_LIMIT = 3600.0     # exa build wall cap [s] (1 hr)
 # acceptable-level termination: accept an ε-optimal KKT point when the strict tol can't be reached
 # (boundary optima / ill-conditioning floor inf_du just above tol). 1e-4 = 100× looser than tol;
@@ -89,41 +89,36 @@ const EXA_SUPPORTED_MODELS = filter(m -> m ∉ _EXA_UNSUPPORTED, PETAB_SOLVED_MO
 @assert length(PETAB_SOLVED_MODELS)  == 28
 @assert length(EXA_SUPPORTED_MODELS) == 25
 
-# ── K=10 / SGM n=10 rerun target set ────────────────────────────────────────────
-# The models on which ExaModelsPEtab reached (or nearly reached) a converged solve, targeted
-# for the K=10 + SGM-n=10 head-to-head rerun against PEtab. ORDERED clean-success → least-
-# reliable so the high-confidence results land first (run_examodels.jl runs in this order,
-# and the unreliable tail's 2 h solve caps don't delay the clean numbers). Membership rationale:
-#   Clean SOLVE_SUCCEEDED matching/near PEtab : Boehm, Blasi, Rahman, Sneyd, Perelson, Armistead,
-#                                               SalazarCavazos (Fix #10 ov win), Zheng (x0SSpre cv
-#                                               fix, +0.83% gap), Bruno, Crauste
-#   Converged but suboptimal local min        : Okuonghae (+4.6%), Bertozzi (+194%) — valid KKT pts
-#   User-requested retry (tail-stall last run): Schwen (was inf_du~1.2e-6 just above 1e-6 tol)
-#   Conditioning long-shots (likely re-fail)  : Lucarelli (dual-stall 0.028), Zhao (+8.2% restoration),
-#                                               Laske (+3.6% restoration) — K=10 mostly won't fix
-# EXCLUDED (and why): Fujita (Status-0 but FALSE PASS — gate-bug, exa −323.5 vs PEtab −53.08);
-#   Bachmann (compiles at K=4 but solver-fails — NOT an OOM); Borghans/Elowitz (NaN-spin);
-#   event models (don't build/diverge). (Zheng was here — singular-KKT/unidentifiable — but the
-#   x0SSpre cv fix recovered it to a clean SOLVE_SUCCEEDED, so it is now an in-loop rerun target.)
-#   (Fiedler is no longer here: it is now in _EXA_UNSUPPORTED, outside the supported set entirely.)
-#
-# Bruno is the shared JIT-warmup model — excluded from the in-loop scripts (a model warmed-on
-# then benchmarked by the same process gets an invalid compile time) and benchmarked on its own
-# via run_bruno.jl (warmed on Crauste). Crauste needs no such exception: it is warmed by
-# Bruno like every other in-loop model, so it lives in EXA_RERUN_INLOOP. Only Bruno is omitted.
-const EXA_RERUN_INLOOP = [   # run_examodels.jl timed loop, clean → unreliable order
-    "Boehm_JProteomeRes2014", "Blasi_CellSystems2016", "Rahman_MBS2016",
-    "Sneyd_PNAS2002", "Perelson_Science1996", "Armistead_CellDeathDis2024",
-    "SalazarCavazos_MBoC2020", "Zheng_PNAS2012", "Crauste_CellSystems2017",
-    "Okuonghae_ChaosSolitonsFractals2020",
-    "Bertozzi_PNAS2020", "Schwen_PONE2014", "Lucarelli_CellSystems2018",
-    "Zhao_QuantBiol2020", "Laske_PLOSComputBiol2019",
+# ── K=3 full-suite rerun order ───────────────────────────────────────────────────
+# The complete exa-supported in-loop set = EXA_SUPPORTED_MODELS minus Bruno (the shared JIT
+# warmup, benchmarked separately by run_bruno.jl). All 24 are run; the ORDER is chosen for
+# fast, useful feedback (run_examodels.jl preserves it, strided across the GPU instances):
+#   1. Models that CONVERGED in the prior K=4 run (term_status SOLVE_SUCCEEDED or
+#      SOLVED_TO_ACCEPTABLE_LEVEL — the 0 / 0S / 0A / 0AS scoreboard codes), ordered by NLP
+#      size (exa_nvar) ASCENDING, so the cheap high-confidence results land first.
+#   2. The remaining (non-converged) models, ordered by prior K=4 compile time ASCENDING, so
+#      the long compiles / likely-failures don't block the rest.
+# Sizes/compile-times are the K=4 snapshot in results/ at the time this order was set; at K=3
+# the absolute numbers shrink but the relative ordering is a good proxy.
+const EXA_RERUN_INLOOP = [
+    # ── converged in K=4, by nvar ascending ──
+    "Blasi_CellSystems2016", "Armistead_CellDeathDis2024", "Perelson_Science1996",
+    "Okuonghae_ChaosSolitonsFractals2020", "Rahman_MBS2016", "Boehm_JProteomeRes2014",
+    "Bertozzi_PNAS2020", "Zheng_PNAS2012", "Oliveira_NatCommun2021",
+    "Crauste_CellSystems2017", "Sneyd_PNAS2002", "Zhao_QuantBiol2020",
+    "Fujita_SciSignal2010", "SalazarCavazos_MBoC2020", "Schwen_PONE2014",
+    "Laske_PLOSComputBiol2019",
+    # ── not converged in K=4, by compile time ascending ──
+    "Borghans_BiophysChem1997", "Elowitz_Nature2000", "Brannmark_JBC2010",
+    "Giordano_Nature2020", "Isensee_JCB2018", "Lucarelli_CellSystems2018",
+    "Raimundez_PCB2020", "Bachmann_MSB2011",
 ]
 # Bruno is the ONLY model benchmarked outside the in-loop scripts (it is their shared warmup),
 # via run_bruno.jl. Crauste needs no exception — it is warmed by Bruno like every other
 # in-loop model — so it lives in EXA_RERUN_INLOOP above.
-const EXA_RERUN_MODELS = [EXA_RERUN_INLOOP; "Bruno_JExpBot2016"]  # 16 (in-loop 15 + Bruno)
+const EXA_RERUN_MODELS = [EXA_RERUN_INLOOP; "Bruno_JExpBot2016"]  # 25 (in-loop 24 + Bruno)
 
-@assert length(EXA_RERUN_INLOOP) == 15
-@assert length(EXA_RERUN_MODELS) == 16
+@assert length(EXA_RERUN_INLOOP) == 24
+@assert length(EXA_RERUN_MODELS) == 25
 @assert all(m -> m ∈ EXA_SUPPORTED_MODELS, EXA_RERUN_MODELS)
+@assert sort(EXA_RERUN_MODELS) == sort(EXA_SUPPORTED_MODELS)  # the rerun covers the full supported set

@@ -1,16 +1,16 @@
-exa_K=4
+exa_K=3
 exa_compile_status=ok
-exa_compile_time=120.54
+exa_compile_time=114.63
 exa_error=
-exa_iter=44
-exa_ncon=22350
-exa_nvar=22373
-exa_objective=-81.9565927819931
-exa_presolve_time=43.87
+exa_iter=30
+exa_ncon=17769
+exa_nvar=17792
+exa_objective=-84.91987431210359
+exa_presolve_time=42.86
 exa_sgm_error=first solve term=RESTORATION_FAILED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
 exa_sgm_status=skipped
 exa_solve_status=ok
-exa_solve_time=95.68
+exa_solve_time=45.89
 exa_term_status=RESTORATION_FAILED
 petab_compile_status=ok
 petab_compile_time=292.09

@@ -25,6 +25,18 @@ build time, and (2) re-launching a killed model and having the harness silently 
 
 ---
 
+## 0. Environment
+
+The benchmark/debugging scripts run in the **`examples/` environment** (`--project=examples`),
+*not* the package env — the package itself does not depend on the solver/GPU stack (MadNLP,
+MadNLPGPU, CUDA, CUDSS, Optim); those live in `examples/Project.toml`. On a fresh clone,
+instantiate it once (this also wires the dev path to the package):
+
+```bash
+cd /home/jsphchoi/.julia/dev/ExaModelsPEtab
+julia --project=examples -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
+```
+
 ## 1. Pre-flight checks
 
 ```bash
@@ -53,7 +65,7 @@ With no `exa_compile_status`, `exa_finished` → false → the model lands in `t
 
 ```bash
 BENCH_SUBSET=Raimundez_PCB2020 \
-  julia -t1 --project=. examples/Benchmarks/run_examodels.jl 0 1 0 \
+  julia -t1 --project=examples examples/Benchmarks/run_examodels.jl 0 1 0 \
   > /tmp/raimundez_bench.log 2>&1 &
 ```
 - Args: `<gpu_id> <ninst> <idx>` (single model: `0 1 0`).
@@ -111,8 +123,8 @@ Bachmann, Borghans, Brannmark, Elowitz, Fujita, Giordano, Isensee, Oliveira, Rai
 ## 7. Regenerate the report
 
 ```bash
-julia --project=. examples/Benchmarks/results.jl          # SGM (warm) — DEFAULT, fair comparison
-julia --project=. examples/Benchmarks/results.jl --cold   # cold first-run solve times
+julia --project=examples examples/Benchmarks/results.jl          # SGM (warm) — DEFAULT, fair comparison
+julia --project=examples examples/Benchmarks/results.jl --cold   # cold first-run solve times
 ```
 - Rows = `sort(EXA_SUPPORTED_MODELS)` (full scoreboard). Status codes: `0`=clean optimum,
   `0A`=acceptable-level, `0S`/`0AS`=succeeded/acceptable but suboptimal (obj ≥ +1.5% vs PEtab,

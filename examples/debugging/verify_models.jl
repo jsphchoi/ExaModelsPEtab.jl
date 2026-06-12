@@ -2,14 +2,14 @@
 # optionally GPU solve + PEtab IPNewton objective comparison.
 #
 # Usage (from repo root):
-#   julia --project=. -t 1 examples/debugging/verify_models.jl [K] [phase] [model ...]
+#   julia --project=examples -t 1 examples/debugging/verify_models.jl [K] [phase] [model ...]
 #
 #   phase = build   — CPU build + warm-start feasibility only (fast, no GPU needed)
 #   phase = solve   — + GPU MadNLP solve + PEtab IPNewton comparison
 #
 # Examples:
-#   julia --project=. examples/debugging/verify_models.jl 5 build
-#   julia --project=. -t 1 examples/debugging/verify_models.jl 5 solve Bruno_JExpBot2016 Crauste_CellSystems2017
+#   julia --project=examples examples/debugging/verify_models.jl 5 build
+#   julia --project=examples -t 1 examples/debugging/verify_models.jl 5 solve Bruno_JExpBot2016 Crauste_CellSystems2017
 
 using ExaModelsPEtab, PEtab, ExaModels
 import ModelingToolkitBase as MTK

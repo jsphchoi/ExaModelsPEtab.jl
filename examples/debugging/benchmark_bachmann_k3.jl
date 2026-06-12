@@ -5,7 +5,7 @@
 # Writes to a SEPARATE file Bachmann_MSB2011_K3_results.txt so the K=6 OOM record in
 # the main file is preserved. exa_K=3 is stamped so the coarser mesh is explicit.
 # Warmup on Bruno (NOT the target). CPU/GPU: pinned to the GPU id in ARGS[1] (default 0).
-#   julia --project=. -t 1 examples/debugging/benchmark_bachmann_k3.jl 1
+#   julia --project=examples -t 1 examples/debugging/benchmark_bachmann_k3.jl 1
 
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels
 

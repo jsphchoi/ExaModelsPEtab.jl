@@ -52,7 +52,7 @@ for m in "${MODELS[@]}"; do
     fi
     while [ "$(jobs -rp | wc -l)" -ge "$PAR" ]; do sleep 2; done
     echo "[run ] $m"
-    julia --project=. -t 1 examples/Benchmarks/run_petab.jl "$m" \
+    julia --project=examples -t 1 examples/Benchmarks/run_petab.jl "$m" \
         > "$LD/${m}_petab.log" 2>&1 &
 done
 wait

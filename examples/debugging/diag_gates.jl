@@ -1,5 +1,5 @@
 # Diagnostic: time each build phase + verify gate values, for one model.
-# Run from the events worktree: julia --project=. examples/diag_gates.jl <ModelDir>
+# Run from the events worktree: julia --project=examples examples/diag_gates.jl <ModelDir>
 using ExaModelsPEtab, PEtab
 const EP = ExaModelsPEtab
 

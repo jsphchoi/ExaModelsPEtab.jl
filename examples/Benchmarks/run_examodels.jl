@@ -19,9 +19,9 @@
 # run_examodels.sh to restart after a watchdog SIGKILL on compile timeout.
 #
 # Two-GPU usage (strided partition, one instance per GPU):
-#   julia --project=. -t 1 examples/Benchmarks/run_examodels.jl <gpu_id> <num_instances> <instance_idx>
+#   julia --project=examples -t 1 examples/Benchmarks/run_examodels.jl <gpu_id> <num_instances> <instance_idx>
 # Single-GPU usage:
-#   julia --project=. -t 1 examples/Benchmarks/run_examodels.jl 0 1 0
+#   julia --project=examples -t 1 examples/Benchmarks/run_examodels.jl 0 1 0
 
 using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels
 
