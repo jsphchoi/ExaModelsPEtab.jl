@@ -14,16 +14,49 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     p_nominal = PEtab.get_x(PEprob)
     sol = _solve_conds(p_nominal, PEmodel, PEprob, t_stops)
 
-    # Construct the mesh from the finest (most-points) condition's solution. Every condition is
-    # integrated over the SAME span [tstart, max(t_meas)] (see _solve_conds), so whichever
-    # condition we pick spans the full mesh and — because tstops = the union of all measurement
-    # times was forced on every solve — contains every measurement time as a node, so every
-    # t_meas lands on a mesh boundary.
-    # t_nodes = the ORIGINAL mesh boundary times (T_0..T_N) of the finest condition. Because t_meas
-    # and t_events are forced solver tstops, the integrator lands on them bit-exactly, so they appear
-    # verbatim in t_nodes — letting _get_dict_t_tidx map measurement times to node indices by exact
-    # `==` (NOT isapprox against cumsum(h), which drifts by accumulated rounding on a fine mesh).
-    t_nodes = collect(Float64, sol[argmax(k -> length(sol[k].t), keys(sol))].t)
+    # Build the shared collocation mesh by TILING per simulation-condition tspan. Every condition is
+    # integrated over the SAME full span (see _solve_conds) — giving a rectangular warm start (one
+    # shared N for all conditions) — but each condition's DATA only extends to its own last
+    # measurement time t_end[cidx]. We split the timeline at the distinct t_end breakpoints and, in
+    # each segment [a,b], (a) take the base nodes from the condition that actually terminates there
+    # (the "owner") and (b) cap the interval width at h_cap = the SMALLEST of the per-condition
+    # largest steps among the conditions whose data still covers the segment (t_end ≥ b). Any base
+    # interval wider than h_cap is split into equal sub-intervals. This resolves every region at
+    # least as finely as the most-demanding condition covering it, rather than inheriting a single
+    # (finest) condition's adaptive nodes everywhere.
+    #
+    # Because tstops = the UNION of all conditions' measurement+event times is forced on every solve,
+    # the owner's sol.t contains every measurement/event time in its segment bit-exactly; segment
+    # subdivision only inserts interior points and re-emits the exact right boundary, so every t_meas
+    # still lands verbatim on a node (letting _get_dict_t_tidx map by exact `==`, not drifting cumsum).
+    cids     = _get_cids(PEmodel)                                    # canonical cidx order
+    sol_t    = [collect(Float64, sol[Symbol(cid)].t) for cid in cids]  # each condition's node times
+    t_start  = minimum(first, sol_t)                                 # ODE t0 (shared across conditions)
+    T_global = maximum(last,  sol_t)                                 # full solved span (shared)
+
+    # Per-condition actual end = own last (nonzero) measurement time; 0 for t=0-only conditions —
+    # those then cover/own no segment and drop out of the mesh logic entirely.
+    meas_df = PEtable[:measurements]
+    t_end   = zeros(Float64, length(cids))
+    for row in eachrow(meas_df)
+        cidx = findfirst(==(string(row[:simulationConditionId])), cids)
+        cidx === nothing && continue
+        t_end[cidx] = max(t_end[cidx], Float64(row[:time]))
+    end
+
+    # Segment boundaries: t_start, each distinct positive t_end, and the full solved span.
+    B = sort(unique(vcat(t_start, filter(>(t_start), t_end), T_global)))
+
+    t_nodes = Float64[]
+    for k in 1:length(B)-1
+        a, b = B[k], B[k+1]
+        covering = [cidx for cidx in eachindex(cids) if t_end[cidx] >= b - _MESH_TOL]
+        isempty(covering) && (covering = [argmax(t_end)])           # tail beyond all data: longest cond
+        h_cap = minimum(_seg_maxwidth(sol_t[cidx], a, b) for cidx in covering)
+        owner = _pick_owner(covering, t_end, sol_t, a, b)
+        seg   = _subdivide_segment(sol_t[owner], a, b, h_cap)
+        append!(t_nodes, isempty(t_nodes) ? seg : @view seg[2:end]) # drop the shared boundary `a`
+    end
     h = diff(t_nodes)
     N = length(h) # number of intervals
     taus = _taus(K) # get interpolation points
@@ -50,6 +83,44 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     z_init = permutedims(reshape(stack(sol_at_mesh), Nz, K+1, N, Nc), (1, 3, 2, 4))
 
     return z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes
+end
+
+# Absolute tolerance for mesh-time comparisons (segment coverage and width caps).
+const _MESH_TOL = 1e-9
+
+# Largest gap among `tvec`'s nodes restricted to [a,b] (the segment edges bound the gaps). This is
+# the condition's coarsest adaptive step within the segment; the per-segment h_cap is the min of
+# this over the covering conditions ("smallest largest hmax").
+function _seg_maxwidth(tvec, a, b)
+    nodes = sort!(unique!(Float64[a; b; filter(t -> a < t < b, tvec)]))
+    return maximum(diff(nodes))
+end
+
+# Owner of a segment = the covering condition that terminates soonest at/after it (smallest t_end);
+# ties are broken by the FINER condition (most own nodes inside [a,b]). Its mesh supplies the base
+# nodes for the segment.
+function _pick_owner(covering, t_end, sol_t, a, b)
+    tmin  = minimum(t_end[cidx] for cidx in covering)
+    cands = [cidx for cidx in covering if abs(t_end[cidx] - tmin) <= _MESH_TOL]
+    return argmax(cidx -> count(t -> a <= t <= b, sol_t[cidx]), cands)
+end
+
+# Owner's base nodes clamped to [a,b], with any interval wider than h_cap split into
+# ceil(width/h_cap) EQUAL sub-intervals. The right boundary b is emitted EXACTLY (not lo+n*w/n) so
+# measurement/event times falling on segment boundaries stay bit-exact mesh nodes.
+function _subdivide_segment(tvec, a, b, h_cap)
+    base = sort!(unique!(Float64[a; b; filter(t -> a < t < b, tvec)]))
+    out  = Float64[base[1]]
+    for i in 1:length(base)-1
+        lo, hi = base[i], base[i+1]
+        w = hi - lo
+        n = max(1, ceil(Int, w / h_cap - _MESH_TOL))
+        for j in 1:n-1
+            push!(out, lo + j * w / n)
+        end
+        push!(out, hi)   # exact boundary — keeps measurement/event nodes bit-exact
+    end
+    return out
 end
 
 # Returns ::Dict{(condition id)::Symbol, (solution)}
