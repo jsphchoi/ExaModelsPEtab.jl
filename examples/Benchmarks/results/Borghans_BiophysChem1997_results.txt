@@ -1,3 +1,17 @@
+exa_K=4
+exa_compile_status=ok
+exa_compile_time=113.71
+exa_error=
+exa_iter=43
+exa_ncon=22155
+exa_nvar=22178
+exa_objective=-59.55534277928139
+exa_presolve_time=42.53
+exa_sgm_error=first solve term=RESTORATION_FAILED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
+exa_sgm_status=skipped
+exa_solve_status=ok
+exa_solve_time=45.38
+exa_term_status=RESTORATION_FAILED
 petab_compile_status=ok
 petab_compile_time=292.09
 petab_error=
