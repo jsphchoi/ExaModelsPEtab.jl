@@ -1,3 +1,17 @@
+exa_K=4
+exa_compile_status=ok
+exa_compile_time=995.98
+exa_error=
+exa_iter=937
+exa_ncon=997530
+exa_nvar=997666
+exa_objective=68759.5409570315
+exa_presolve_time=128.23
+exa_sgm_error=first solve term=MAXIMUM_WALLTIME_EXCEEDED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
+exa_sgm_status=skipped
+exa_solve_status=ok
+exa_solve_time=3604.42
+exa_term_status=MAXIMUM_WALLTIME_EXCEEDED
 petab_compile_status=ok
 petab_compile_time=210.51
 petab_error=
