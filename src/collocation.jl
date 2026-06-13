@@ -12,45 +12,43 @@ function _create_collocation(
     return c
 end
 
-# Create lagrange collocation equations.
-#
-# adaptive_mesh=true LIFTS the mesh geometry (interval widths h[i], collocation times t_ij, and the
-# piecewise(time) gate values) into ExaModels PARAMETERS so an outer moving-mesh loop (AMREE) can
-# relocate nodes via set_value! WITHOUT rebuilding the model (handles recoverable as
-# model.h_mesh/.t_mesh/.g_mesh). That path is GPU-codegen-EXPENSIVE: the symbolic parameter
-# indexing — especially the 2-D t_par[i,k] / 3-D g_par[g,i,cidx] computed-index ParameterNodes —
-# blows up CUDA kernel compilation (collocation build: ~seconds → tens of minutes on GPU). So it
-# is OPT-IN. The DEFAULT (false) bakes the mesh as literals into the constraint iterator (fast GPU
-# build), matching every normal solve / benchmark. Both paths produce the byte-identical model;
-# taus/DLDTAU/L1 depend only on K, so they stay baked either way.
-function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo;
-                          adaptive_mesh::Bool = false)
-    ########################################################################
+# Create lagrange collocation equations
+# Set adaptive_mesh = true to make h[i] and t[i,j] into ExaModels parameters instead of
+# constants (for AMREE implementation later on). Prolongs compile time
+function _create_lagrange(
+        c::ExaCore,
+        PEmodel::PEtabModel,
+        PEprob::PEtabODEProblem,
+        PEinfo::PEInfo;
+        adaptive_mesh::Bool = false
+    )
     # Unpack problem info
-    ########################################################################
     (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale, gate_vals, t_nodes) = PEinfo
-    gate_syms = _get_gate_syms(PEprob)   # not stored in PEInfo; recomputed like z_syms/cv_syms
+
+    gate_syms = _get_gate_syms(PEprob)
     Ng = length(gate_syms)
-    # ODE RHS functions; t is always the final arg (autonomous RHS just ignores it — see
-    # _get_rhs_funcs), and the live piecewise(time) gates are trailing args before it.
-    fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
+
+    fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms) # obtain ODE rhs equations
 
     if adaptive_mesh
-        ####################################################################
-        # ADAPTIVE-MESH path (AMREE): h / t_ij / gates as ExaModels parameters (c.θ), indexed
-        # symbolically, so the mesh can be relocated via set_value! without a rebuild.
-        ####################################################################
+        #############################################################################################
+        # AMREE PATH: h / t_ij / gates as ExaModels parameters, indexed symbolically
+        #############################################################################################
+
+        # Create mesh parameters, unpack variables
         c, h_par = ExaModels.add_par(c, h; name = Val(:h_mesh))
-        t_init   = [t_nodes[i] + taus[k+1]*h[i] for i in 1:N, k in 1:K]  # exact mesh, no cumsum drift
+        t_init   = [t_nodes[i] + taus[k+1]*h[i] for i in 1:N, k in 1:K]
         c, t_par = ExaModels.add_par(c, t_init; name = Val(:t_mesh))
         g_par = nothing
         if Ng >= 1
             c, g_par = ExaModels.add_par(c, gate_vals; name = Val(:g_mesh))
         end
-        z = c.z; p = c.p              # capture AFTER add_par (returns a fresh ExaCore)
+        z = c.z; p = c.p
         if Ncv >= 1
             cv = c.cv
         end
+
+        # Create collocation equations: -hi*f(...) = (...)
         itr_coll = [(i,k,cidx) for i in 1:N, k in 1:K, cidx in 1:Nc]   # integer indices only
         c_coll   = [
             ExaModels.@add_con(c,
@@ -67,13 +65,15 @@ function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
         ]
     else
         ####################################################################
-        # DEFAULT (literal) path: mesh baked into the iterator (fast GPU build). t_nodes[i] = EXACT
-        # interval start (no cumsum(h) round-off drift); gate values ride as an NTuple field gv.
+        # CONSTANT MESH (NO AMREE)
         ####################################################################
+        # Unpack variables
         z = c.z; p = c.p
         if Ncv >= 1
             cv = c.cv
         end
+
+        # Create collocation equations: -hi*f(...) = (...)
         itr_coll = [(i,k,cidx,h[i],t_nodes[i] + taus[k+1]*h[i], ntuple(g->gate_vals[g,i,cidx],Ng))
                     for i in 1:N, k in 1:K, cidx in 1:Nc]
         c_coll   = [
@@ -105,21 +105,18 @@ function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     return c
 end
 
-# Auxiliary variable constraints binding each cv[cvidx,cidx] to its per-condition value
-# (a numeric literal or the PHYSICAL value of an unknown parameter p). Shared by the
-# collocation (time-course) path and the steady-state path. No-op when Ncv == 0.
-function _create_cv_constraints(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    ########################################################################
+# Create auxiliary variable constraints for cv[cvidx,cidx] = {numeric value, p}
+function _create_cv_constraints(
+        c::ExaCore,
+        PEmodel::PEtabModel,
+        PEprob::PEtabODEProblem,
+        PEinfo::PEInfo
+    )
     # Unpack problem info
-    ########################################################################
-    (; Np, Ncv, pscale) = PEinfo
+    (; Ncv, pscale) = PEinfo
     Ncv >= 1 || return c
     p  = c.p
     cv = c.cv
-
-    ########################################################################
-    # Auxiliary variable constraints for condition-dependent variables, cv
-    ########################################################################
 
     # Unpack DataFrame: row = experimental condition, col = condition-dependent variable
     conditions_df = PEmodel.petab_tables[:conditions]
@@ -166,10 +163,7 @@ function _create_cv_constraints(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabOD
         )
     end
     if !isempty(itr_cv_p)
-        # Condition-dependent variable 'cvidx' at condition 'cidx' equals the PHYSICAL
-        # value of unknown parameter p[pidx]. pidx is a per-entry data index here (not a
-        # literal), so the scale can't be branched inside the kernel — partition by scale
-        # and emit one fixed-form constraint per scale group (see _p_phys docstring).
+        # cv[cvidx,cidx] = linearized value of p[pidx]
         for sc in (:log10, :log, :lin)
             grp = [t for t in itr_cv_p if pscale[t[3]] === sc]
             isempty(grp) && continue

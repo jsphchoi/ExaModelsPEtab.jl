@@ -12,12 +12,12 @@ struct PEInfo{T <: Number}
 
     # Pre-compute once mesh-related values
     t_meas::Vector{T}               # all of the unique measurement times
-    t_nodes::Vector{Float64}        # interval mesh boundary times t_i (measurement/event tstops land on these exactly; see _get_dict_t_tidx)
+    t_nodes::Vector{Float64}        # interval mesh boundary times t_i
     h::Vector{Float64}              # interval widths, t_i+1 - t_i
     taus::Vector{Float64}           # relative positions scaled to [0,1] of the interpolation points (roots of shifted Gauss-Legendre polynomials of order K)
     L1::Vector{Float64}             # evaluations of the lagrange basis polynomial at tau=1 for each j in K
 
-    # Parameter scaling
+    # Parameter scaling tags
     pscale::Vector{Symbol} # (m = 1,...,Np) per-parameter PEtab estimation scale (:log10/:log/:lin)
 
     # Event handling

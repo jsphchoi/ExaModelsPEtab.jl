@@ -22,7 +22,6 @@ module ExaModelsPEtab
     import ModelingToolkitBase as MTK 
     import Symbolics
     import OrdinaryDiffEq as ODE        # used to solve ODE using stiff solver at nominal p to obtain mesh and good initial guess
-    import SteadyStateDiffEq as SSDE    # used to solve the ODE model at steady-state to obtain initial guess for x0SSpre
     import LinearAlgebra                # used to detect and eliminate conservation law redundant DOF in steady-state model
     
     # Includes

@@ -1,16 +1,10 @@
 #######################################################
 # Steady-state (time = inf) models.
 #
-# PEtab marks a measurement as a steady-state observation with time = inf (lower-case in the
-# spec): the data observe the t→∞ steady state of the simulation condition, not a point on a
-# trajectory. For such models there is NO time-course to discretize — the collocation mesh is
-# meaningless. We build a separate NLP whose only "dynamics" are the steady-state equations
-# f(zss[:,cidx]) = 0 (one block per simulation condition), with the observables/noise read off
-# the steady state zss instead of a mesh node. This mirrors PEtab's :Rootfinding steady-state
-# method (solve(./solve.jl) dispatches inf-tmax conditions to _solve_ss).
-#
-# Scope (first cut): PURE steady-state models — EVERY measurement is inf. Mixed finite+inf
-# measurements and pre-equilibration combined with inf measurements are detected and rejected.
+# A `time = inf` measurement observes the t→∞ steady state, not a trajectory point — no time-course
+# to discretize. We build a separate NLP whose only dynamics are f(zss[:,cidx]) = 0 per condition,
+# reading observables/noise off zss (PEtab's :Rootfinding method). PURE steady-state models only;
+# mixed finite+inf and inf+pre-equilibration are rejected.
 #######################################################
 
 # A model is (pure) steady-state iff every measurement time is inf. Errors on the mixed case
@@ -26,11 +20,9 @@ function _is_steady_state(PEmodel::PEtabModel)::Bool
     return true
 end
 
-# Forward-simulated steady-state warm start for zss[1:Nz, 1:Nc]. For each simulation condition
-# the ODE problem's tmax is inf (steady-state measurements), so we integrate to a large finite
-# horizon (PEtab's inf→1e8 convention, see solve/helper.jl) and take the terminal state. This
-# lands zss on the forward-simulated steady state, selecting the right basin when f(u)=0 admits
-# multiple roots (the same caveat PEtab's :Rootfinding method carries).
+# Forward-simulated steady-state warm start for zss[1:Nz,1:Nc]: integrate each condition's ODE to a
+# large finite horizon (PEtab's inf→1e8 convention) and take the terminal state. This selects the
+# forward-simulated basin when f(u)=0 has multiple roots (same caveat as PEtab's :Rootfinding).
 function _get_zss_init_sim(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nz, Nc) = PEinfo
     p_nominal = PEtab.get_x(PEprob)
@@ -39,6 +31,7 @@ function _get_zss_init_sim(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo:
     abstol    = PEprob.probinfo.solver.abstol
     reltol    = PEprob.probinfo.solver.reltol
 
+    # One forward solve per condition to t=1e8; the terminal state is the steady state
     zss0 = zeros(Float64, Nz, Nc)
     for (cidx, cid) in enumerate(cids)
         odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = cid)
@@ -86,31 +79,23 @@ function _create_variables_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     return c, PEinfo
 end
 
-# Steady-state constraints: cv equalities (shared with the collocation path; no-op if Ncv==0)
-# plus the steady-state residual f(zss[:,cidx]; p, cv[:,cidx]) = 0 under each simulation
-# condition's own inputs (cvindex_of = identity).
-#
-# Conservation laws: many reaction networks conserve linear moieties (e.g. total H4 in Blasi),
-# making f(zss)=0 rank-deficient by r = #(conservation laws). With only f=0 imposed, zss is
-# under-determined along the conserved directions (PEtab pins them via the initial condition),
-# so we (a) drop r redundant residual rows and (b) add r conservation constraints pinned to the
-# IC: W·zss = W·x0. r=0 (no conservation, e.g. models with synthesis/degradation) => no-op.
+# Steady-state constraints: cv equalities (no-op if Ncv==0) plus the residual f(zss[:,cidx]) = 0.
+# Conservation laws (e.g. total H4 in Blasi) make f=0 rank-deficient by r; we drop r redundant rows
+# and replace them with r IC-pinned constraints W·zss = W·x0. r=0 (no conservation) => no-op.
 function _create_constraints_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     c = _create_cv_constraints(c, PEmodel, PEprob, PEinfo)
     W, b, keep_rows = _conservation_ss(c, PEmodel, PEprob, PEinfo)
-    c = _add_residual_ss(c, PEmodel, PEprob, PEinfo, identity; keep_rows = keep_rows)
+    c = _create_residual_ss(c, PEmodel, PEprob, PEinfo, identity; keep_rows = keep_rows)
     c = _add_conservation_constraints(c, PEinfo, W, b)
     return c
 end
 
-# Detect conservation laws of the steady-state system numerically. The conserved moieties are
-# the left null space of the RHS Jacobian J = ∂f/∂z (structural: w'·f(z) ≡ 0 ⟺ w'J ≡ 0), computed
-# once at the forward-simulated warm start (already stored as the zss start). Returns:
+# Detect conservation laws numerically: the conserved moieties are the left null space of the RHS
+# Jacobian J = ∂f/∂z (w'J ≡ 0), computed once at the forward-simulated warm start. Returns:
 #   W         : r×Nz orthonormal conservation vectors (rows), r = Nz − rank(J)
 #   b         : r×Nc conserved values per condition, b[k,cidx] = W[k,:]·x0[:,cidx]
-#   keep_rows : the Nz−r residual rows to keep (an independent subset; the r dropped rows are
-#               the ones the conservation constraints replace, chosen by pivoted QR of W)
-# r=0 returns empty W/b and keep_rows = 1:Nz (no conservation, plain f(zss)=0 is full rank).
+#   keep_rows : the Nz−r independent residual rows to keep (dropped rows chosen by pivoted QR of W)
+# r=0 returns empty W/b and keep_rows = 1:Nz (f(zss)=0 is full rank).
 function _conservation_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nz, Nc, Np, Ncv, pscale, gate_vals_ss) = PEinfo
     gate_syms = _get_gate_syms(PEprob)   # not stored in PEInfo; recomputed like z_syms/cv_syms
@@ -119,10 +104,8 @@ function _conservation_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     θ    = PEtab.get_x(PEprob)
     p0   = [_p_phys_val(θ, m, pscale) for m in 1:Np]
 
-    # f evaluated at nominal params and condition-1 inputs (conservation is structural, so the
-    # point/condition only needs to be generic). The live gates are trailing args of f, supplied
-    # here as real numbers (condition-1 steady-state values); t is the always-present final arg,
-    # 0.0 at steady state. Plain numeric call (not @add_con), so real-vector splats are fine.
+    # f at nominal params / condition-1 inputs (conservation is structural, so any generic point
+    # works). Gates ride as trailing real args, t=0.0 last. Plain numeric call, so splats are fine.
     gss = size(gate_vals_ss, 2) >= 1 ? gate_vals_ss[:, 1] : Float64[]
     fs  = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
     cvc = Ncv >= 1 ? cv0[:, 1] : Float64[]
@@ -173,11 +156,13 @@ function _initial_conditions_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PE
     (; Nz, Nc) = PEinfo
     cids = Symbol.(_get_cids(PEmodel))
     θ    = PEtab.get_x(PEprob)
+    # Baseline u0 per condition at nominal θ
     u0s  = zeros(Float64, Nz, Nc)
     for (cidx, cid) in enumerate(cids)
         oprob, _ = PEtab.get_odeproblem(θ, PEprob; condition = cid)
         u0s[:, cidx] = oprob.u0[1:Nz]
     end
+    # Perturb θ; if any condition's u0 moves, the initial condition is θ-dependent
     θ2 = θ .+ 0.1
     ic_theta_dep = false
     for (cidx, cid) in enumerate(cids)
@@ -211,9 +196,8 @@ function _add_conservation_constraints(c::ExaCore, PEinfo::PEInfo, W::AbstractMa
 end
 
 # Objective + observable (y) / noise (sigma) constraints for the steady-state path. Parallel to
-# _create_objective: same grouping, observableParameter/noiseParameter substitution, assignment-
-# rule resolution and sigma-reduction, but every state is read at the steady state zss[:,cidx]
-# (no time, no mesh node, no dict_t_tidx). Returns feasible y/sigma warm starts.
+# _create_objective but every state is read at the steady state zss[:,cidx] (no time/mesh node).
+# Returns feasible y/sigma warm starts.
 function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Np, Ncv, Nz, Nc, Nm, pscale) = PEinfo
     p     = c.p
@@ -273,6 +257,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     # Observable (y) constraints — state read at zss[:,cidx]
     ###############################################
     itr_y_state = Tuple{Int, Int, Int}[]   # (midx, zidx, cidx): observable is a single state
+    # Group measurements sharing an (observable, observableParameter override)
     obs_y_groups = Dict{Tuple{String,String}, Vector{Int}}()
     for midx in 1:Nm
         row     = measurements_df[midx, :]
@@ -281,6 +266,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
         push!(get!(obs_y_groups, (obs_id, obs_key), Int[]), midx)
     end
 
+    # Per group: parse the observable formula and add y[midx] = obs(zss[:,cidx]) (single state ⇒ direct)
     for ((obs_id, obs_params_str), group_midxs) in obs_y_groups
         obs_expr_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
         obs_expr_sub = obs_expr_raw
@@ -344,6 +330,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     itr_sigma_fix = Tuple{Int, Float64}[]  # sigma = numeric literal
     itr_sigma_p   = Tuple{Int, Int}[]      # sigma = p[pidx]
 
+    # Group measurements sharing an (observable, noiseParameter override)
     obs_sigma_groups = Dict{Tuple{String,String}, Vector{Int}}()
     for midx in 1:Nm
         row        = measurements_df[midx, :]
@@ -355,6 +342,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     Y_sym = Symbolics.Num(Symbolics.variable(:__sigma_obs_Y__))
     dict_obsid_obssym = Dict{String, Any}()
 
+    # Per group: classify sigma (numeric literal / p[pidx] / observable-reduced / state-dependent) and add its constraint
     for ((obs_id, noise_params_str), group_midxs) in obs_sigma_groups
         sigma_expr_raw = string(dict_obsid_obsrow[obs_id][:noiseFormula])
         sigma_expr_sub = sigma_expr_raw
@@ -392,10 +380,9 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
                 sigma0[midx] = p0[pidx]
             end
         else
-            # σ couples to states ONLY through the observable y (every PEtab benchmark noise
-            # form). Reduce σ to a function of the observable placeholder Y_sym; if that leaves
-            # no state, the constraint references the existing y[midx] directly. Otherwise fall
-            # back to a state-dependent expression evaluated at zss.
+            # σ couples to states only through the observable y (every PEtab noise form). Reduce σ
+            # to a function of Y_sym; if no state remains, reference y[midx] directly, else fall back
+            # to a state-dependent expression at zss.
             obs_sym = get!(dict_obsid_obssym, obs_id) do
                 obs_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
                 op = Meta.parse(obs_raw)
@@ -463,6 +450,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
         end
     end
 
+    # Emit the collected literal- and parameter-valued sigma constraints (parameters by scale)
     if !isempty(itr_sigma_fix)
         ExaModels.@add_con(c,
             sigma[midx] - val

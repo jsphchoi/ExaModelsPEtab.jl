@@ -116,12 +116,9 @@ function _get_cids(PEmodel::PEtabModel)::Vector{String}
     return [string(c) for c in conditions_df[!, :conditionId] if string(c) in sim_set]
 end
 
-# cv-column conditions: the Nc simulation conditions (positions 1:Nc — the cv column layout used
-# everywhere else, so cv[:,1:Nc] is byte-identical) FOLLOWED BY any DISTINCT pre-equilibration
-# conditions that are NOT themselves simulation conditions. The extra columns let the steady-state
-# residual f(zss)=0 be evaluated under the PRE-EQUILIBRATION inputs (e.g. Zheng dilution=1) instead
-# of the simulation condition's (dilution=0) — see _get_dict_cidx_sscidx / _add_residual_ss. For
-# models without pre-equilibration this returns exactly _get_cids (no extra columns).
+# The Nc simulation conditions (positions 1:Nc, matching the cv column layout) followed by any
+# DISTINCT pre-equilibration conditions. The extra columns let the steady-state residual f(zss)=0
+# read the pre-eq inputs (e.g. Zheng dilution=1); without pre-eq this is exactly _get_cids.
 function _get_cv_cids(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{String}
     sim_cids = _get_cids(PEmodel)
     si = PEprob.model_info.simulation_info
@@ -174,17 +171,11 @@ function _assignment_substitutor(PEprob::PEtabODEProblem; remove_t::Bool)
     end
 end
 
-# Table of SBML assignment rules (= `MTK.observed(sys)`, excluding state aliases), as BARE
-# symbols matching the objective's `(t)`-free convention. Returns `(ids, lhs, rhs, is_flat)`:
-#   ids[r]     :: Symbol  — the rule's name
-#   lhs[r]     :: Num     — the bare leaf symbol that stands for the rule
-#   rhs[r]     :: <expr>  — the bare RHS (a function of states/params/cv, possibly nested)
-#   is_flat[r] :: Bool    — true iff rhs[r] references NO other rule symbol
-# Instead of inlining a rule everywhere it appears (which makes build_function expand the rule
-# into every formula and blows up codegen — e.g. SalazarCavazos's EGFRtot = Σ72 species divided
-# into 4 observables), the objective binds each occurring FLAT rule to an auxiliary "observed
-# variable" (ov) defined once per evaluation node. Nested rules (is_flat == false) are left to
-# the inlining fallback. Mirrors the bare-symbol construction in `_assignment_substitutor`.
+# SBML assignment rules (`MTK.observed(sys)` minus state aliases) as bare `(t)`-free symbols,
+# returned as `(ids, lhs, rhs, is_flat)`; is_flat[r] is true iff rhs[r] references no other rule.
+# The objective binds each occurring flat rule to an auxiliary "observed variable" (ov) once per
+# node instead of inlining it everywhere (inlining blows up codegen — e.g. SalazarCavazos's
+# 72-species EGFRtot across 4 observables); nested rules fall back to inlining. Mirrors _assignment_substitutor.
 function _rule_table(PEprob::PEtabODEProblem)
     sys    = PEprob.model_info.model.sys
     z_syms = _get_z_syms(PEprob)
@@ -206,25 +197,11 @@ function _rule_table(PEprob::PEtabODEProblem)
     return ids, lhs, rhs, is_flat
 end
 
-# Resolves every FIXED (neither estimated nor condition-dependent) parameter to a numeric
-# constant, returning Dict(sym::Num => value). A parameter can be defined by an SBML
-# initialAssignment, i.e. its parametermap value is a SYMBOLIC expression of other parameters
-# (e.g. Bertozzi's `beta_N => (R0_*gamma_)/N_`). PEtab freezes such a parameter at the value of
-# that expression evaluated with the model's DEFAULT parameter values — it does NOT re-evaluate
-# it with the per-condition / estimated overrides (verified against PEtab's ODEProblem parameter
-# vector: beta_N = 0.1*0.1/1 = 0.01 even though R0_/gamma_/N_ carry their condition values). We
-# MUST freeze it the same way, otherwise the collocation RHS uses a different constant than the
-# ODE that produced the warm start, leaving the warm start grossly collocation-infeasible.
-# We get there by fixpoint-substituting the parametermap into itself until every default is
-# numeric (resolves nested initialAssignments), then reading off the fixed params. If a fixed
-# param cannot be reduced to a number, we fall back to its raw parametermap value (the previous
-# behavior) so models that relied on the symbolic form are unaffected.
-# PEtab parameter-table parameters that are NON-estimated and NOT condition (cv) or gate variables —
-# crucially INCLUDING observable/noise-only params (e.g. a fixed scale `s_…` or noise sd `sd_…`) that
-# never appear in the SBML model, hence are absent from the parametermap and would otherwise leak as
-# UNBOUND symbols in the observable/noise build_function. Each is bound to its numeric nominalValue.
-# Returns Dict(symbolic value => Float64) suitable for Symbolics.substitute. Keys are built the same
-# way the formula parser makes bare symbols (Symbolics.variable(name)) so substitution matches.
+# Numeric values for fixed parameter-table params (NOT estimated, condition (cv), or gate vars).
+# Crucially includes observable/noise-only params (e.g. a fixed scale `s_…` or noise sd `sd_…`) that
+# never appear in the SBML model — absent from the parametermap, they would otherwise leak as unbound
+# symbols in the observable/noise build_function. Returns Dict(bare symbol => Float64), keyed via
+# Symbolics.variable(name) to match the formula parser's bare symbols for substitution.
 function _get_table_fixed_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Dict{Any,Any}
     params_df = PEmodel.petab_tables[:parameters]
     estimated = Set(string.(PEprob.xnames))                                  # decision vars p
@@ -242,6 +219,12 @@ function _get_table_fixed_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Di
     return out
 end
 
+# Numeric values for fixed (non-estimated, non-cv) params from the parametermap, as Dict(sym => value).
+# An initialAssignment param has a symbolic parametermap value (e.g. Bertozzi `beta_N => R0_*gamma_/N_`);
+# PEtab freezes it at the DEFAULT-valued expression, NOT the condition/estimated overrides, so we must
+# too — else the collocation RHS uses a different constant than the warm-start ODE and the warm start is
+# collocation-infeasible. Fixpoint-substitute the parametermap into itself until numeric, then read off
+# the fixed params; fall back to the raw symbolic value if one can't reduce to a number.
 function _resolve_fixed_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     dict_all_val = Dict(PEprob.model_info.model.parametermap)
     defaults = Dict{Any,Any}(dict_all_val)
@@ -261,28 +244,22 @@ function _resolve_fixed_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     return out
 end
 
-# (!!!) Returns ::Vector{Symbolics.Num} of piecewise(time) gating parameters, __parameter_ifelseN.
-# SBMLImporter rewrites every `piecewise(time>T, a, b)` in an SBML rule into the smooth algebraic
-# form `b*a + (1-b)*c` where `b = __parameter_ifelseN` is an MTK parameter toggled by a callback at
-# the fixed time T. These are NOT estimated and NOT condition columns; we keep them live in the RHS
-# (one extra function argument each) and supply their per-(interval,condition) value as data, rather
-# than freezing them at the parametermap default (= the pre-trigger value). Empty for models with no
-# time events, in which case _get_rhs_funcs is byte-identical to the no-gate behavior.
+# (!!!) piecewise(time) gating parameters (__parameter_ifelseN): SBMLImporter rewrites each
+# `piecewise(time>T, …)` into a smooth form toggled by an MTK parameter at the fixed time T. Not
+# estimated, not condition columns — we keep them live in the RHS (one extra arg each) and supply the
+# per-(interval,condition) value as data rather than freezing them at the pre-trigger default. Empty
+# if the model has no time events.
 function _get_gate_syms(PEprob::PEtabODEProblem)::Vector{Symbolics.Num}
     sys = PEprob.model_info.model.sys
     return Symbolics.Num[Symbolics.Num(pp) for pp in MTK.parameters(sys)
                          if occursin("__parameter_ifelse", string(pp))]
 end
 
-# Returns ::Vector{Function}, one RHS function per state, with signature
-#   f[v]([z[:,i,k,cidx]; p[:]; cv[:,cidx]; gates; t]...)
-# The independent variable t is ALWAYS the final argument, even for an autonomous RHS that ignores
-# it: build_function tolerates unused arguments (z/p/cv are already passed in full for every state),
-# so always carrying t lets every call site pass it uniformly (t_ij for collocation, 0.0 at steady
-# state) with no has_t branching. The live piecewise(time) gates gate_syms (see _get_gate_syms) are
-# kept as trailing args (the smooth form b*a+(1-b)*c stays symbolic in b); their per-(interval,
-# condition) values are supplied as iterator data at the call site, like h[i]/t_ij. ONE
-# build_function per state regardless of the gate pattern. gate_syms empty => no-event behavior.
+# One RHS function per state, signature f[v]([z[:,i,k,cidx]; p; cv[:,cidx]; gates; t]...). t is
+# ALWAYS the final arg, even for an autonomous RHS (build_function tolerates unused args), so every
+# call site passes it uniformly (t_ij for collocation, 0.0 at steady state) with no has_t branching.
+# Gate params stay symbolic trailing args; their per-(interval,condition) values are supplied as
+# iterator data at the call site, like h[i]/t_ij. gate_syms empty => no-event behavior.
 function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
                         gate_syms::Vector{Symbolics.Num} = Symbolics.Num[])
     sys = PEprob.model_info.model.sys
@@ -361,8 +338,8 @@ function _get_event_times(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{
         oprob, cbs = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
         integ = ODE.init(oprob, solver; callback = cbs, abstol = abstol, reltol = reltol)
         cur   = read_gates(integ)
-        tend  = oprob.tspan[2]
-        while integ.t < tend
+        t_end  = oprob.tspan[2]
+        while integ.t < t_end
             tprev = integ.t
             ODE.step!(integ)
             (isfinite(integ.t) && integ.t > tprev) || break   # integrator stalled/failed
@@ -424,8 +401,8 @@ function _get_gate_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
             cond_arg = preeq_ids[pos] => sim_ids[pos]
         end
         oprob, cbs = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
-        tend  = max(maximum(bnds), oprob.tspan[2])
-        oprob = ODE.remake(oprob; tspan = (oprob.tspan[1], tend))
+        t_end  = max(maximum(bnds), oprob.tspan[2])
+        oprob = ODE.remake(oprob; tspan = (oprob.tspan[1], t_end))
         integ = ODE.init(oprob, solver; callback = cbs, tstops = tstops, abstol = abstol, reltol = reltol)
 
         g0        = read_gates(integ)                        # gate at the (post-init) initial condition, t=0

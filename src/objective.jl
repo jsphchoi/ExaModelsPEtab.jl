@@ -1,12 +1,9 @@
 
-# Reduce a noise (σ) expression so that its dependence on model states enters ONLY through
-# the observable. Every PEtab benchmark noise form (c | θ | β·y | α+β·y | √(α²+(β·y)²)) is a
-# function of the observable y and parameters, and the observable is affine in the states.
-# We solve O = Y (the observable placeholder) for ONE observable-state and substitute it into
-# σ; if σ's state dependence is genuinely only through O, every other state cancels. This is
-# robust to Symbolics flattening `β*(state*param)` into one product (which defeats a direct
-# substitute(O => Y)) and cancels any observableParameter coefficients that ride along.
-# Returns (reduced_expr, ok) where ok=true means no model state remains in reduced_expr.
+# Reduce a noise (σ) expression so its state-dependence enters ONLY through the observable. Every
+# PEtab benchmark noise form (c | θ | β·y | α+β·y | √(α²+(β·y)²)) is a function of the observable and
+# parameters, and the observable is affine in the states, so we solve O = Y for one observable-state
+# and substitute into σ; if σ depends on states only through O, every other state cancels. Robust to
+# Symbolics flattening β*(state*param). Returns (reduced_expr, ok); ok=true means no state remains.
 function _reduce_sigma_to_obs(sigma_expr, obs_expr, Y_sym, z_syms)
     has_z(e) = any(zv -> any(isequal(v, zv) for v in Symbolics.get_variables(e)), z_syms)
     obs_states = [zv for zv in z_syms
@@ -25,16 +22,14 @@ function _reduce_sigma_to_obs(sigma_expr, obs_expr, Y_sym, z_syms)
     return (reduced, !has_z(reduced))
 end
 
-# Gaussian negative log-likelihood objective, matching PEtab.jl. The noise acts on the
-# observable's PEtab `observableTransformation` scale (lin/log/log10), so the residual is
-# taken in transformed space, with the change-of-variables Jacobian:
+# Gaussian negative log-likelihood objective, matching PEtab.jl. Noise acts on the observable's
+# `observableTransformation` scale, so the residual is in transformed space with the change-of-
+# variables Jacobian:
 #   lin   : 0.5(y-ymeas)²/σ²               + log σ + 0.5log2π
 #   log   : 0.5(ln y - ln ymeas)²/σ²       + log σ + 0.5log2π + ln ymeas
 #   log10 : 0.5(log10 y - log10 ymeas)²/σ² + log σ + 0.5log2π + ln ymeas + ln(ln10)
-# (= -logpdf(Normal/LogNormal/Log10Normal(transform(y), σ), ymeas)). y[midx], sigma[midx]
-# are the aux observable / noise-std vars bound to the states by the y/σ constraints; ymeas
-# is data so the trailing terms are per-measurement constants. Shared by the time-course and
-# steady-state paths (it depends only on y, sigma, and the measurement values/transforms).
+# y[midx]/sigma[midx] are the aux vars bound to states by the y/σ constraints; ymeas is data, so the
+# trailing terms are per-measurement constants. Shared by the time-course and steady-state paths.
 function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
     (; Nm) = PEinfo
     measurements_df = PEmodel.petab_tables[:measurements]
@@ -83,25 +78,20 @@ function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
     return c
 end
 
-# Parameter priors (MAP objective). PEtab's nllh adds the negative-log prior for every parameter
-# carrying an objectivePrior; ExaModelsPEtab previously omitted these, leaving a constant objective
-# offset vs PEtab for models that use them (Schwen: 6 parameterScaleNormal priors summing to 12.519,
-# the entire observed gap). Only parameterScaleNormal(μ,σ) is supported: a Gaussian on the
-# ESTIMATION-scale parameter, which IS the decision variable p[pidx] (e.g. log10(param) for a
-# log10-scaled parameter — no extra transform needed). Term: 0.5((p[pidx]-μ)/σ)² + log σ + ½log2π
-# (normalization constants INCLUDED so the objective matches PEtab.nllh to round-off). Models
-# without priors are byte-identical (itr_prior empty). Unsupported prior types warn loudly rather
-# than silently producing a wrong objective. @add_obj rebinds the core, so capture the return.
+# Parameter priors (MAP objective). PEtab's nllh adds a negative-log prior for every parameter with
+# an objectivePrior; omitting them leaves a constant objective offset vs PEtab (e.g. Schwen's 6
+# parameterScaleNormal priors = its entire gap). Supported: parameterScaleNormal/Laplace (on the
+# estimation-scale decision variable p[pidx]), uniform, and laplace (linear value, by parameter
+# scale); normalization constants are included so the objective matches PEtab.nllh. Unsupported
+# types (e.g. linear-scale normal) warn and are omitted. Models without priors are byte-identical.
 function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     params_df = PEmodel.petab_tables[:parameters]
     (:objectivePriorType in propertynames(params_df)) || return c   # no priors in this model
     p           = c.p
     HALF_LOG2PI = 0.5 * log(2π)
     dict_pidx   = _get_dict_pstr_pidx(PEprob)            # estimated-param name => p[pidx]
-    # `x_scale=true` priors (parameterScale*) act on the DECISION variable p[pidx] (the estimation-
-    # scale value). `x_scale=false` priors (normal/laplace/uniform) act on the PHYSICAL/linear value,
-    # so for a log10/log-scaled param the linear value is 10^p / e^p; for a lin-scaled param it is p
-    # itself (all benchmark laplace/uniform priors are lin-scale, so itr_*_l10/_log stay empty there).
+    # parameterScale* priors act on the decision variable p[pidx] (estimation scale); normal/laplace/
+    # uniform priors act on the physical value (10^p / e^p for log10/log scale, p itself for lin).
     psnorm = Tuple{Int,Float64,Float64}[]    # parameterScaleNormal:  0.5((p-μ)/σ)² + logσ + ½log2π
     pslap  = Tuple{Int,Float64,Float64}[]    # parameterScaleLaplace: |p-μ|/b + log2b
     lap_li = Tuple{Int,Float64,Float64}[]    # laplace, lin-scale param:  |p-μ|/b + log2b
@@ -149,9 +139,7 @@ function _create_objective(
         PEprob::PEtabODEProblem,
         PEinfo::PEInfo
     )
-    ###############################################
     # Unpack problem info
-    ###############################################
     (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, L1, pscale, t_nodes) = PEinfo
     z = c.z
     p = c.p
@@ -162,10 +150,8 @@ function _create_objective(
     end
 
     # ---- Warm-start support -------------------------------------------------
-    # y and sigma are auxiliary variables defined entirely by z, p (and cv), which
-    # already carry good PEtab initial guesses. We evaluate their defining formulas
-    # at the initial point here so y/sigma can be given matching (feasible) starts
-    # via set_start! after the model is built — critical for the IPM solver.
+    # y/sigma are aux vars defined by z, p (and cv), which already carry good PEtab starts. Evaluate
+    # their formulas at the initial point so y/sigma get matching feasible starts via set_start!.
     z0  = reshape(_var_starts(c, z), Nz, N, K + 1, Nc) # z0[v, i, j+1, cidx]
     θ0  = _var_starts(c, p)                            # decision var p := θ (estimation scale)
     p0  = [_p_phys_val(θ0, m, pscale) for m in 1:Np]   # PHYSICAL parameter starts (10^θ)
@@ -234,23 +220,16 @@ function _create_objective(
     has_obs_params_col   = :observableParameters in propertynames(measurements_df)
     has_noise_params_col = :noiseParameters      in propertynames(measurements_df)
 
-    # Deferred final-time (idx==N) arbitrary-function observable / noise constraints. The state
-    # at the right endpoint (τ=1) of the last interval is the L1 extrapolation
-    # Σ_j L1[j+1] z[v,N,j,cidx]; inlining that 7-term sum into a nonlinear obs/noise function
-    # fuses into an enormous kernel expression that overflows the GPU kernel param-memory limit
-    # (Fiedler/Lucarelli). We collect these here and re-emit them below over single aux endpoint
-    # variables zN (see the final-time block). Each entry: (aux_var, compiled_func, rows) where
-    # aux_var is the y or sigma handle and rows :: Vector{Tuple{Int,Int}} of (midx, cidx).
+    # Deferred final-time (idx==N) arbitrary-function obs/noise constraints. The endpoint state (τ=1)
+    # is the L1 extrapolation Σ_j L1[j+1] z[v,N,j,cidx]; inlining that sum into a nonlinear function
+    # overflows the GPU kernel param-memory limit (Fiedler/Lucarelli), so we collect them here and
+    # re-emit over single aux endpoint vars zN below. Entry: (aux_var, compiled_func, rows::[(midx,cidx)]).
     pending_fin = Tuple{Any, Any, Vector{Tuple{Int,Int}}}[]
 
     # --- Assignment-rule binding (observed variables, ov) -------------------------------------
-    # SBML assignment rules (derived quantities) are normally INLINED into observable/noise
-    # formulas; for rules that are large expressions shared across formulas (e.g. SalazarCavazos's
-    # EGFRtot = Σ72 species, divided into 4 observables) that makes build_function expand the rule
-    # into every formula and its derivatives, blowing up COMPILE time. Instead we bind each
-    # occurring FLAT rule to an auxiliary variable ov[·] defined once per evaluation node, and the
-    # formula references that single variable (analogous to how cv binds condition values). Rules
-    # that are nested (reference another rule) fall back to the inlining path — no behavior change.
+    # Large SBML assignment rules shared across formulas (e.g. SalazarCavazos's 72-species EGFRtot)
+    # blow up compile time if inlined into every formula. Instead, bind each occurring FLAT rule to
+    # an auxiliary variable ov[·] once per node; nested rules fall back to inlining (see _rule_table).
     rule_ids, rule_lhs, rule_rhs, rule_is_flat = _rule_table(PEprob)
     n_rules = length(rule_ids)
     # rules actually present (as leaf symbols) in a parsed, not-yet-inlined formula
@@ -301,10 +280,8 @@ function _create_objective(
         parsed = Meta.parse(obs_expr_sub)
         obs_sym = parsed isa Symbol ? Symbolics.Num(Symbolics.variable(parsed)) :
                                       Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
-        # Detect SBML assignment rules present in the RAW formula (before inlining). If FLAT rules
-        # occur, bind them to ov aux variables (see the ov branch below) instead of inlining;
-        # otherwise resolve them by substitution (the original behavior — a no-op when none occur)
-        # so the observable becomes a function of states / params only.
+        # Detect SBML assignment rules in the RAW formula: if FLAT rules occur, bind them to ov aux
+        # variables (ov branch below); otherwise inline them by substitution (no-op when none occur).
         used = _used_rules(obs_sym)
         bound = !isempty(used) && all(r -> rule_is_flat[r], used)
         bound || (obs_sym = apply_rules(obs_sym))
@@ -332,11 +309,9 @@ function _create_objective(
                 end
             end
         elseif bound
-            # Bound branch: keep the FLAT assignment-rule symbols as leaves (do NOT inline them)
-            # and bind them to ov aux variables defined per evaluation node (see the ov block at
-            # the end). obs_func is compiled over [z; p; cv; rule_leaves]; each rule leaf is fed
-            # the single ov variable for that rule at the measurement's node, so the kernel never
-            # re-expands (and re-differentiates) the rule. Defer emission until ov vars exist.
+            # Bound branch: keep FLAT rule symbols as leaves and compile obs_func over
+            # [z; p; cv; rule_leaves]; each leaf is later fed its ov variable per node, so the kernel
+            # never re-expands the rule. Defer emission until ov vars exist.
             leaves     = [rule_lhs[r] for r in used]
             obs_efinal = Symbolics.substitute(obs_sym, dict_fixed_val)   # rule leaves survive
             obs_func   = Symbolics.build_function(
@@ -490,13 +465,10 @@ function _create_objective(
                 sigma0[midx] = p0[pidx] # warm start
             end
         else
-            # σ couples to model states ONLY through the observable y (true for every PEtab
-            # benchmark noise form: c | θ | β·y | α+β·y | sqrt(α²+(β·y)²)). Reduce σ to a
-            # function of the observable placeholder Y_sym and parameters (see
-            # _reduce_sigma_to_obs); if it succeeds, σ = σ_fun(y, p, cv) and the constraint
-            # references the existing y[midx] variable directly — sparser than re-deriving
-            # the state expression, and σ never couples to z. Otherwise warn and fall back to
-            # a general state-dependent expression compiled over (z, p, cv).
+            # σ couples to states ONLY through the observable y (every PEtab benchmark noise form).
+            # Reduce σ to a function of the placeholder Y_sym + parameters (_reduce_sigma_to_obs); on
+            # success the constraint references y[midx] directly (sparser, σ never couples to z).
+            # Otherwise warn and fall back to a general state-dependent expression over (z, p, cv).
             obs_sym = get!(dict_obsid_obssym, obs_id) do
                 obs_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
                 op = Meta.parse(obs_raw)
@@ -641,15 +613,11 @@ function _create_objective(
     ###############################################
     # Final-time (τ=1, interval N) endpoint-state aux variables, zN
     ###############################################
-    # idx==N observable / noise formulas need the state at the RIGHT endpoint of the last
-    # interval. The Gauss-Legendre collocation nodes are interior (τ_K < 1), so that endpoint is
-    # the L1 extrapolation Σ_j L1[j+1] z[v,N,j,cidx], not a state node. Inlining that K+1-term sum
-    # into a nonlinear obs/noise function fuses into a large kernel expression; instead we bind ONE
-    # aux variable zN[v,col] to the linear sum (a tiny base + per-node augmentation constraint) and
-    # feed the single variable, mirroring how idx<N feeds the single node z[v,idx+1,0,cidx]. zN is
-    # created lazily for conditions with an idx==N final-time group — those deferred to pending_fin
-    # (arbitrary obs/noise WITHOUT rules) AND those needed by ov rule nodes (see below). It is
-    # all-Nz, so it covers every state any such formula / rule references at the final time.
+    # idx==N formulas need the state at the RIGHT endpoint of the last interval. The collocation
+    # nodes are interior (τ_K < 1), so that endpoint is the L1 extrapolation Σ_j L1[j+1] z[v,N,j,cidx];
+    # inlining that sum into a nonlinear function fuses a large kernel, so we bind ONE aux variable
+    # zN[v,col] to it (base + per-node augmentation) and feed that, like idx<N feeds z[v,idx+1,0,cidx].
+    # zN is all-Nz, created lazily for conditions with an idx==N group (pending_fin + ov rule nodes).
     needN  = sort(unique(vcat(
         [cidx for (_, _, rows) in pending_fin for (_, cidx) in rows],
         [cidx for (idx, cidx) in ov_nodes if idx == N],
@@ -682,16 +650,11 @@ function _create_objective(
     ###############################################
     # Observed-variable aux variables, ov (bound assignment rules)
     ###############################################
-    # Each FLAT assignment rule that appears in an observable/noise formula is bound to an aux
-    # variable ov[relpos, nodeslot] = rule(state@node, p, cv), defined ONCE per (rule, node) and
-    # shared across formulas — so a rule that is a large sum (e.g. EGFRtot = Σ72 species) is
-    # differentiated once as a small linear kernel instead of being inlined and re-expanded into
-    # every formula's gradient/Hessian. The formula then references the single ov variable. Built
-    # on a rectangular (relevant-rule × node) grid so the kernel feeds ov[<literal relpos>, <data
-    # nodeslot>] (ExaModels-friendly, like z[v,idx,cidx]); the grid over-provisions a rule at a few
-    # nodes it is not used at (all such ov stay fully determined by their defining constraint — no
-    # free variables), kept for index simplicity. Node feeding matches the formula: single node for
-    # idx<N (incl idx==0), zN for idx==N. Created only when some formula bound a rule.
+    # Each FLAT rule in an obs/noise formula is bound to an aux var ov[relpos, nodeslot] =
+    # rule(state@node, p, cv), defined ONCE per (rule, node) and shared across formulas — so a large
+    # rule (e.g. EGFRtot = Σ72 species) is differentiated once as a small linear kernel, not inlined
+    # into every formula. Rectangular (rule × node) grid so the kernel feeds ov[literal, data] (like
+    # z); node feeding matches the formula (single node for idx<N, zN for idx==N).
     if !isempty(pending_ov)
         rels     = sort(collect(relevant_rules))
         rel_pos  = Dict(r => i for (i, r) in enumerate(rels))
