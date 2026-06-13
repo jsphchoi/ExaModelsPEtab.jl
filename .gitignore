@@ -5,5 +5,4 @@
 # benchmark run artifacts (transient / large)
 /examples/debugging/logs/
 /examples/debugging/archive/
-/examples/Benchmarks/resultsK4/
 *.log

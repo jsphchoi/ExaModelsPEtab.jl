@@ -1,0 +1,9 @@
+petab_compile_status=timeout
+petab_compile_time=
+petab_error=manually capped at ~19.6h compiling (no finish); PEtab compile intractable on this box even w/ 24h budget
+petab_has_events=
+petab_iter=
+petab_objective=
+petab_optimum_found=
+petab_solve_status=skipped
+petab_solve_time=

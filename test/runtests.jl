@@ -6,7 +6,7 @@ import CUDA
 using Test
 
 # ── Solver settings (mirror examples/Benchmarks/options.jl) ──────────────────────
-const K           = 3
+const K           = 4
 const TOL         = 1e-6
 const ACCEPT_TOL  = 1e-4
 const ACCEPT_ITER = 15

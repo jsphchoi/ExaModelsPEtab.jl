@@ -1,0 +1,27 @@
+exa_K=3
+exa_compile_status=ok
+exa_compile_time=279.05
+exa_error=
+exa_iter=1137
+exa_ncon=8776
+exa_nvar=8826
+exa_objective=-591.7491332560469
+exa_presolve_time=141.41
+exa_sgm_error=first solve term=SEARCH_DIRECTION_BECOMES_TOO_SMALL∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
+exa_sgm_status=skipped
+exa_solve_status=ok
+exa_solve_time=119.58
+exa_term_status=SEARCH_DIRECTION_BECOMES_TOO_SMALL
+petab_compile_status=ok
+petab_compile_time=231.57
+petab_error=
+petab_has_events=true
+petab_iter=39
+petab_objective=-2490.6874494624285
+petab_opt_status=true
+petab_optimum_found=true
+petab_sgm_n=5
+petab_sgm_solve_time=38.66
+petab_sgm_status=ok
+petab_solve_status=ok
+petab_solve_time=55.95

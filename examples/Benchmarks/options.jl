@@ -39,7 +39,7 @@ const BENCH_MAX_ITER    = 100_000_000  # max solver iterations (large so wall ti
 const BENCH_WARMUP_MODEL = "Bruno_JExpBot2016"  # shared JIT-warmup model; excluded from both timed loops
 
 # ── ExaModels / MadNLP-only ──
-const BENCH_K             = 3          # collocation points per mesh interval
+const BENCH_K             = 4          # collocation points per mesh interval
 const BENCH_COMPILE_LIMIT = 3600.0     # exa build wall cap [s] (1 hr)
 # acceptable-level termination: accept an ε-optimal KKT point when the strict tol can't be reached
 # (boundary optima / ill-conditioning floor inf_du just above tol). 1e-4 = 100× looser than tol;

@@ -1,0 +1,13 @@
+petab_compile_status=ok
+petab_compile_time=342.2
+petab_error=
+petab_has_events=true
+petab_iter=53
+petab_objective=-59439.866843833275
+petab_opt_status=true
+petab_optimum_found=true
+petab_sgm_n=5
+petab_sgm_solve_time=414.38
+petab_sgm_status=ok
+petab_solve_status=ok
+petab_solve_time=426.6

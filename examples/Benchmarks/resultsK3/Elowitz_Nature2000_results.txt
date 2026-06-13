@@ -1,0 +1,27 @@
+exa_K=3
+exa_compile_status=ok
+exa_compile_time=120.29
+exa_error=
+exa_iter=182
+exa_ncon=24444
+exa_nvar=24465
+exa_objective=-70.49465387351573
+exa_presolve_time=43.31
+exa_sgm_error=first solve term=RESTORATION_FAILED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
+exa_sgm_status=skipped
+exa_solve_status=ok
+exa_solve_time=52.04
+exa_term_status=RESTORATION_FAILED
+petab_compile_status=ok
+petab_compile_time=260.17
+petab_error=
+petab_has_events=false
+petab_iter=4
+petab_objective=-63.20275043554767
+petab_opt_status=true
+petab_optimum_found=true
+petab_sgm_n=5
+petab_sgm_solve_time=40.11
+petab_sgm_status=ok
+petab_solve_status=ok
+petab_solve_time=52.16

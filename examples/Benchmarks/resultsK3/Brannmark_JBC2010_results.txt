@@ -1,0 +1,27 @@
+exa_K=3
+exa_compile_status=ok
+exa_compile_time=244.34
+exa_error=
+exa_iter=25415
+exa_ncon=68455
+exa_nvar=68477
+exa_objective=1.4867052687422484e6
+exa_presolve_time=86.0
+exa_sgm_error=first solve term=MAXIMUM_WALLTIME_EXCEEDED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
+exa_sgm_status=skipped
+exa_solve_status=ok
+exa_solve_time=3602.15
+exa_term_status=MAXIMUM_WALLTIME_EXCEEDED
+petab_compile_status=ok
+petab_compile_time=304.83
+petab_error=
+petab_has_events=true
+petab_iter=4
+petab_objective=141.88929766387372
+petab_opt_status=true
+petab_optimum_found=true
+petab_sgm_n=5
+petab_sgm_solve_time=68.22
+petab_sgm_status=ok
+petab_solve_status=ok
+petab_solve_time=80.47
