@@ -28,16 +28,16 @@ Requires Julia ≥ 1.10. The GPU path needs a CUDA-capable device (via `CUDA.jl`
 using ExaModelsPEtab, MadNLP
 
 # Build the collocation NLP from a PEtab problem YAML.
-model = petab_examodel("path/to/problem.yaml"; K = 10)   # CPU
+model = petab_examodel("path/to/problem.yaml"; K = 4)   # CPU
 stats = madnlp(model)
 
 # GPU:
 using CUDA, MadNLPGPU
-model = petab_examodel("path/to/problem.yaml"; backend = CUDA.CUDABackend(), K = 10)
+model = petab_examodel("path/to/problem.yaml"; backend = CUDA.CUDABackend(), K = 4)
 stats = madnlp(model; linear_solver = MadNLPGPU.CUDSSSolver)
 ```
 
-`petab_examodel(filename; backend = nothing, K = 10)` is the single entry point:
+`petab_examodel(filename; backend = nothing, K = 4)` is the single entry point:
 - `backend` — `nothing` for CPU, `CUDA.CUDABackend()` for GPU.
 - `K` — number of collocation points per mesh interval (accuracy/cost knob). Steady-state models
   (all measurements at t→∞) take a separate no-mesh path where `K` is unused.

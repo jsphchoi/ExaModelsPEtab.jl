@@ -1,11 +1,18 @@
 """
     ExaModelsPEtab
 
-(description)
+Solve [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation problems as an NLP 
+using simultaneous method for dynamic optimization (orthogonal collocation), built as an 
+[ExaModels](https://github.com/exanauts/ExaModels.jl) `ExaModel`.
 
-## Example Header
+# Entry point
+[`petab_examodel`](@ref) builds the `ExaModel` from a PEtab problem YAML.
 
-(description)
+```julia
+using ExaModelsPEtab, MadNLP
+m = petab_examodel("path/to/problem.yaml"; backend = nothing)
+madnlp(m)
+```
 """
 module ExaModelsPEtab
 

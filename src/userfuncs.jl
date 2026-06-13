@@ -1,12 +1,12 @@
 """
-    petab_examodel(filename::String; backend = nothing, K = 3, adaptive_mesh = false)
+    petab_examodel(filename::String; backend = nothing, K = 4, adaptive_mesh = false)
 
 Builds an `ExaModels.ExaModel` from a PEtab YAML file at `filename`.
 
 kwargs:
 - `backend` array backend: `nothing` for CPU or `CUDA.CUDABackend()` for GPU
 - `K::Int` degree of Lagrange interpolating basis polynomial
-- `adaptive_mesh::Bool` set to `true`` to enable adaptive mesh refinement
+- `adaptive_mesh::Bool` set to `true` to enable adaptive mesh refinement
 
 # Example
 ```julia
@@ -28,7 +28,7 @@ madnlp(mGPU; tol = 1e-6)
 function petab_examodel(
         filename::String;
         backend = nothing,
-        K = 3::Int,
+        K::Int = 4,
         adaptive_mesh::Bool = false
     )
     # Parse PEtab YAML file using PEtab.jl

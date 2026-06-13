@@ -14,7 +14,7 @@ function _eval_l(
     )
 end
 
-# Evaluates the τ derivatie of the Lagrange basis polynomial dlⱼ(τₖ)/dτ given {τⱼ...} 
+# Evaluates the τ derivative of the Lagrange basis polynomial dlⱼ(τₖ)/dτ given {τⱼ...}
 function _eval_dldtau(
         j::Int64,
         k::Int64,
