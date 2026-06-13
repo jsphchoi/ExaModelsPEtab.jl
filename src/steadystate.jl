@@ -52,29 +52,7 @@ function _get_zss_init_sim(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo:
     return zss0
 end
 
-# (*) Steady-state build path — parallel to _build_petab_examodel, with NO collocation mesh. (*)
-function _build_petab_examodel_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem, backend)
-    _check_x0SSpre(PEprob) && error(
-        "Pre-equilibration combined with steady-state (time = inf) measurements is not " *
-        "supported yet."
-    )
 
-    c = ExaModels.ExaCore(; backend, concrete = Val(true))
-
-    # Decision variables: p, (cv), zss, y, sigma — no z.
-    c, PEinfo = _create_variables_ss(c, PEmodel, PEprob)
-
-    # Constraints: cv equalities + steady-state residual f(zss) = 0.
-    c = _create_ss_constraints(c, PEmodel, PEprob, PEinfo)
-
-    # Objective (Gaussian NLL) + observable/noise constraints read off zss.
-    c, y0, sigma0 = _create_objective_ss(c, PEmodel, PEprob, PEinfo)
-
-    model = ExaModels.ExaModel(c)
-    ExaModels.set_start!(model, c.y, y0)
-    ExaModels.set_start!(model, c.sigma, sigma0)
-    return model
-end
 
 # Decision variables for the steady-state path. Mirrors _create_variables but with zss (warm
 # started by forward simulation) in place of the discretized state z, and no collocation mesh.
@@ -94,9 +72,9 @@ function _create_variables_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     gate_syms = _get_gate_syms(PEprob)
     gate_vals_ss = _get_gate_vals_ss(PEmodel, PEprob, gate_syms)
 
-    # The mesh fields (N, K, t_meas, t_vec_mesh, h, taus, L1) are never read on this path.
+    # The mesh fields (N, K, t_meas, t_nodes, h, taus, L1) are never read on this path.
     PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, 0, 0, [Inf], Float64[], Float64[], Float64[], Float64[], pscale,
-                    gate_syms, zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss, Float64[])  # t_nodes unused (no mesh)
+                    zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss)  # mesh fields all empty (no mesh)
 
     c = _create_y(c, PEmodel, PEinfo)
     c = _create_sigma(c, PEinfo)
@@ -117,10 +95,10 @@ end
 # under-determined along the conserved directions (PEtab pins them via the initial condition),
 # so we (a) drop r redundant residual rows and (b) add r conservation constraints pinned to the
 # IC: W·zss = W·x0. r=0 (no conservation, e.g. models with synthesis/degradation) => no-op.
-function _create_ss_constraints(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+function _create_constraints_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     c = _create_cv_constraints(c, PEmodel, PEprob, PEinfo)
-    W, b, keep_rows = _ss_conservation(c, PEmodel, PEprob, PEinfo)
-    c = _add_ss_residual(c, PEmodel, PEprob, PEinfo, identity; keep_rows = keep_rows)
+    W, b, keep_rows = _conservation_ss(c, PEmodel, PEprob, PEinfo)
+    c = _add_residual_ss(c, PEmodel, PEprob, PEinfo, identity; keep_rows = keep_rows)
     c = _add_conservation_constraints(c, PEinfo, W, b)
     return c
 end
@@ -133,8 +111,9 @@ end
 #   keep_rows : the Nz−r residual rows to keep (an independent subset; the r dropped rows are
 #               the ones the conservation constraints replace, chosen by pivoted QR of W)
 # r=0 returns empty W/b and keep_rows = 1:Nz (no conservation, plain f(zss)=0 is full rank).
-function _ss_conservation(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    (; Nz, Nc, Np, Ncv, pscale, gate_syms, gate_vals_ss) = PEinfo
+function _conservation_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+    (; Nz, Nc, Np, Ncv, pscale, gate_vals_ss) = PEinfo
+    gate_syms = _get_gate_syms(PEprob)   # not stored in PEInfo; recomputed like z_syms/cv_syms
     zss0 = reshape(_var_starts(c, c.zss), Nz, Nc)
     cv0  = Ncv >= 1 ? reshape(_var_starts(c, c.cv), Ncv, :) : zeros(Float64, 0, Nc)
     θ    = PEtab.get_x(PEprob)
@@ -176,7 +155,7 @@ function _ss_conservation(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     # Conserved totals from the per-condition initial condition (x0). Guard against an IC that
     # depends on estimated parameters (the conserved total would then be θ-dependent — not yet
     # supported; would freeze it at the nominal value).
-    u0s, ic_theta_dep = _ss_initial_conditions(PEmodel, PEprob, PEinfo)
+    u0s, ic_theta_dep = _initial_conditions_ss(PEmodel, PEprob, PEinfo)
     ic_theta_dep && error(
         "Steady-state model has a conservation law whose conserved total is set by an initial " *
         "condition that depends on estimated parameters; not supported yet."
@@ -190,7 +169,7 @@ end
 
 # Per-condition initial condition x0 (= PEtab ODE problem u0), plus whether it depends on the
 # estimated parameters θ (detected by perturbing θ and checking whether u0 moves).
-function _ss_initial_conditions(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+function _initial_conditions_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nz, Nc) = PEinfo
     cids = Symbol.(_get_cids(PEmodel))
     θ    = PEtab.get_x(PEprob)
@@ -273,7 +252,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     )
     dict_fixed_val = Dict(sym => val for (sym, val) in dict_all_val if (sym in fixed_syms))
 
-    apply_rules = _assignment_substitutor(PEprob; bare = true)
+    apply_rules = _assignment_substitutor(PEprob; remove_t = true)
 
     z_syms = [
         Symbolics.Num(Symbolics.variable(Symbol(split(string(z_sym), "(")[1])))

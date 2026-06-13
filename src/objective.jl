@@ -152,7 +152,7 @@ function _create_objective(
     ###############################################
     # Unpack problem info
     ###############################################
-    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, h, L1, pscale, t_nodes) = PEinfo
+    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, L1, pscale, t_nodes) = PEinfo
     z = c.z
     p = c.p
     y = c.y
@@ -169,7 +169,7 @@ function _create_objective(
     z0  = reshape(_var_starts(c, z), Nz, N, K + 1, Nc) # z0[v, i, j+1, cidx]
     θ0  = _var_starts(c, p)                            # decision var p := θ (estimation scale)
     p0  = [_p_phys_val(θ0, m, pscale) for m in 1:Np]   # PHYSICAL parameter starts (10^θ)
-    # cv has Ncc >= Nc columns (extra pre-equilibration columns for x0SSpre; see _get_cv_cond_ids).
+    # cv has Ncc >= Nc columns (extra pre-equilibration columns for x0SSpre; see _get_cv_cids).
     # Infer the column count with `:`; the objective only reads cv0[:, cidx] for cidx in 1:Nc (the
     # simulation conditions, which occupy the first Nc columns).
     cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, Nc)
@@ -211,7 +211,7 @@ function _create_objective(
     # Resolves SBML assignment rules (derived/algebraic variables, e.g. pY1173 = Σspecies/c1)
     # that appear inside observable / noise formulas, to a fixpoint. No-op for models without
     # assignment rules. Bare-symbol form to match the parsed (t-free) table formulas.
-    apply_rules = _assignment_substitutor(PEprob; bare = true)
+    apply_rules = _assignment_substitutor(PEprob; remove_t = true)
 
     # Symbolics of variables that may appear in parsed table formulas
     z_syms = [

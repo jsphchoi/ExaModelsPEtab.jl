@@ -82,7 +82,7 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     # used everywhere else. (The previous identity permutedims left i and j transposed.)
     z_init = permutedims(reshape(stack(sol_at_mesh), Nz, K+1, N, Nc), (1, 3, 2, 4))
 
-    return z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes
+    return z_init, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes
 end
 
 # Absolute tolerance for mesh-time comparisons (segment coverage and width caps).

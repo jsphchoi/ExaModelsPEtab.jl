@@ -114,7 +114,7 @@ function build_model(yaml, t_origin)
     if ExaModelsPEtab._is_steady_state(PEmodel)
         c, PEinfo = ExaModelsPEtab._create_variables_ss(c, PEmodel, PEprob)
         t_phase1 = time() - t_origin
-        c = ExaModelsPEtab._create_ss_constraints(c, PEmodel, PEprob, PEinfo)
+        c = ExaModelsPEtab._create_constraints_ss(c, PEmodel, PEprob, PEinfo)
         c, y0, sigma0 = ExaModelsPEtab._create_objective_ss(c, PEmodel, PEprob, PEinfo)
         mdl = ExaModels.ExaModel(c)
         ExaModels.set_start!(mdl, c.y, y0)

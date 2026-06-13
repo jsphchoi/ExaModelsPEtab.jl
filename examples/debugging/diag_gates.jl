@@ -14,7 +14,7 @@ t = time(); PEprob  = PEtab.PEtabODEProblem(PEmodel); println("PEtabODEProblem  
 
 K = 5
 t = time()
-zinit, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1 = EP._get_z_init(PEmodel, PEprob, K)
+zinit, Nz, N, K, Nc, t_meas, h, taus, L1 = EP._get_z_init(PEmodel, PEprob, K)
 println("_get_z_init      $(round(time()-t;digits=1))s   (Nz=$Nz N=$N Nc=$Nc)")
 
 gate_syms = EP._get_gate_syms(PEprob)

@@ -5,16 +5,16 @@ function _create_collocation(
         PEmodel::PEtabModel,
         PEprob::PEtabODEProblem,
         PEinfo::PEInfo;
-        mutable_mesh::Bool = false
+        adaptive_mesh::Bool = false
     )
-    c = _create_lagrange(c, PEmodel, PEprob, PEinfo; mutable_mesh = mutable_mesh)
+    c = _create_lagrange(c, PEmodel, PEprob, PEinfo; adaptive_mesh = adaptive_mesh)
     c = _create_cv_constraints(c, PEmodel, PEprob, PEinfo)
     return c
 end
 
 # Create lagrange collocation equations.
 #
-# mutable_mesh=true LIFTS the mesh geometry (interval widths h[i], collocation times t_ij, and the
+# adaptive_mesh=true LIFTS the mesh geometry (interval widths h[i], collocation times t_ij, and the
 # piecewise(time) gate values) into ExaModels PARAMETERS so an outer moving-mesh loop (AMREE) can
 # relocate nodes via set_value! WITHOUT rebuilding the model (handles recoverable as
 # model.h_mesh/.t_mesh/.g_mesh). That path is GPU-codegen-EXPENSIVE: the symbolic parameter
@@ -24,19 +24,20 @@ end
 # build), matching every normal solve / benchmark. Both paths produce the byte-identical model;
 # taus/DLDTAU/L1 depend only on K, so they stay baked either way.
 function _create_lagrange(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo;
-                          mutable_mesh::Bool = false)
+                          adaptive_mesh::Bool = false)
     ########################################################################
     # Unpack problem info
     ########################################################################
-    (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale, gate_syms, gate_vals, t_nodes) = PEinfo
+    (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale, gate_vals, t_nodes) = PEinfo
+    gate_syms = _get_gate_syms(PEprob)   # not stored in PEInfo; recomputed like z_syms/cv_syms
     Ng = length(gate_syms)
     # ODE RHS functions; t is always the final arg (autonomous RHS just ignores it — see
     # _get_rhs_funcs), and the live piecewise(time) gates are trailing args before it.
     fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
 
-    if mutable_mesh
+    if adaptive_mesh
         ####################################################################
-        # MUTABLE-MESH path (AMREE): h / t_ij / gates as ExaModels parameters (c.θ), indexed
+        # ADAPTIVE-MESH path (AMREE): h / t_ij / gates as ExaModels parameters (c.θ), indexed
         # symbolically, so the mesh can be relocated via set_value! without a rebuild.
         ####################################################################
         c, h_par = ExaModels.add_par(c, h; name = Val(:h_mesh))
@@ -122,10 +123,10 @@ function _create_cv_constraints(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabOD
 
     # Unpack DataFrame: row = experimental condition, col = condition-dependent variable
     conditions_df = PEmodel.petab_tables[:conditions]
-    cv_cols = _get_cv_colnames(PEmodel) # cv column names, aligned 1:Ncv (no positional offset)
+    cv_cols = _get_cv_names(PEmodel) # cv column names, aligned 1:Ncv (no positional offset)
     # cv columns = simulation conditions (1:Nc) + distinct pre-equilibration conditions; bind ALL
     # of them so the extra pre-eq columns the steady-state residual reads are constrained too.
-    cv_rows = _get_cv_cond_rows(PEmodel, PEprob) # cv column => conditions-table row
+    cv_rows = _get_cv_cid_rows(PEmodel, PEprob) # cv column => conditions-table row
     Ncc = length(cv_rows)
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob) # string of unknown parameter, p => index of decision variable, p
 

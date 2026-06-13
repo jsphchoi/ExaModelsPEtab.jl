@@ -8,7 +8,7 @@ function _create_variables(
     _assert_supported_events(PEmodel)   # reject true SBML <event> models (silently-wrong otherwise)
     # Create necessary variables (discretized state, unknown params) and obtain problem details (::PEInfo)
     c, Np = _create_p(c, PEprob)
-    c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes = _create_z(c, PEmodel, PEprob, K)
+    c, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes = _create_z(c, PEmodel, PEprob, K)
 
     Ncv = length(_get_cv_syms(PEmodel)) # number of condition-dependent variables
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
@@ -18,8 +18,10 @@ function _create_variables(
     # condition) values from a stepped warm-start integrator (no-op / empty when the model has none).
     gate_syms = _get_gate_syms(PEprob)
     gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, gate_syms, h, taus, t_nodes)
-    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale,
-                    gate_syms, gate_vals, gate_vals_ss, t_nodes)
+    # gate_syms is NOT stored in PEInfo (recomputed at each consumer via _get_gate_syms, like
+    # z_syms/cv_syms); only the value arrays — expensive + mesh-dependent — are cached.
+    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_nodes, h, taus, L1, pscale,
+                    gate_vals, gate_vals_ss)
 
     # OBJECTIVE FUNCTION VARIABLES
     # Create auxiliary variables for model observables, y
@@ -71,7 +73,7 @@ end
 # Creates ExaModels decision variables for discretized states
 # z[1:Nz,1:N,0:K,1:Nc]
 function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
-    z_init, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes = _get_z_init(PEmodel, PEprob, K)
+    z_init, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes = _get_z_init(PEmodel, PEprob, K)
     ExaModels.@add_var(c,
         z,
         1:Nz, 1:N, 0:K, 1:Nc;
@@ -79,7 +81,7 @@ function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::
         lvar = -Inf,    # unbounded: state sign/range is model-dependent (not assumed >= 0)
         uvar = Inf
     )
-    return c, Nz, N, K, Nc, t_meas, t_vec_mesh, h, taus, L1, t_nodes
+    return c, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes
 end
 
 # Creates ExaModels decision variables for condition-dependent variables
@@ -91,10 +93,10 @@ end
 function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Np, Ncv, pscale) = PEinfo
     conditions_df  = PEmodel.petab_tables[:conditions]
-    cv_cols        = _get_cv_colnames(PEmodel)          # cv column names, aligned 1:Ncv
+    cv_cols        = _get_cv_names(PEmodel)          # cv column names, aligned 1:Ncv
     # cv columns span the simulation conditions (1:Nc) PLUS any distinct pre-equilibration
-    # conditions (so the steady-state residual can read the pre-eq inputs); see _get_cv_cond_ids.
-    cv_rows        = _get_cv_cond_rows(PEmodel, PEprob)  # cv column => conditions-table row
+    # conditions (so the steady-state residual can read the pre-eq inputs); see _get_cv_cids.
+    cv_rows        = _get_cv_cid_rows(PEmodel, PEprob)  # cv column => conditions-table row
     Ncc            = length(cv_rows)
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)        # parameter name => p decision-var index
     θ0             = _var_starts(c, c.p)                # p (= θ, estimation scale) initial guesses

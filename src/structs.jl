@@ -12,20 +12,21 @@ struct PEInfo{T <: Number}
 
     # Pre-compute once mesh-related values
     t_meas::Vector{T}               # all of the unique measurement times
-    t_vec_mesh::Vector{Float64}     # flattened ordered collection of all collocation points, t_ij
+    t_nodes::Vector{Float64}        # interval mesh boundary times t_i (measurement/event tstops land on these exactly; see _get_dict_t_tidx)
     h::Vector{Float64}              # interval widths, t_i+1 - t_i
     taus::Vector{Float64}           # relative positions scaled to [0,1] of the interpolation points (roots of shifted Gauss-Legendre polynomials of order K)
     L1::Vector{Float64}             # evaluations of the lagrange basis polynomial at tau=1 for each j in K
+
+    # Parameter scaling
     pscale::Vector{Symbol} # (m = 1,...,Np) per-parameter PEtab estimation scale (:log10/:log/:lin)
 
-
-    # Event (fixed-time, discrete) related values
-    gate_syms::Vector{Symbolics.Num}    # (g = 1,...,Ng) gating parameters kept live in the RHS
+    # Event handling
     gate_vals::Array{Float64,3}         # Ng×N×Nc gate value on each (interval i, condition cidx)
     gate_vals_ss::Array{Float64,2}      # Ng×Nc gate value for the steady-state residual per condition
-
-    t_nodes::Vector{Float64}            # interval mesh boundary times, t_i; measurement/event tstops appear
-                                        # bit-exactly, so _get_dict_t_tidx maps times -> node index by exact `==`.
 end
-# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale, gate_syms, gate_vals, gate_vals_ss, t_nodes)
-# (; Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_vec_mesh, h, taus, L1, pscale, gate_syms, gate_vals, gate_vals_ss, t_nodes) = PEinfo
+
+# Create PEInfo with:
+# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_nodes, h, taus, L1, pscale, gate_vals, gate_vals_ss)
+
+# Unpack PEInfo with:
+# (; Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_nodes, h, taus, L1, pscale, gate_vals, gate_vals_ss) = PEinfo

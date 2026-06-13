@@ -17,9 +17,10 @@ end
 #   - pure steady-state models: cvindex_of = identity — the residual is evaluated under the
 #     simulation condition's own cv, and zss IS the observed (terminal) state.
 # Autonomous in t (steady state), so any explicit time-dependence is evaluated at t=0.
-function _add_ss_residual(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo, cvindex_of; keep_rows = nothing)
+function _add_residual_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo, cvindex_of; keep_rows = nothing)
     # Unpack problem info
-    (; Nz, Nc, Np, Ncv, pscale, gate_syms, gate_vals_ss) = PEinfo
+    (; Nz, Nc, Np, Ncv, pscale, gate_vals_ss) = PEinfo
+    gate_syms = _get_gate_syms(PEprob)   # not stored in PEInfo; recomputed like z_syms/cv_syms
     Ng  = length(gate_syms)
     p   = c.p
     zss = c.zss
@@ -32,7 +33,7 @@ function _add_ss_residual(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     # own value on the pure steady-state path) rides in the iterator tuple as an NTuple field `gv`,
     # splatted via ntuple(g->gv[g],Ng)... — same idiom as the collocation RHS. keep_rows (pure
     # steady-state path) selects an independent subset of residual rows when the system has
-    # conservation laws (see _ss_conservation). Ng==0 => `gv`=() and the splat is a no-op.
+    # conservation laws (see _conservation_ss). Ng==0 => `gv`=() and the splat is a no-op.
     fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
     keep_rows !== nothing && (fs = fs[keep_rows])
     # Steady state => autonomous, evaluate at t=0 (the always-present trailing t arg).
@@ -110,7 +111,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         # PRE-EQUILIBRATION condition's inputs cv[:, sscidx], where sscidx is the
         # canonical index of cidx's pre-equilibration condition.
         dict_cidx_sscidx = _get_dict_cidx_sscidx(PEmodel, PEprob)
-        c = _add_ss_residual(c, PEmodel, PEprob, PEinfo, cidx -> dict_cidx_sscidx[cidx])
+        c = _add_residual_ss(c, PEmodel, PEprob, PEinfo, cidx -> dict_cidx_sscidx[cidx])
 
     else
         ###############################################################
@@ -147,7 +148,7 @@ function _create_initial_conditions(c::ExaCore, PEmodel::PEtabModel, PEprob::PEt
         # _create_cv and constrained in collocation.jl). This takes priority over the
         # speciemap default, which would otherwise force every condition to the same
         # (wrong) initial state. (Ncv >= 1 here, so `cv` is defined above.)
-        cv_cols    = _get_cv_colnames(PEmodel)
+        cv_cols    = _get_cv_names(PEmodel)
         state_name(s) = String(split(string(s), "(")[1])   # strip the MTK "(t)"
 
         for v in 1:Nz

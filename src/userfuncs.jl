@@ -1,70 +1,110 @@
 """
-    petab_examodel(filename::String; backend = nothing, K = 3, mutable_mesh = false)
+    petab_examodel(filename::String; backend = nothing, K = 3, adaptive_mesh = false)
 
-Build an `ExaModel` that applies orthogonal collocation to the PEtab parameter-estimation
-problem in the PEtab problem YAML at `filename`. The result is a standard `NLPModels`
-model, ready to solve with MadNLP.
+Builds an `ExaModels.ExaModel` from a PEtab YAML file at `filename`.
 
-- `backend` — array backend: `nothing` for CPU, or `CUDA.CUDABackend()` for GPU. Pass it
-  from your own `using CUDA`; ExaModelsPEtab itself does not depend on CUDA.
-- `K` — number of collocation points per mesh interval.
+kwargs:
+- `backend` array backend: `nothing` for CPU or `CUDA.CUDABackend()` for GPU
+- `K::Int` degree of Lagrange interpolating basis polynomial
+- `adaptive_mesh::Bool` set to `true`` to enable adaptive mesh refinement
 
 # Example
 ```julia
+# Using CPU solver with default settings
 using ExaModelsPEtab, MadNLP
-m = petab_examodel("Crauste_CellSystems2017.yaml")   # CPU
-stats = madnlp(m)
+mCPU = petab_examodel("Crauste_CellSystems2017.yaml")
+madnlp(mCPU)
 
-# GPU (CUDSS sparse solver from MadNLPGPU):
-using CUDA, MadNLPGPU
-m = petab_examodel("Crauste_CellSystems2017.yaml"; backend = CUDA.CUDABackend())
-stats = madnlp(m; linear_solver = MadNLPGPU.CUDSSSolver)
+# Using GPU solver with adaptive mesh refinement
+using MadNLPGPU, CUDA, CUDSS
+mGPU = petab_examodel(
+    "Crauste_CellSystems2017.yaml"; 
+    backend = CUDA.CUDABackend(),
+    adaptive_mesh = true
+)
+madnlp(mGPU; tol = 1e-6)
 ```
 """
 function petab_examodel(
         filename::String;
         backend = nothing,
-        K = 3,
-        mutable_mesh::Bool = false
+        K = 3::Int,
+        adaptive_mesh::Bool = false
     )
+    # Parse PEtab YAML file using PEtab.jl
     PEmodel = PEtab.PEtabModel(filename)    # TODO trim dependencies
     PEprob = PEtab.PEtabODEProblem(PEmodel) # TODO trim dependencies
-    return _build_petab_examodel(PEmodel, PEprob, backend, K; mutable_mesh = mutable_mesh)
+
+    # Build the ExaModel depending on if steady-state or dynamic
+    if _is_steady_state(PEmodel)
+        return _build_petab_examodel_ss(PEmodel, PEprob, backend)
+    else
+        return _build_petab_examodel(PEmodel, PEprob, backend, K; adaptive_mesh = adaptive_mesh)
+    end
 end
 
+# Builds the ExaModel
 function _build_petab_examodel(
         PEmodel::PEtabModel,
         PEprob::PEtabODEProblem,
         backend,
-        K;
-        mutable_mesh::Bool = false
+        K::Int;
+        adaptive_mesh::Bool = false
     )
-    # Steady-state models (all measurements at time = inf) carry no time-course information:
-    # the data observe the t→∞ steady state, not a trajectory. They take a separate path with
-    # NO collocation mesh — the NLP is just the steady-state equations f(zss)=0 plus the
-    # objective. (See steadystate.jl.) K is unused there.
-    if _is_steady_state(PEmodel)
-        return _build_petab_examodel_ss(PEmodel, PEprob, backend)
-    end
+    # Create ExaCore
+    c = ExaModels.ExaCore(; backend, concrete = Val(true))
+
+    # Create decision variables {p,z,cv,y,sigma,zss} and mesh info
+    c, PEinfo = _create_variables(c, PEmodel, PEprob, K)
+    
+    # Create collocation constraints
+    c = _create_collocation(c, PEmodel, PEprob, PEinfo; adaptive_mesh = adaptive_mesh)
+
+    # Create cross-interval continuity, initial condition, auxiliary variable {cv,} constraints
+    c = _create_continuity(c, PEmodel, PEprob, PEinfo)
+
+    # Create objective function (Gaussian negative log-liklihood) and auxiliary variable {y,sigma} constraints
+    c, y0, sigma0 = _create_objective(c, PEmodel, PEprob, PEinfo)
+
+    # Create ExaModel
+    model = ExaModels.ExaModel(c)
+
+    # Provide good initial guess for objective function auxiliary variables {y,sigma} 
+    ExaModels.set_start!(model, c.y, y0)
+    ExaModels.set_start!(model, c.sigma, sigma0)
+
+    return model
+end
+
+# Builds the ExaModel for steady-state models (no collocation mesh)
+function _build_petab_examodel_ss(
+        PEmodel::PEtabModel, 
+        PEprob::PEtabODEProblem, 
+        backend
+    )
+    # Check inconsistent PEtab model info
+    _check_x0SSpre(PEprob) && error(
+        "Pre-equilibration combined with steady-state (time = inf) measurements is not " *
+        "supported yet."
+    )
 
     # Create ExaCore
     c = ExaModels.ExaCore(; backend, concrete = Val(true))
 
-    # Create decision variables
-    c, PEinfo = _create_variables(c, PEmodel, PEprob, K)
-    
-    # Create constraints
-    c = _create_collocation(c, PEmodel, PEprob, PEinfo; mutable_mesh = mutable_mesh)
-    c = _create_continuity(c, PEmodel, PEprob, PEinfo)
+    # Create decision variables {p,cv,zss,y,sigma} and obtain problem info 
+    c, PEinfo = _create_variables_ss(c, PEmodel, PEprob)
 
-    # Create objective (also returns feasible initial guesses for the auxiliary
-    # observable (y) and noise (sigma) variables, evaluated at the z/p starts)
-    c, y0, sigma0 = _create_objective(c, PEmodel, PEprob, PEinfo)
+    # Create steady-state ODE RHS constraints, f(zss...) = 0
+    c = _create_constraints_ss(c, PEmodel, PEprob, PEinfo)
 
+    # Create objective function (Gaussian negative log-liklihood) and auxiliary variable {y,sigma} constraints
+    # (Evaluated at zss)
+    c, y0, sigma0 = _create_objective_ss(c, PEmodel, PEprob, PEinfo)
+
+    # Create ExaModel
     model = ExaModels.ExaModel(c)
 
-    # Warm-start y and sigma with values consistent with the z/p initial guesses.
-    # set_start! requires a built ::ExaModel (not the ::ExaCore), so it happens here.
+    # Provide good initial guess for objective function auxiliary variables {y,sigma} 
     ExaModels.set_start!(model, c.y, y0)
     ExaModels.set_start!(model, c.sigma, sigma0)
 

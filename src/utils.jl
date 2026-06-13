@@ -1,9 +1,15 @@
 # Key: (!!!) := determines index -> variable ordering/mapping
 
-# Reads the numeric start (initial-guess) values of a variable handle back out of the
-# ExaCore start buffer (c.x0). Returns a host Vector{Float64} in the variable's own
-# column-major index order, so it can be reshaped to the variable's dimensions.
-# (ExaModels' get_start is only defined on a built ::ExaModel, not on ::ExaCore.)
+# Normalize a raw observableTransformation / noiseDistribution cell to a Symbol,
+# defaulting blanks to the PEtab default.
+function _norm_cell(v, default::Symbol)::Symbol
+    s = (ismissing(v) || isnothing(v)) ? "" : lowercase(strip(string(v)))
+    return isempty(s) ? default : Symbol(s)
+end
+
+# TODO make a PR to ExaModels for simple new tool?
+# Returns ::Vector{Float64} in the variable's own column-major index order of 
+# the start guess values of an ExaModels variable from an ExaCore
 _var_starts(c::ExaCore, v) = Array(view(c.x0, (v.offset + 1):(v.offset + v.length)))
 
 # (!!!) Returns ::Vector{Symbolics.Num} of state variables
@@ -20,17 +26,10 @@ function _get_p_syms(PEprob::PEtabODEProblem)::Vector{Symbolics.Num}
 end
 
 # (!!!) Returns ::Vector{Symbol} of per-parameter PEtab estimation scales, aligned
-# to PEprob.xnames (== decision-variable index 1:Np). Each entry is :log10, :log, or :lin.
+# to PEprob.xnames (== decision-variable index 1:Np). Each entry is in {:log10, :log, :lin}
 function _get_pscale(PEprob::PEtabODEProblem)::Vector{Symbol}
     xscale = PEprob.model_info.xindices.xscale # Dict{Symbol,Symbol}: param name => scale
     return Symbol[xscale[Symbol(name)] for name in PEprob.xnames]
-end
-
-# Normalize a raw observableTransformation / noiseDistribution cell to a Symbol,
-# defaulting blanks to the PEtab default.
-function _norm_cell(v, default::Symbol)::Symbol
-    s = (ismissing(v) || isnothing(v)) ? "" : lowercase(strip(string(v)))
-    return isempty(s) ? default : Symbol(s)
 end
 
 # (!!!) Returns ::Vector{Symbol} of per-measurement observable transformations
@@ -49,8 +48,8 @@ function _get_meas_transforms(PEmodel::PEtabModel)::Vector{Symbol}
     return Symbol[get(dict_tr, string(measurements_df[midx, :observableId]), :lin) for midx in 1:Nm]
 end
 
-# Guard: this formulation only supports Gaussian (:normal) noise. Error early on
-# anything else (e.g. :laplace) rather than silently emitting the wrong likelihood.
+# GUARD: only supports Gaussian (:normal) noise. If empty, defaults to :normal.
+# CATCHES: other noise models such as :laplace
 function _assert_normal_noise(PEmodel::PEtabModel)
     observables_df = PEmodel.petab_tables[:observables]
     :noiseDistribution in propertynames(observables_df) || return nothing
@@ -62,14 +61,8 @@ function _assert_normal_noise(PEmodel::PEtabModel)
     return nothing
 end
 
-# Guard: the orthogonal-collocation transcription can represent fixed-time piecewise(time>T) gates
-# (SBMLImporter folds those into the RHS as __parameter_ifelse params — NOT <event> elements), but
-# NOT true SBML <event> elements: state-triggered events, state-jump event assignments, or events
-# with a parametric/estimated trigger time. Those impose a discontinuity (or a state reset) the
-# smooth collocation ODE constraints do not model, and they are otherwise SILENTLY IGNORED (the
-# warm-start integrator applies them, so the build looks fine, but the enforced dynamics are wrong).
-# Discriminator (validated): #<event> elements in the SBML — 0 for every fixed-time model, >0 only
-# for the true-event models (Liu=1, Smith=3). Error LOUDLY rather than produce wrong results.
+# GUARD: only support fixed-time discete events (variable 'x' changes to value 'y' at time 't')
+# CATCHES: continous or conditional events, e.g., Liu, Smith
 function _assert_supported_events(PEmodel::PEtabModel)
     sbml_path = get(PEmodel.paths, :SBML, nothing)
     (sbml_path === nothing || !isfile(sbml_path)) && return nothing
@@ -82,11 +75,8 @@ function _assert_supported_events(PEmodel::PEtabModel)
           "supported. Known affected benchmark models: Liu, Smith.")
 end
 
-# Physical parameter value of p[m] as an ExaModels expression, where the decision
-# variable p[m] := θ lives on PEtab's estimation scale. The native ODE RHS and all
-# observable/noise formulas use physical parameters, so this inverse-transform is
-# applied wherever p enters such a formula. (10^θ via exp(log(10)·θ) keeps it a
-# single SIMD-friendly exp node.)
+# In-lines the physical (linear) parameter value of p[m] as an ExaModels expression
+# where p[m] is the PEtab-scaled decision variable
 @inline function _p_phys(p, m::Integer, pscale::Vector{Symbol})
     s = pscale[m]
     return s === :log10 ? exp(log(10.0) * p[m]) :
@@ -94,7 +84,8 @@ end
                           p[m]                      # :lin
 end
 
-# Numeric physical value from an estimation-scale vector θ (for warm-start computations).
+# In-lines the physical (linear) parameter value of θ[m] as a numeric value
+# where θ[m] is the numeric value of a PEtab-scaled variable
 @inline function _p_phys_val(θ, m::Integer, pscale::Vector{Symbol})
     s = pscale[m]
     return s === :log10 ? exp10(θ[m]) :
@@ -102,29 +93,22 @@ end
                           θ[m]            # :lin
 end
 
-# (!!!) Returns ::Vector{String} of condition-dependent variable column names, cv
-# These are all conditions-table columns except the metadata columns. This is the
-# single source of truth for both the cv count/order and column lookups, so we never
-# assume a fixed positional offset (conditionName is optional in PEtab).
-function _get_cv_colnames(PEmodel::PEtabModel)::Vector{String}
+# (!!!) Returns ::Vector{String} of condition-dependent variable {cv} names (column names)
+function _get_cv_names(PEmodel::PEtabModel)::Vector{String}
     conditions_df = PEmodel.petab_tables[:conditions] # DataFrame of conditions
     exclude = ["conditionId", "conditionName"] # Exclude non-cv (metadata) columns
     return [string(str) for str in names(conditions_df) if !(str in exclude)]
 end
 
-# (!!!) Returns ::Vector{Symbolics.Num} of condition-dependent variables, cv
+# (!!!) Returns ::Vector{Symbolics.Num} of condition-dependent variables
 # cv[1:Ncv,cidx]
 function _get_cv_syms(PEmodel::PEtabModel)::Vector{Symbolics.Num}
-    cv_strings = _get_cv_colnames(PEmodel) # Variable names of condition-dependent (::String)
+    cv_strings = _get_cv_names(PEmodel) # Names of condition-dependent variables (::String)
     return Symbolics.Num.(Symbolics.variable.(cv_strings)) # Converts variable name (::String) into symbolic variable (::Symbolics.Num)
 end
 
-# (!!!) Returns ::Vector{String} of the SIMULATION conditionIds (conditions that appear as a
-# simulationConditionId in the measurements table), in conditions-table order. This is THE
-# canonical cidx[1:Nc] ordering used for z / Nc / cv / objective. Pre-equilibration-ONLY
-# conditions (conditions-table rows that are never simulated, e.g. Zheng's `preequilibration`)
-# are excluded — they would otherwise be (wrongly) collocated and break _get_z_init. For
-# models without pre-eq-only rows this is every conditions-table row, so nothing changes.
+# (!!!) Returns ::Vector{String} of the simulation conditionIds (conditions that appear as a simulationConditionId in the measurements table)
+# cidx[1:Nc]
 function _get_cids(PEmodel::PEtabModel)::Vector{String}
     PEtable       = PEmodel.petab_tables
     conditions_df = PEtable[:conditions]
@@ -132,22 +116,13 @@ function _get_cids(PEmodel::PEtabModel)::Vector{String}
     return [string(c) for c in conditions_df[!, :conditionId] if string(c) in sim_set]
 end
 
-# Row index into the conditions table for each canonical cidx. Since `_get_cids` may be a
-# subset of the conditions-table rows (pre-eq-only rows dropped), cidx is no longer the row
-# number — condition-dependent values must be looked up by conditionId, not by row position.
-function _get_cond_rows(PEmodel::PEtabModel)::Vector{Int}
-    conditions_df = PEmodel.petab_tables[:conditions]
-    cid2row = Dict(string(conditions_df[r, :conditionId]) => r for r in 1:size(conditions_df, 1))
-    return [cid2row[cid] for cid in _get_cids(PEmodel)]
-end
-
 # cv-column conditions: the Nc simulation conditions (positions 1:Nc — the cv column layout used
 # everywhere else, so cv[:,1:Nc] is byte-identical) FOLLOWED BY any DISTINCT pre-equilibration
 # conditions that are NOT themselves simulation conditions. The extra columns let the steady-state
 # residual f(zss)=0 be evaluated under the PRE-EQUILIBRATION inputs (e.g. Zheng dilution=1) instead
-# of the simulation condition's (dilution=0) — see _get_dict_cidx_sscidx / _add_ss_residual. For
+# of the simulation condition's (dilution=0) — see _get_dict_cidx_sscidx / _add_residual_ss. For
 # models without pre-equilibration this returns exactly _get_cids (no extra columns).
-function _get_cv_cond_ids(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{String}
+function _get_cv_cids(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{String}
     sim_cids = _get_cids(PEmodel)
     si = PEprob.model_info.simulation_info
     preeq = si.has_pre_equilibration ? unique(string.(si.conditionids[:pre_equilibration])) : String[]
@@ -155,30 +130,23 @@ function _get_cv_cond_ids(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{
     return [sim_cids; extra]
 end
 
-function _get_cv_cond_rows(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{Int}
+function _get_cv_cid_rows(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{Int}
     conditions_df = PEmodel.petab_tables[:conditions]
-    cid2row = Dict(string(conditions_df[r, :conditionId]) => r for r in 1:size(conditions_df, 1))
-    return [cid2row[cid] for cid in _get_cv_cond_ids(PEmodel, PEprob)]
+    dict_cid_row = Dict(string(conditions_df[row, :conditionId]) => row for row in 1:size(conditions_df, 1))
+    return [dict_cid_row[cid] for cid in _get_cv_cids(PEmodel, PEprob)]
 end
 
 # (!!!) Returns ::Vector{String} of observableIds
-# "y","[1:Ny]"
+# y[1:Nm]
 function _get_obsids(PEmodel::PEtabModel)::Vector{String}
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     observables_df = PEtable[:observables]
     return observables_df[!,:observableId]
 end
 
-# Builds a fixpoint substitutor for SBML assignment rules (= `MTK.observed(sys)`, excluding
-# any state aliases). These derived/algebraic variables (e.g. total_pop = Σstates, or a
-# condition/trigger-dependent rate) can be referenced anywhere — in the ODE RHS, the
-# observable formula, or NESTED inside other assignment rules — so a single substitution
-# pass is not enough; we iterate to a fixpoint until no assignment-rule symbol remains.
-#
-# `bare=true` strips the `(t)` from every variable so the rules match the objective's
-# bare-symbol convention (`_create_objective` parses table formulas into `(t)`-free
-# variables); `bare=false` keeps MTK's native `u(t)` form, used for the ODE RHS.
-function _assignment_substitutor(PEprob::PEtabODEProblem; bare::Bool)
+# Automatically substitutes/applies in "assignment rules" (MTK "observed" variable expressions)
+# into existing expressions until only the core {p,z,cv,...} ExaModels-scope variables remain
+function _assignment_substitutor(PEprob::PEtabODEProblem; remove_t::Bool)
     sys    = PEprob.model_info.model.sys
     z_syms = _get_z_syms(PEprob)
     strip_t(s) = Symbolics.Num(Symbolics.variable(Symbol(split(string(s), "(")[1])))
@@ -187,7 +155,8 @@ function _assignment_substitutor(PEprob::PEtabODEProblem; bare::Bool)
     rules = Dict{Any,Any}()
     for eq in MTK.observed(sys)
         any(isequal(eq.lhs, z) for z in z_syms) && continue   # never rewrite a state alias
-        rules[bare ? strip_t(eq.lhs) : eq.lhs] = bare ? rebare(eq.rhs) : eq.rhs
+        # if remove_t == true, remove the (t) appended to variable name. else keep the (t)
+        rules[remove_t ? strip_t(eq.lhs) : eq.lhs] = remove_t ? rebare(eq.rhs) : eq.rhs
     end
     keyset = collect(keys(rules))
     return function (expr)
@@ -196,6 +165,7 @@ function _assignment_substitutor(PEprob::PEtabODEProblem; bare::Bool)
         # (Use isequal-membership, not `intersect`/`in`: Symbolics `==` returns a symbolic
         # equation, not a Bool, so set ops on Nums misbehave.) Capped against cyclic rules.
         for _ in 1:100
+            # need to resubstitute because observed variables may be defined in terms of each other
             vars = Symbolics.get_variables(expr)
             any(v -> any(k -> isequal(v, k), keyset), vars) || return expr
             expr = Symbolics.substitute(expr, rules)
@@ -245,7 +215,6 @@ end
 # vector: beta_N = 0.1*0.1/1 = 0.01 even though R0_/gamma_/N_ carry their condition values). We
 # MUST freeze it the same way, otherwise the collocation RHS uses a different constant than the
 # ODE that produced the warm start, leaving the warm start grossly collocation-infeasible.
-#
 # We get there by fixpoint-substituting the parametermap into itself until every default is
 # numeric (resolves nested initialAssignments), then reading off the fixed params. If a fixed
 # param cannot be reduced to a number, we fall back to its raw parametermap value (the previous
@@ -336,7 +305,7 @@ function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
     # Recursively substitute ALL assignment rules (u(t,p) inputs, derived quantities, and any
     # nested ones) to a fixpoint, then the fixed numeric constants. After this the RHS is a
     # function of states / estimated params / condition vars / gates (and possibly t) only.
-    subst_rules = _assignment_substitutor(PEprob; bare = false)
+    subst_rules = _assignment_substitutor(PEprob; remove_t = false)
     f_exprs = [
         Symbolics.substitute(subst_rules(f_raw), dict_fixed_val)
         for f_raw in f_exprs_raw
@@ -416,7 +385,7 @@ end
 #   gate_vals[g,i,cidx]  : value of gate g on interval i of simulation condition cidx (collocation)
 #   gate_vals_ss[g,cidx] : value of gate g for cidx's steady-state residual (pre-eq condition's gate
 #                          if pre-equilibrated, else the condition's own t=0 value)
-# Asserts every in-window gate toggle lands on a mesh node (cumsum(h)); a mid-interval toggle would
+# Asserts every in-window gate toggle lands on a mesh node (t_nodes); a mid-interval toggle would
 # make a single per-interval value wrong and is rejected with a clear error.
 function _get_gate_vals(PEmodel::PEtabModel, PEprob::PEtabODEProblem,
                         gate_syms::Vector{Symbolics.Num}, h::Vector{Float64}, taus::Vector{Float64},
@@ -528,13 +497,13 @@ end
 # conditions map to themselves.
 function _get_dict_cidx_sscidx(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{Int64}
     cids        = _get_cids(PEmodel)                          # simulation conditions, cv cols 1:Nc
-    cv_cond_ids = _get_cv_cond_ids(PEmodel, PEprob)           # [sim; distinct extra pre-eq]
+    cv_cond_ids = _get_cv_cids(PEmodel, PEprob)           # [sim; distinct extra pre-eq]
     pos_of      = Dict(cv_cond_ids[i] => i for i in eachindex(cv_cond_ids))
     sim_ids = PEprob.model_info.simulation_info.conditionids[:simulation]
     ssc_ids = PEprob.model_info.simulation_info.conditionids[:pre_equilibration]
     # Map each simulation condition cidx -> the cv COLUMN of its pre-equilibration condition, so
     # the steady-state residual f(zss)=0 is evaluated under the PRE-EQ inputs. Because cv now
-    # carries a column for every distinct pre-eq condition (see _get_cv_cond_ids), pos_of always
+    # carries a column for every distinct pre-eq condition (see _get_cv_cids), pos_of always
     # resolves it; the cidx fallback only triggers for a (nonexistent) non-simulation cidx.
     return map(eachindex(cids)) do cidx
         sim_idx = findfirst(==(Symbol(cids[cidx])), sim_ids)
@@ -563,7 +532,7 @@ function _get_dict_cid_cidx(PEmodel::PEtabModel)::Dict{String, Int64}
 end
 
 # Returns dictionary: measurement time (::Float64) => mesh point index k in 0:N (::Int64)
-# where T_k = cumsum(h)[k] is the right endpoint of interval k (T_0 = 0). A measurement
+# where T_k = t_nodes[k+1] is the right endpoint of interval k (T_0 = t_nodes[1]). A measurement
 # at time T_k corresponds to the state at that mesh point; consumers map k to a z node:
 # k=0 -> initial node z[·,1,0,·]; 1<=k<=N-1 -> z[·,k+1,0,·]; k=N -> L1 endpoint of interval N.
 function _get_dict_t_tidx(t_nodes::AbstractVector, t_meas)::Dict{Float64, Int64}
