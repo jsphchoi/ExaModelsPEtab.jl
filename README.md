@@ -2,66 +2,83 @@
 
 [![Build Status](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
-Solve [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation problems with
-[ExaModels](https://github.com/exanauts/ExaModels.jl) + [MadNLP](https://github.com/MadNLP/MadNLP.jl),
-on the GPU.
+Solve [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation models with
+[ExaModels](https://github.com/exanauts/ExaModels.jl).
 
-Instead of repeatedly integrating the ODE inside an outer optimizer, ExaModelsPEtab transcribes the
-estimation problem into a single large-scale nonlinear program by **orthogonal collocation**: the ODE
-trajectory is discretized on a mesh and the collocation equations become equality constraints, so the
-states and parameters are optimized *simultaneously*. The resulting NLP is built as an `ExaModel`
-(SIMD-structured, GPU-resident) and solved with MadNLP using the cuDSS sparse linear solver on CUDA.
-
-## Installation
-
-```julia
-using Pkg
-Pkg.develop(path = "/path/to/ExaModelsPEtab")
-```
-
-Requires Julia ≥ 1.10. The GPU path needs a CUDA-capable device (via `CUDA.jl` / `MadNLPGPU` /
-`CUDSS`); the package also builds and solves on CPU with `backend = nothing`.
+Unlike [PEtab.jl](https://github.com/sebapersson/PEtab.jl), which uses the sequential method for
+dynamic optimization, ExaModelsPEtab applies the simultaneous method (orthogonal collocation) to
+formulate the problem as an NLP. The `ExaModel` can then be solved with [MadNLP](https://github.com/MadNLP/MadNLP.jl)
+using a CPU or GPU backend.
 
 ## Usage
+
+An `ExaModel` is formulated in a single function call:
+
+```julia
+petab_examodel(
+  filename::String;
+  backend = nothing,
+  K::Int = 4
+)
+```
+**Keyword arguments**
+- `backend` — Array backend: `nothing` for CPU (default) or `CUDA.CUDABackend()` for GPU.
+- `K` — Degree of the Lagrange interpolating polynomial (number of collocation points per interval);
+  defaults to `4`. Steady-state models ignore `K` since no mesh is required to solve `f(z, p) = 0`.
+
+### Example
 
 ```julia
 using ExaModelsPEtab, MadNLP
 
-# Build the collocation NLP from a PEtab problem YAML.
-model = petab_examodel("path/to/problem.yaml"; K = 4)   # CPU
-stats = madnlp(model)
+# Build the ExaModels NLP from a PEtab problem YAML file.
+model_CPU = petab_examodel("path/to/problem.yaml")   # CPU
+result_CPU = madnlp(model_CPU)
 
-# GPU:
+# Build the ExaModel using CUDA backend and solve with GPU solver
 using CUDA, MadNLPGPU
-model = petab_examodel("path/to/problem.yaml"; backend = CUDA.CUDABackend(), K = 4)
-stats = madnlp(model; linear_solver = MadNLPGPU.CUDSSSolver)
+model_GPU = petab_examodel(
+  "path/to/problem.yaml";
+  backend = CUDA.CUDABackend(),
+  K = 4
+)
+result_GPU = madnlp(model_GPU; tol = 1e-6)
 ```
 
-`petab_examodel(filename; backend = nothing, K = 4)` is the single entry point:
-- `backend` — `nothing` for CPU, `CUDA.CUDABackend()` for GPU.
-- `K` — number of collocation points per mesh interval (accuracy/cost knob). Steady-state models
-  (all measurements at t→∞) take a separate no-mesh path where `K` is unused.
 
-## Tests
 
-```julia
-using Pkg; Pkg.test()
+## References
+
+```bibtex
+@article{schmiester2021petab,
+  title={PEtab—Interoperable specification of parameter estimation problems in systems biology},
+  author={Schmiester, Leonard and Sch{\"a}lte, Yannik and Bergmann, Frank T and Camba, Tacio and Dudkin, Erika and Egert, Janine and Fr{\"o}hlich, Fabian and Fuhrmann, Lara and Hauber, Adrian L and Kemmer, Svenja and others},
+  journal={PLoS computational biology},
+  volume={17},
+  number={1},
+  pages={e1008646},
+  year={2021},
+  publisher={Public Library of Science}
+}
+
+@article{persson2025petab,
+  title={PEtab. jl: advancing the efficiency and utility of dynamic modelling},
+  author={Persson, Sebastian and Fr{\"o}hlich, Fabian and Grein, Stephan and Loman, Torkel and Ognissanti, Damiano and Hasselgren, Viktor and Hasenauer, Jan and Cvijovic, Marija},
+  journal={Bioinformatics},
+  volume={41},
+  number={9},
+  pages={btaf497},
+  year={2025},
+  publisher={Oxford University Press}
+}
+
+@article{shin2024accelerating,
+  title={Accelerating optimal power flow with GPUs: SIMD abstraction of nonlinear programs and condensed-space interior-point methods},
+  author={Shin, Sungho and Anitescu, Mihai and Pacaud, Fran{\c{c}}ois},
+  journal={Electric Power Systems Research},
+  volume={236},
+  pages={110651},
+  year={2024},
+  publisher={Elsevier}
+}
 ```
-
-The test suite builds and solves a small set of benchmark models that span the construction paths
-(steady-state, time-course collocation, multi-condition) on CPU, and additionally on GPU when
-`CUDA.functional()`, checking both convergence and the objective value.
-
-## Benchmarks
-
-`examples/Benchmarks/` benchmarks ExaModelsPEtab (MadNLP/CUDA) against PEtab.jl (Optim.IPNewton)
-across the PEtab benchmark-model collection in `examples/Benchmark-Models/`.
-
-- `options.jl` — single source of truth for the model lists and all solver/benchmark settings.
-- `run_examodels.{jl,sh}`, `run_petab.{jl,sh}`, `run_bruno.jl` — the benchmark drivers.
-- `results/` + `results.jl` — per-model results and the regenerated scoreboard (`results.txt`).
-- `RUNNING_BENCHMARKS.md` — operational runbook for launching and interpreting a run.
-- `MULTISTART_FINDINGS.md` — notes on warm-start / local-optimum behavior.
-
-`examples/debugging/` holds standalone diagnostic scripts (build-staging, warm-start feasibility,
-objective-consistency, event/gate validation) used while bringing models up.

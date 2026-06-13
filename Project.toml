@@ -1,12 +1,8 @@
 name = "ExaModelsPEtab"
 uuid = "449f6601-3844-48f4-990d-d57d890903df"
 version = "0.1.0-DEV"
-authors = ["Joseph Choi <jsphchoi@mit.edu> and contributors"]
+authors = ["Joseph Choi <jsphchoi@mit.edu>"]
 
-# This package only *builds* the collocation NLP from a PEtab problem, so its dependencies
-# are just the model-construction stack. The solver (MadNLP/MadNLPGPU), the GPU backend
-# (CUDA/CUDSS) and the PEtab-side optimizer (Optim) are needed only to *run* a model, so they
-# live in the dedicated `test/` and `examples/` environments, not here.
 [deps]
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
