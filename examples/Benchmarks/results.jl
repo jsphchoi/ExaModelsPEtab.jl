@@ -1,33 +1,27 @@
-# results.jl — reads Benchmarks/results/{Model}_results.txt and prints a
-# formatted benchmark table comparing ExaModelsPEtab (MadNLP/GPU) vs PEtab.jl
-# (Optim.IPNewton). Also writes the same report to Benchmarks/results.txt.
-# Run from the repo root:
-#   julia --project=examples examples/Benchmarks/results.jl          # SGM (warm) solve times — DEFAULT
+# results.jl — reads Benchmarks/results/{Model}_results.txt and prints a formatted benchmark table
+# comparing ExaModelsPEtab + MadNLP on GPU (exagpu_*) and CPU (exacpu_*) against PEtab.jl +
+# Optim.IPNewton (petab_*). Also writes the report to Benchmarks/results.txt.
+#   julia --project=examples examples/Benchmarks/results.jl          # warm (SGM) solve times — DEFAULT
 #   julia --project=examples examples/Benchmarks/results.jl --cold   # cold first-run solve times instead
-#
-# SGM is the DEFAULT because it is the fair warm-vs-warm comparison: the cold first solve includes a
-# one-time GPU-kernel JIT tax on the exa side (e.g. Zheng cold 128.8s vs SGM 20.4s) that PEtab (CPU)
-# does not pay, so cold solve times systematically flatter PEtab. A "-" in a Solve(s) cell means that
-# backend has no SGM time recorded (didn't converge, or its SGM rerun hasn't been run yet).
 
 using Printf
 
 const RESULTDIR  = joinpath(@__DIR__, "results")
 const REPORT_TXT = joinpath(@__DIR__, "results.txt")
-const USE_SGM    = !("--cold" in ARGS)   # SGM (warm) by default; pass --cold for first-run solve times
+const USE_SGM    = !("--cold" in ARGS)
 
-include(joinpath(@__DIR__, "options.jl"))  # BENCHMARK_MODELS / PETAB_SOLVED_MODELS / EXA_SUPPORTED_MODELS
+include(joinpath(@__DIR__, "options.jl"))
 
-# The report rows are ALL 35 benchmark models, in ALPHABETICAL order — a complete scoreboard.
-# The PEtab column shows every model PEtab solved (status 0) AND the PEtab-side failures (E/T/1/-);
-# the ExaModels column shows the 25 exa-supported models (the 10 PEtab-failed / exa-unsupported
-# models show "-" there). Models without a result row simply show blank/failed status.
 const ALL_MODELS = sort(BENCHMARK_MODELS)  # 35 (full benchmark collection, alphabetical)
+const SGM_N      = BENCH_SGM_N
+
+# A SOLVE_SUCCEEDED/ACCEPTABLE whose objective is worse than PEtab's by ≥ this % is converged-but-
+# suboptimal (0S / 0AS) and is EXCLUDED from the "ExaModels solved" count.
+const SUBOPT_GAP_PCT = 2.0
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 function read_result(m)
-    d = Dict{String,String}()
-    p = joinpath(RESULTDIR, "$(m)_results.txt")
+    d = Dict{String,String}(); p = joinpath(RESULTDIR, "$(m)_results.txt")
     isfile(p) || return d
     for line in eachline(p)
         i = findfirst('=', line); i === nothing && continue
@@ -35,200 +29,145 @@ function read_result(m)
     end
     d
 end
-
 g(d, k)   = get(d, k, "")
 fparse(s) = tryparse(Float64, s)
 short_name(m) = split(m, '_')[1]
-
-# A SOLVE_SUCCEEDED whose objective is meaningfully WORSE than PEtab's (positive rel.gap above
-# this %) is a converged-but-suboptimal local minimum (e.g. Bertozzi +194%, Laske +3.6%,
-# Okuonghae +1.9%), NOT a clean optimum. It gets the "0S" marker and is EXCLUDED from the
-# "ExaModels solved" count (only true status 0 counts). Negative gaps (ExaModels lower than
-# PEtab) are the collocation relaxation "ghost", not suboptimality, so they stay "0".
-const SUBOPT_GAP_PCT = 1.5
-
-# rel.gap (%) = (exa_obj - petab_obj)/|petab_obj| * 100; positive = ExaModels objective WORSE
-# (higher, for an NLL minimization) than PEtab. nothing when either objective is missing/non-finite.
-function rel_gap_val(d)
-    eo = fparse(g(d, "exa_objective")); po = fparse(g(d, "petab_objective"))
-    (eo === nothing || po === nothing || !isfinite(eo) || !isfinite(po) || po == 0.0) && return nothing
-    (eo - po) / abs(po) * 100.0
-end
-
-# The SGM rerun count actually used (read from the data; falls back to "?" if no SGM ran).
-# Used in the header label so it reflects the real n instead of a hardcoded value.
-# SGM rerun count is the single shared BENCH_SGM_N from options.jl (both backends use it).
 
 function center_str(s, n)
     len = length(s); len >= n && return s[1:n]
     l = div(n - len, 2); " "^l * s * " "^(n - len - l)
 end
 
-function pct_exa_str(d)
-    ct = fparse(g(d, "exa_compile_time")); pt = fparse(g(d, "exa_presolve_time"))
-    (ct === nothing || pt === nothing || ct <= 0.0) && return "-"
-    @sprintf("%4.0f%%", 100.0 * (ct - pt) / ct)
+# GAP(%) = (petab_obj(exa_p*) - petab_obj) / |petab_obj| × 100 — ExaModels' optimal parameters scored
+# under PEtab's OWN objective, vs PEtab's optimum (fair, same-objective). The benchmark stores
+# petab_obj(exa_p*) as `<pfx>petab_obj`; until a run populates it we fall back to the ExaModels
+# objective `<pfx>objective` so the column is not empty.
+function gap_val(d, pfx)
+    eo = fparse(g(d, pfx * "petab_obj")); eo === nothing && (eo = fparse(g(d, pfx * "objective")))
+    po = fparse(g(d, "petab_objective"))
+    (eo === nothing || po === nothing || !isfinite(eo) || !isfinite(po) || po == 0.0) && return nothing
+    (eo - po) / abs(po) * 100.0
 end
+# +X.Xe+X  (one-decimal mantissa, exponent without a leading zero)
+gap_str(d, pfx) = (gp = gap_val(d, pfx); gp === nothing ? "-" :
+                   replace(@sprintf("%+.1e", gp), "e+0" => "e+", "e-0" => "e-"))
 
-function madnlp_code(d)
-    g(d, "exa_compile_status") in ("", "missing_yaml", "timeout", "error") && return "-"
-    g(d, "exa_compile_status") != "ok"                                      && return "-"
-    ss = g(d, "exa_solve_status")
-    ss == "skipped" && return "-"
-    ss == "error"   && return "E"
-    ss == "timeout" && return "T"
-    term = uppercase(g(d, "exa_term_status"))
-    isempty(term)                          && return "-"
-    # A successful solve has two orthogonal axes: convergence tier (full SUCCEEDED -> "0" vs
-    # acceptable-level ε-optimal -> "0A") and objective quality (clean vs suboptimal). Suboptimal
-    # (positive rel.gap >= SUBOPT_GAP_PCT, i.e. obj worse than PEtab) appends an "S" suffix. Both
-    # base codes count as solved; the "S" variants (0S / 0AS) are excluded.
+# ExaModels MadNLP status code for backend `pfx` (exagpu_ / exacpu_).
+function madnlp_code(d, pfx)
+    g(d, pfx * "compile_status") != "ok" && return "-"
+    ss = g(d, pfx * "solve_status")
+    ss in ("skipped", "timeout") && return "-"
+    ss == "error" && return "E"
+    term = uppercase(g(d, pfx * "term_status"))
+    isempty(term) && return "-"
     if occursin("SUCCEEDED", term) || occursin("ACCEPTABLE", term)
         base = occursin("ACCEPTABLE", term) ? "0A" : "0"
-        gp   = rel_gap_val(d)
+        gp   = gap_val(d, pfx)
         return (gp !== nothing && gp >= SUBOPT_GAP_PCT) ? base * "S" : base
     end
-    occursin("WALLTIME",       term)       && return "1"
-    occursin("RESTORATION",    term)       && return "2"
-    occursin("INVALID_NUMBER", term)       && return "3"
-    occursin("ITER",           term)       && return "4"
+    occursin("WALLTIME",         term) && return "W"
+    occursin("RESTORATION",      term) && return "R"
+    occursin("SEARCH_DIRECTION", term) && return "D"
     return "5"
 end
 
 function petab_code(d)
-    g(d, "petab_compile_status") in ("", "missing_yaml", "timeout", "error") && return "-"
-    g(d, "petab_compile_status") != "ok"                                      && return "-"
+    g(d, "petab_compile_status") != "ok" && return "-"
     ss = g(d, "petab_solve_status")
-    ss == "skipped" && return "-"
-    ss == "error"   && return "E"
-    ss == "timeout" && return "T"
+    ss in ("skipped", "timeout") && return "-"
+    ss == "error" && return "E"
     g(d, "petab_optimum_found") == "true"  && return "0"
     g(d, "petab_optimum_found") == "false" && return "1"
     return "-"
 end
 
-function rel_gap_str(d)
-    gp = rel_gap_val(d)
-    gp === nothing ? "-" : @sprintf("%+.2e", gp)
+pct_exa_str(d, pfx) = begin
+    ct = fparse(g(d, pfx * "compile_time")); pt = fparse(g(d, pfx * "presolve_time"))
+    (ct === nothing || pt === nothing || ct <= 0.0) ? "-" : @sprintf("%4.0f%%", 100.0 * (ct - pt) / ct)
 end
-
-fmt_cmp(d, pfx) = begin
-    cs = g(d, pfx * "compile_status"); t = g(d, pfx * "compile_time")
-    (cs == "ok" && !isempty(t)) ? t : "-"
-end
+fmt_cmp(d, pfx) = (g(d, pfx * "compile_status") == "ok" && !isempty(g(d, pfx * "compile_time"))) ? g(d, pfx * "compile_time") : "-"
 fmt_slv(d, pfx) = begin
-    # --sgm: show the SGM geometric-mean solve time for BOTH backends (exa: GPU-kernel-free reruns;
-    # petab: n-rerun calibrate mean) — an n-vs-n head-to-head, comparable across the two columns.
     if USE_SGM
-        s = g(d, pfx * "sgm_status"); t = g(d, pfx * "sgm_solve_time")
-        return (s == "ok" && !isempty(t)) ? t : "-"
+        (g(d, pfx * "sgm_status") == "ok" && !isempty(g(d, pfx * "sgm_solve_time"))) ? g(d, pfx * "sgm_solve_time") : "-"
+    else
+        (g(d, pfx * "solve_status") == "ok" && !isempty(g(d, pfx * "solve_time"))) ? g(d, pfx * "solve_time") : "-"
     end
-    ss = g(d, pfx * "solve_status"); t = g(d, pfx * "solve_time")
-    (ss == "ok" && !isempty(t)) ? t : "-"
 end
 
 # ─── column widths ────────────────────────────────────────────────────────────
-const W_NAME  = 16
-const W_CTIME = 10   # Compile(s)
-const W_PCT   = 6    # EXA(%)
-const W_STIME = 10   # Solve(s)
-const W_STAT  = 6    # Status
-const W_GAP   = 11   # rel.gap(%)
+const W_NAME = 14   # fits "SalazarCavazos"
+const W_CMPL, W_PCT, W_SOL, W_STAT, W_GAP = 7, 6, 7, 4, 8
+const W_EXA_INNER   = W_CMPL + 1 + W_PCT + 1 + W_SOL + 2 + W_STAT + 1 + W_GAP   # GPU & CPU groups (incl GAP; +1 space before STAT)
+const W_PETAB_INNER = W_CMPL + 1 + W_SOL + 2 + W_STAT                            # PEtab (no GAP; +1 space before STAT)
 
-# inner widths of each major group (columns separated by single spaces)
-const W_EXA_INNER   = W_CTIME + 1 + W_PCT + 1 + W_STIME + 1 + W_STAT   # 34
-const W_PETAB_INNER = W_CTIME + 1 + W_STIME + 1 + W_STAT                # 27
+# ─── build report ───────────────────────────────────────────────────────────────
+buf   = IOBuffer()
+all_d = [read_result(m) for m in ALL_MODELS]
 
-# ─── build report string ──────────────────────────────────────────────────────
-buf = IOBuffer()
-
-all_d           = [read_result(m) for m in ALL_MODELS]              # rerun target rows
-exa_supported_d = [read_result(m) for m in EXA_SUPPORTED_MODELS]    # 25 exa-representable (context only)
-const SGM_N = BENCH_SGM_N   # shared rerun count for both backends (single knob in options.jl)
-
-# Labels are kept within the column inner widths (34 / 27) so center_str never truncates them
-# mid-string (the old "[solve=SGM n=3]" label overflowed 34 chars → a dangling unclosed '[').
-exa_label   = USE_SGM ? "ExaModels + MadNLPGPU (SGM n=$SGM_N)" : "ExaModels + MadNLPGPU"
-petab_label = USE_SGM ? "PEtab + IPNewton (SGM n=$SGM_N)"      : "PEtab + IPNewton"
-major_hdr = @sprintf("%-*s | %s | %s | %*s",
+major_hdr = @sprintf("%-*s | %s | %s | %s",
     W_NAME, "",
-    center_str(exa_label,   W_EXA_INNER),
-    center_str(petab_label, W_PETAB_INNER),
-    W_GAP, "")
+    center_str("ExaModels + MadNLP (GPU)", W_EXA_INNER),
+    center_str("ExaModels + MadNLP (CPU)", W_EXA_INNER),
+    center_str("PEtab + IPNewton",         W_PETAB_INNER))
+sub_hdr = @sprintf("%-*s | %*s %*s %*s  %*s %*s | %*s %*s %*s  %*s %*s | %*s %*s  %*s",
+    W_NAME, "Model",
+    W_CMPL,"CMPL(s)", W_PCT,"EXA(%)", W_SOL,"SOL(s)", W_STAT,"STAT", W_GAP,"GAP(%)",
+    W_CMPL,"CMPL(s)", W_PCT,"EXA(%)", W_SOL,"SOL(s)", W_STAT,"STAT", W_GAP,"GAP(%)",
+    W_CMPL,"CMPL(s)", W_SOL,"SOL(s)", W_STAT,"STAT")
+bar = "="^length(sub_hdr); sep = "-"^length(sub_hdr)
 
-sub_hdr = @sprintf("%-*s | %*s %*s %*s %*s | %*s %*s %*s | %*s",
-    W_NAME,  "Model",
-    W_CTIME, "Compile(s)", W_PCT, "EXA(%)", W_STIME, "Solve(s)", W_STAT, "Status",
-    W_CTIME, "Compile(s)", W_STIME, "Solve(s)", W_STAT, "Status",
-    W_GAP,   "rel.gap(%)")
-
-bar = "="^length(sub_hdr)
-sep = "-"^length(sub_hdr)
-
-println(buf, bar)
-println(buf, major_hdr)
-println(buf, sub_hdr)
-println(buf, sep)
-
+println(buf, bar); println(buf, major_hdr); println(buf, sub_hdr); println(buf, sep)
 for m in ALL_MODELS
     d = read_result(m)
-    @printf(buf, "%-*s | %*s %*s %*s %*s | %*s %*s %*s | %*s\n",
+    @printf(buf, "%-*s | %*s %*s %*s  %*s %*s | %*s %*s %*s  %*s %*s | %*s %*s  %*s\n",
         W_NAME, short_name(m),
-        W_CTIME, fmt_cmp(d,"exa_"),   W_PCT, pct_exa_str(d),
-        W_STIME, fmt_slv(d,"exa_"),   W_STAT, madnlp_code(d),
-        W_CTIME, fmt_cmp(d,"petab_"), W_STIME, fmt_slv(d,"petab_"), W_STAT, petab_code(d),
-        W_GAP, rel_gap_str(d))
+        W_CMPL,fmt_cmp(d,"exagpu_"), W_PCT,pct_exa_str(d,"exagpu_"), W_SOL,fmt_slv(d,"exagpu_"), W_STAT,madnlp_code(d,"exagpu_"), W_GAP,gap_str(d,"exagpu_"),
+        W_CMPL,fmt_cmp(d,"exacpu_"), W_PCT,pct_exa_str(d,"exacpu_"), W_SOL,fmt_slv(d,"exacpu_"), W_STAT,madnlp_code(d,"exacpu_"), W_GAP,gap_str(d,"exacpu_"),
+        W_CMPL,fmt_cmp(d,"petab_"),  W_SOL,fmt_slv(d,"petab_"),      W_STAT,petab_code(d))
 end
 println(buf, sep)
 
-# ─── summary ──────────────────────────────────────────────────────────────────
-# Scoped to the canonical exa-supported set (ALL_MODELS = sort(EXA_SUPPORTED_MODELS)), not all 35.
-exa_opt(d)    = madnlp_code(d) in ("0", "0A")    # full (0) or acceptable-level (0A) optimum matching PEtab
-exa_subopt(d) = madnlp_code(d) in ("0S", "0AS")  # solved but suboptimal (positive gap >= SUBOPT_GAP_PCT)
+# ─── summary (GPU is the primary ExaModels backend) ─────────────────────────────
+exa_opt(d)    = madnlp_code(d,"exagpu_") in ("0", "0A")
+exa_subopt(d) = madnlp_code(d,"exagpu_") in ("0S", "0AS")
 
-n_rows         = length(ALL_MODELS)              # 35 (all benchmark models, rows)
-n_exa_supported= length(EXA_SUPPORTED_MODELS)    # 25 exa-representable
-n_exa_opt      = count(exa_opt, all_d)           # clean status-0/0A solves (only supported can qualify)
-n_exa_subopt   = count(exa_subopt, all_d)        # converged-but-suboptimal (0S/0AS)
-n_petab_solved = count(d -> petab_code(d) == "0", all_d)  # PEtab converged (status 0)
+println(buf, "\nSUMMARY (all models in Benchmark-Models)")
+@printf(buf, "  Benchmark models       : %2d       (PEtab-solved %d / exa-supported %d)\n",
+        length(ALL_MODELS), length(PETAB_SOLVED_MODELS), length(EXA_SUPPORTED_MODELS))
+@printf(buf, "  PEtab converged        : %2d / %2d  (status 0)\n", count(d -> petab_code(d) == "0", all_d), length(ALL_MODELS))
+@printf(buf, "  ExaModels solved       : %2d / %2d  (status 0 + 0A — full/acceptable optimum; of the exa-supported set)\n", count(exa_opt, all_d), length(EXA_SUPPORTED_MODELS))
+@printf(buf, "  Solved-but-suboptimal  : %2d       (0S / 0AS — converged but obj ≥+%.1f%% vs PEtab; excluded above)\n", count(exa_subopt, all_d), SUBOPT_GAP_PCT)
 
-println(buf, "\nSUMMARY  (all $(n_rows) benchmark models)")
-@printf(buf, "  Benchmark models       : %2d  (PEtab-solved %d / exa-supported %d)\n",
-        n_rows, length(PETAB_SOLVED_MODELS), n_exa_supported)
-@printf(buf, "  PEtab converged        : %2d / %2d  (status 0)\n", n_petab_solved, n_rows)
-@printf(buf, "  ExaModels solved       : %2d / %2d  (status 0 + 0A — full/acceptable optimum; of the exa-supported set)\n", n_exa_opt, n_exa_supported)
-@printf(buf, "  Solved-but-suboptimal  : %2d       (0S / 0AS — converged but obj >= +%.1f%% vs PEtab; excluded above)\n", n_exa_subopt, SUBOPT_GAP_PCT)
-
-get_gap(d) = begin
-    eo = fparse(g(d, "exa_objective")); po = fparse(g(d, "petab_objective"))
-    (eo === nothing || po === nothing || !isfinite(eo) || !isfinite(po) || po == 0.0) ? nothing :
-    (eo - po) / abs(po) * 100.0
-end
-gaps = filter(!isnothing, get_gap.(all_d))
-if !isempty(gaps)
-    max_idx = argmax(abs.(gaps))
-    @printf(buf, "\nRELATIVE OBJECTIVE GAP  (exa_obj - petab_obj) / |petab_obj| × 100%%  [negative = ExaModels lower]:\n")
-    @printf(buf, "  n=%d  median=%+.2e%%  max_abs=%+.2e%%  (|gap|<1%%: %d)\n",
-            length(gaps), sort(gaps)[cld(length(gaps), 2)],
-            gaps[max_idx], count(x -> abs(x) < 1.0, gaps))
-end
-
-println(buf, bar)
 println(buf, "")
-println(buf, "STATUS KEY")
-println(buf, "  MadNLP (Status): 0=SOLVE_SUCCEEDED (clean optimum)  0A=SOLVED_TO_ACCEPTABLE_LEVEL (ε-optimal); both count as solved")
-println(buf, "                   0S/0AS=solved (full/acceptable) but suboptimal (obj >= +$(SUBOPT_GAP_PCT)% vs PEtab)  1=WALLTIME_EXCEEDED  2=RESTORATION_FAILED")
-println(buf, "                   3=INVALID_NUMBER_JACOBIAN  4=MAX_ITER_EXCEEDED  5=other")
-println(buf, "                   E=exception  T=process_timeout  -=compile_failed/not_run")
-println(buf, "  PEtab  (Status): 0=converged  1=ran_not_converged  E=error  T=timeout  -=compile_failed/not_run")
-println(buf, "  EXA(%)         : fraction of compile time spent on ExaModels build")
-println(buf, "                   (remainder = PEtab setup + ODE presolve at nominal θ)")
-println(buf, "                   '-' for results from earlier benchmarks (presolve not tracked then)")
-println(buf, "  rel.gap(%)     : (ExaModels_obj - PEtab_obj) / |PEtab_obj| × 100%  (negative = ExaModels lower)")
-USE_SGM && println(buf, "  Timing mode    : Solve(s) = SGM geometric mean (warm) over n=$SGM_N reruns, both backends (exa_sgm_* / petab_sgm_* keys)")
+println(buf, "  CMPL(s) := Model compilation time")
+println(buf, "  EXA(%)  := Fraction of model compile time spent on actual ExaModels build (PEtab setup + mesh generation)")
+println(buf, "  SOL(s)  := Solver solve time, standard geometric mean over n=$SGM_N reruns")
+println(buf, "  STAT    := Solver status")
+println(buf, "  GAP(%)  := (petab.nllh(exa_p*) - petab_obj) / |petab_obj| × 100%  (negative => ExaModels lower)")
+
+# ─── status key (only codes present in the table) ───────────────────────────────
+madnlp_desc = Dict("0"=>"SOLVE_SUCCEEDED", "0A"=>"SOLVED_TO_ACCEPTABLE_LEVEL",
+    "0S"=>"SOLVE_SUCCEEDED, suboptimal (≥+$(SUBOPT_GAP_PCT)% vs PEtab)",
+    "0AS"=>"SOLVED_TO_ACCEPTABLE_LEVEL, suboptimal (≥+$(SUBOPT_GAP_PCT)% vs PEtab)",
+    "W"=>"WALLTIME_EXCEEDED", "R"=>"RESTORATION_FAILED", "D"=>"SEARCH_DIRECTION_BECOMES_TOO_SMALL",
+    "5"=>"other", "E"=>"Error", "-"=>"compile_failed/not_run")
+const MADNLP_ORDER = ["0","0A","0S","0AS","W","R","D","5","E","-"]
+petab_desc = Dict("0"=>"Converged to local min", "1"=>"Converged but not certified local min",
+    "E"=>"Error", "-"=>"compile_failed/not_run")
+const PETAB_ORDER = ["0","1","E","-"]
+
+madnlp_present = Set(madnlp_code(d,p) for d in all_d for p in ("exagpu_","exacpu_"))
+petab_present  = Set(petab_code(d) for d in all_d)
+keyline(code, desc) = "   " * lpad(code, 3) * " : " * desc
+
+println(buf, "\n  MadNLP (Status)")
+for code in MADNLP_ORDER; code in madnlp_present && println(buf, keyline(code, madnlp_desc[code])); end
+println(buf, "\n  PEtab  (Status)")
+for code in PETAB_ORDER;  code in petab_present  && println(buf, keyline(code, petab_desc[code]));  end
+println(buf, "\n", bar)
 
 # ─── output ───────────────────────────────────────────────────────────────────
 report = String(take!(buf))
 print(report)
 open(REPORT_TXT, "w") do io; print(io, report); end
-println("Report saved to: $REPORT_TXT")
+println("\nReport saved to: $REPORT_TXT")

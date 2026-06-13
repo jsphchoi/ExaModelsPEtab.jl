@@ -1,9 +1,0 @@
-petab_compile_status=ok
-petab_compile_time=9544.84
-petab_error=
-petab_has_events=false
-petab_iter=0
-petab_objective=Inf
-petab_optimum_found=false
-petab_solve_status=error
-petab_solve_time=8721.02

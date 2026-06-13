@@ -1,17 +1,17 @@
-exa_K=4
-exa_compile_status=ok
-exa_compile_time=995.75
-exa_error=
-exa_iter=2614
-exa_ncon=597904
-exa_nvar=597988
-exa_objective=1593.0250382833456
-exa_presolve_time=98.88
-exa_sgm_error=first solve term=MAXIMUM_WALLTIME_EXCEEDED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
-exa_sgm_status=skipped
-exa_solve_status=ok
-exa_solve_time=3603.89
-exa_term_status=MAXIMUM_WALLTIME_EXCEEDED
+exagpu_K=4
+exagpu_compile_status=ok
+exagpu_compile_time=995.75
+exagpu_error=
+exagpu_iter=2614
+exagpu_ncon=597904
+exagpu_nvar=597988
+exagpu_objective=1593.0250382833456
+exagpu_presolve_time=98.88
+exagpu_sgm_error=first solve term=MAXIMUM_WALLTIME_EXCEEDED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
+exagpu_sgm_status=skipped
+exagpu_solve_status=ok
+exagpu_solve_time=3603.89
+exagpu_term_status=MAXIMUM_WALLTIME_EXCEEDED
 petab_compile_status=ok
 petab_compile_time=229.42
 petab_error=

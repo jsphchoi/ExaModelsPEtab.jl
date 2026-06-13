@@ -1,17 +1,17 @@
-exa_K=4
-exa_compile_status=ok
-exa_compile_time=241.05
-exa_error=
-exa_iter=6783
-exa_ncon=85519
-exa_nvar=85541
-exa_objective=1.9452820522881162e8
-exa_presolve_time=85.07
-exa_sgm_error=first solve term=SEARCH_DIRECTION_BECOMES_TOO_SMALL∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
-exa_sgm_status=skipped
-exa_solve_status=ok
-exa_solve_time=1320.02
-exa_term_status=SEARCH_DIRECTION_BECOMES_TOO_SMALL
+exagpu_K=4
+exagpu_compile_status=ok
+exagpu_compile_time=241.05
+exagpu_error=
+exagpu_iter=6783
+exagpu_ncon=85519
+exagpu_nvar=85541
+exagpu_objective=1.9452820522881162e8
+exagpu_presolve_time=85.07
+exagpu_sgm_error=first solve term=SEARCH_DIRECTION_BECOMES_TOO_SMALL∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
+exagpu_sgm_status=skipped
+exagpu_solve_status=ok
+exagpu_solve_time=1320.02
+exagpu_term_status=SEARCH_DIRECTION_BECOMES_TOO_SMALL
 petab_compile_status=ok
 petab_compile_time=304.83
 petab_error=
