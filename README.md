@@ -1,7 +1,6 @@
 # ExaModelsPEtab
 
 [![Build Status](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/jsphchoi/ExaModelsPEtab.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jsphchoi/ExaModelsPEtab.jl)
 
 Solve [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation models with
 [ExaModels](https://github.com/exanauts/ExaModels.jl).
