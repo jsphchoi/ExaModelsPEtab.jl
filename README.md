@@ -1,6 +1,7 @@
 # ExaModelsPEtab
 
 [![Build Status](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/jsphchoi/ExaModelsPEtab.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jsphchoi/ExaModelsPEtab.jl)
 
 Solve [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation models with
 [ExaModels](https://github.com/exanauts/ExaModels.jl).
@@ -49,36 +50,14 @@ result_GPU = madnlp(model_GPU; tol = 1e-6)
 
 ## References
 
-```bibtex
-@article{schmiester2021petab,
-  title={PEtab—Interoperable specification of parameter estimation problems in systems biology},
-  author={Schmiester, Leonard and Sch{\"a}lte, Yannik and Bergmann, Frank T and Camba, Tacio and Dudkin, Erika and Egert, Janine and Fr{\"o}hlich, Fabian and Fuhrmann, Lara and Hauber, Adrian L and Kemmer, Svenja and others},
-  journal={PLoS computational biology},
-  volume={17},
-  number={1},
-  pages={e1008646},
-  year={2021},
-  publisher={Public Library of Science}
-}
+1. Shin, S., Anitescu, M., & Pacaud, F. (2024). Accelerating optimal power flow with GPUs: SIMD
+   abstraction of nonlinear programs and condensed-space interior-point methods. *Electric Power
+   Systems Research*, 236, 110651.
 
-@article{persson2025petab,
-  title={PEtab. jl: advancing the efficiency and utility of dynamic modelling},
-  author={Persson, Sebastian and Fr{\"o}hlich, Fabian and Grein, Stephan and Loman, Torkel and Ognissanti, Damiano and Hasselgren, Viktor and Hasenauer, Jan and Cvijovic, Marija},
-  journal={Bioinformatics},
-  volume={41},
-  number={9},
-  pages={btaf497},
-  year={2025},
-  publisher={Oxford University Press}
-}
+2. Persson, S., Fröhlich, F., Grein, S., Loman, T., Ognissanti, D., Hasselgren, V., Hasenauer, J.,
+   & Cvijovic, M. (2025). PEtab.jl: advancing the efficiency and utility of dynamic modelling.
+   *Bioinformatics*, 41(9), btaf497.
 
-@article{shin2024accelerating,
-  title={Accelerating optimal power flow with GPUs: SIMD abstraction of nonlinear programs and condensed-space interior-point methods},
-  author={Shin, Sungho and Anitescu, Mihai and Pacaud, Fran{\c{c}}ois},
-  journal={Electric Power Systems Research},
-  volume={236},
-  pages={110651},
-  year={2024},
-  publisher={Elsevier}
-}
-```
+3. Schmiester, L., Schälte, Y., Bergmann, F. T., Camba, T., Dudkin, E., Egert, J., Fröhlich, F.,
+   Fuhrmann, L., Hauber, A. L., Kemmer, S., et al. (2021). PEtab—Interoperable specification of
+   parameter estimation problems in systems biology. *PLoS Computational Biology*, 17(1), e1008646.
