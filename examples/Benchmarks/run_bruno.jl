@@ -1,36 +1,23 @@
 # run_bruno.jl — dedicated Bruno benchmark, warmed up on Crauste.
 #
-# Bruno_JExpBot2016 is the SHARED JIT-warmup model for both run_examodels.jl and
-# run_petab.jl, so it is excluded from both of their timed runs: a model that is
-# benchmarked by the same script that warms up on it gets a pre-warmed, invalid compile
-# time (Bruno's petab_compile_time came out 4.96 s vs ~200-300 s for its cold peers).
+# Bruno_JExpBot2016 is the SHARED JIT-warmup model for run_examodels.jl and run_petab.jl, so it is
+# excluded from both of their timed runs (a model benchmarked by the script that warms on it gets an
+# invalid pre-warmed compile time). This script benchmarks the TARGET, warming on a DIFFERENT model.
 #
-# This script benchmarks the TARGET with BOTH backends in a single process, warming up on a
-# DIFFERENT model (never the target), so the target's exa_* and petab_* numbers are valid and
-# comparable. The measurement logic is copied verbatim from the two parent scripts to keep parity.
-#
-# CANONICAL USE: Bruno only. Bruno is the sole model that cannot be timed by its own warming
-# scripts, so it is benchmarked here, warmed on Crauste:
-#   julia --project=examples -t 1 examples/Benchmarks/run_bruno.jl Bruno_JExpBot2016   [gpu_id]
-# Crauste itself is now timed normally in the main loops (run_examodels.jl + _petab.jl,
-# warmed on Bruno) and no longer needs this script. The TARGET arg still accepts Crauste (warmed
-# on Bruno) for ad-hoc parity checks, but the canonical Crauste numbers come from the main loops.
-# (no target arg ⇒ defaults to Bruno, warmed on Crauste.)
+# Backend (BENCH_BACKEND, like run_examodels.jl): "gpu" (default) -> exagpu_*, "cpu" -> exacpu_*.
+# The PEtab side (petab_*) is backend-independent, so it runs only on the GPU pass.
+#   julia --project=examples -t 1 examples/Benchmarks/run_bruno.jl Bruno_JExpBot2016 [gpu_id]
+#   BENCH_BACKEND=cpu julia --project=examples -t 1 examples/Benchmarks/run_bruno.jl Bruno_JExpBot2016
 
-using ExaModelsPEtab, PEtab, CUDA, MadNLPGPU, CUDSS, ExaModels, Optim
+using ExaModelsPEtab, PEtab, CUDA, MadNLP, MadNLPGPU, CUDSS, ExaModels, Optim
 
-# ─── CONFIGURABLE SETTINGS ──────────────────────────────────────────────────────
-# ALL solver/benchmark settings live in options.jl (single source of truth, shared with
-# run_examodels.jl and run_petab.jl). Change them THERE — below we only alias BENCH_*.
+# ─── CONFIGURABLE SETTINGS (single source of truth = options.jl) ──────────────────
 const MODELDIR  = joinpath(@__DIR__, "..", "Benchmark-Models")
 const RESULTDIR = joinpath(@__DIR__, "results")
+include(joinpath(@__DIR__, "options.jl"))
 
-include(joinpath(@__DIR__, "options.jl"))  # model lists + BENCH_* config (K, TOL, SGM_N, limits, ...)
-
-# Bruno-specific: TARGET is the model under test; its warmup must DIFFER from it for valid timing
-# (a model warmed-on then benchmarked by the same process gets an invalid, pre-warmed compile time).
-const TARGET        = (length(ARGS) >= 1 && !occursin(r"^\d+$", ARGS[1])) ? ARGS[1] : "Bruno_JExpBot2016"
-const WARMUP_MODEL  = TARGET == "Crauste_CellSystems2017" ? "Bruno_JExpBot2016" : "Crauste_CellSystems2017"
+const TARGET       = (length(ARGS) >= 1 && !occursin(r"^\d+$", ARGS[1])) ? ARGS[1] : "Bruno_JExpBot2016"
+const WARMUP_MODEL = TARGET == "Crauste_CellSystems2017" ? "Bruno_JExpBot2016" : "Crauste_CellSystems2017"
 
 const K             = BENCH_K
 const TOL           = BENCH_TOL
@@ -38,10 +25,23 @@ const COMPILE_LIMIT = BENCH_COMPILE_LIMIT
 const PETAB_COMPILE_LIMIT = BENCH_PETAB_COMPILE_LIMIT
 const SOLVE_LIMIT   = BENCH_SOLVE_LIMIT
 const MAX_ITER      = BENCH_MAX_ITER
-const N_SGM_RERUNS  = BENCH_SGM_N    # exa rerun count
+const N_SGM_RERUNS  = BENCH_SGM_N
 const ACCEPT_TOL    = BENCH_ACCEPT_TOL
 const ACCEPT_ITER   = BENCH_ACCEPT_ITER
-const PETAB_SGM_N   = BENCH_SGM_N    # petab rerun count — same shared knob
+const PETAB_SGM_N   = BENCH_SGM_N
+
+const BACKEND = lowercase(get(ENV, "BENCH_BACKEND", "gpu"))
+const IS_GPU  = BACKEND != "cpu"
+const PFX     = IS_GPU ? "exagpu_" : "exacpu_"
+const KKT_OPTS = (kkt_system = MadNLP.SparseCondensedKKTSystem,
+                  equality_treatment = MadNLP.RelaxEquality,
+                  fixed_variable_treatment = MadNLP.RelaxBound)
+solve_madnlp(model) = IS_GPU ?
+    madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
+           max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver, KKT_OPTS...) :
+    madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
+           max_wall_time=SOLVE_LIMIT, KKT_OPTS...)
+gpu_reclaim() = IS_GPU && (GC.gc(); CUDA.reclaim())
 # ────────────────────────────────────────────────────────────────────────────────
 
 get_yaml(m) = begin
@@ -49,20 +49,16 @@ get_yaml(m) = begin
     fs = filter(f -> endswith(lowercase(f), ".yaml"), readdir(d))
     isempty(fs) ? nothing : joinpath(d, first(fs))
 end
-
 result_path(m) = joinpath(RESULTDIR, "$(m)_results.txt")
 
 function read_result(path)
-    d = Dict{String,String}()
-    isfile(path) || return d
+    d = Dict{String,String}(); isfile(path) || return d
     for line in eachline(path)
         i = findfirst('=', line); i === nothing && continue
         d[line[1:i-1]] = line[i+1:end]
     end
     return d
 end
-
-# Read-modify-write: preserves keys from the other backend in the same file.
 function write_result(path, updates)
     existing = read_result(path)
     merged = merge(existing, Dict(string(k) => replace(string(v), '\n' => ' ', '\r' => ' ')
@@ -72,54 +68,56 @@ function write_result(path, updates)
         flush(io)
     end
 end
-
 function with_hard_deadline(f, seconds::Real)
     pid = getpid()
     w = run(`bash -c "sleep $(seconds); kill -9 $(pid)"`; wait=false)
     try; return f(); finally; try; kill(w); catch; end; end
 end
+function petab_obj_at_exa(PEprob, res)
+    Np = PEprob.nparameters_estimate
+    xstar = Array(res.solution)[1:Np]
+    try; return PEprob.nllh(xstar); catch; return NaN; end
+end
 
-# ─── ExaModels build (copied from run_examodels.jl) ───────────────────────
+# ─── ExaModels build (backend-parametrized; returns PEtabODEProblem) ──────────────
 function build_model(yaml, t_origin)
     PEmodel = PEtab.PEtabModel(yaml)
     PEprob  = PEtab.PEtabODEProblem(PEmodel)
-    c = ExaModels.ExaCore(; backend=CUDA.CUDABackend(), concrete=Val(true))
-    c, PEinfo = ExaModelsPEtab._create_variables(c, PEmodel, PEprob, K)
-    t_phase1 = time() - t_origin
-    c = ExaModelsPEtab._create_collocation(c, PEmodel, PEprob, PEinfo)
-    c = ExaModelsPEtab._create_continuity(c, PEmodel, PEprob, PEinfo)
-    c, y0, sigma0 = ExaModelsPEtab._create_objective(c, PEmodel, PEprob, PEinfo)
+    backend = IS_GPU ? CUDA.CUDABackend() : nothing
+    c = ExaModels.ExaCore(; backend, concrete=Val(true))
+    if ExaModelsPEtab._is_steady_state(PEmodel)
+        c, PEinfo = ExaModelsPEtab._create_variables_ss(c, PEmodel, PEprob)
+        t_phase1 = time() - t_origin
+        c = ExaModelsPEtab._create_constraints_ss(c, PEmodel, PEprob, PEinfo)
+        c, y0, sigma0 = ExaModelsPEtab._create_objective_ss(c, PEmodel, PEprob, PEinfo)
+    else
+        c, PEinfo = ExaModelsPEtab._create_variables(c, PEmodel, PEprob, K)
+        t_phase1 = time() - t_origin
+        c = ExaModelsPEtab._create_collocation(c, PEmodel, PEprob, PEinfo)
+        c = ExaModelsPEtab._create_continuity(c, PEmodel, PEprob, PEinfo)
+        c, y0, sigma0 = ExaModelsPEtab._create_objective(c, PEmodel, PEprob, PEinfo)
+    end
     mdl = ExaModels.ExaModel(c)
     ExaModels.set_start!(mdl, c.y, y0)
     ExaModels.set_start!(mdl, c.sigma, sigma0)
-    CUDA.synchronize()
-    return mdl, mdl.meta.nvar, mdl.meta.ncon, t_phase1
+    IS_GPU && CUDA.synchronize()
+    return mdl, PEprob, mdl.meta.nvar, mdl.meta.ncon, t_phase1
 end
 
-# ─── SGM solve reruns (copied from run_examodels.jl) ──────────────────────
 function run_sgm_reruns(m, rp, model)
-    write_result(rp, Dict("exa_sgm_status" => "running", "exa_sgm_n" => N_SGM_RERUNS))
+    write_result(rp, Dict(PFX*"sgm_status" => "running", PFX*"sgm_n" => N_SGM_RERUNS))
     solve_times = Float64[]
     for i in 1:N_SGM_RERUNS
         @info "[$m] SGM solve $i/$N_SGM_RERUNS ..."
         try
-            t0 = time()
-            madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
-                   max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
-            push!(solve_times, round(time() - t0; digits=2))
+            t0 = time(); solve_madnlp(model); push!(solve_times, round(time() - t0; digits=2))
         catch e
             @error "[$m] SGM solve $i failed" exception=(e, catch_backtrace())
-            write_result(rp, Dict("exa_sgm_status" => "error",
-                                  "exa_sgm_error"  => sprint(showerror, e)))
-            return
+            write_result(rp, Dict(PFX*"sgm_status" => "error", PFX*"sgm_error" => sprint(showerror, e))); return
         end
     end
     sgm_solve = round(exp(sum(log, solve_times) / length(solve_times)); digits=2)
-    write_result(rp, Dict(
-        "exa_sgm_status"     => "ok",
-        "exa_sgm_n"          => N_SGM_RERUNS,
-        "exa_sgm_solve_time" => sgm_solve,
-    ))
+    write_result(rp, Dict(PFX*"sgm_status" => "ok", PFX*"sgm_n" => N_SGM_RERUNS, PFX*"sgm_solve_time" => sgm_solve))
     @info "[$m] SGM done: solve=$sgm_solve s (n=$N_SGM_RERUNS)"
 end
 
@@ -127,82 +125,58 @@ end
 function bench_exa(m)
     rp   = result_path(m)
     yaml = get_yaml(m)
-    yaml === nothing && (write_result(rp, Dict("exa_compile_status" => "missing_yaml",
-                                               "exa_solve_status"   => "skipped")); return)
+    yaml === nothing && (write_result(rp, Dict(PFX*"compile_status" => "missing_yaml", PFX*"solve_status" => "skipped")); return)
     model = nothing
 
-    # ── COMPILE ──
     write_result(rp, Dict(
-        "exa_compile_status" => "compiling", "exa_compile_time" => "",
-        "exa_presolve_time"  => "",          "exa_solve_status"  => "skipped",
-        "exa_solve_time"     => "",          "exa_term_status"   => "",
-        "exa_objective"      => "",          "exa_iter"          => "",
-        "exa_nvar"           => "",          "exa_ncon"          => "",
-        "exa_error"          => "",
+        PFX*"compile_status" => "compiling", PFX*"compile_time" => "", PFX*"presolve_time" => "",
+        PFX*"solve_status"   => "skipped",   PFX*"solve_time"   => "", PFX*"term_status"   => "",
+        PFX*"objective"      => "",          PFX*"petab_obj"    => "", PFX*"iter" => "",
+        PFX*"nvar"           => "",          PFX*"ncon"         => "", PFX*"error" => "",
     ))
-    @info "[$m] EXA compiling (K=$K)..."
+    @info "[$m] EXA compiling on $BACKEND (K=$K)..."
+    local PEprob
     try
         t0 = time()
-        mdl, nvar, ncon, t_phase1 = with_hard_deadline(COMPILE_LIMIT) do
-            build_model(yaml, t0)
-        end
+        mdl, PEprob, nvar, ncon, t_phase1 = with_hard_deadline(COMPILE_LIMIT) do; build_model(yaml, t0); end
         model = mdl
         write_result(rp, Dict(
-            "exa_compile_status" => "ok",
-            "exa_compile_time"   => round(time() - t0; digits=2),
-            "exa_presolve_time"  => round(t_phase1;    digits=2),
-            "exa_K"              => K,      # collocation points/interval (mesh fidelity)
-            "exa_nvar"           => nvar,   # NLP problem size (decision variables)
-            "exa_ncon"           => ncon,
+            PFX*"compile_status" => "ok", PFX*"compile_time" => round(time() - t0; digits=2),
+            PFX*"presolve_time"  => round(t_phase1; digits=2), PFX*"K" => K, PFX*"nvar" => nvar, PFX*"ncon" => ncon,
         ))
     catch e
-        write_result(rp, Dict("exa_compile_status" => "error",
-                              "exa_error" => sprint(showerror, e)))
-        @error "[$m] EXA compile failed" exception=(e, catch_backtrace())
-        return
+        write_result(rp, Dict(PFX*"compile_status" => "error", PFX*"error" => sprint(showerror, e)))
+        @error "[$m] EXA compile failed" exception=(e, catch_backtrace()); return
     end
 
-    # ── FIRST SOLVE (includes GPU kernel compilation) ──
-    @info "[$m] EXA solving with MadNLP..."
-    write_result(rp, Dict("exa_solve_status" => "solving"))
+    @info "[$m] EXA solving with MadNLP/$BACKEND..."
+    write_result(rp, Dict(PFX*"solve_status" => "solving"))
     try
         t0 = time()
-        res = with_hard_deadline(SOLVE_LIMIT + 3600.0) do
-            madnlp(model; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
-                   max_wall_time=SOLVE_LIMIT, linear_solver=MadNLPGPU.CUDSSSolver)
-        end
+        res = with_hard_deadline(SOLVE_LIMIT + 3600.0) do; solve_madnlp(model); end
         write_result(rp, Dict(
-            "exa_solve_status" => "ok",
-            "exa_solve_time"   => round(time() - t0; digits=2),
-            "exa_term_status"  => string(res.status),
-            "exa_objective"    => res.objective,
-            "exa_iter"         => res.iter,
+            PFX*"solve_status" => "ok", PFX*"solve_time" => round(time() - t0; digits=2),
+            PFX*"term_status"  => string(res.status), PFX*"objective" => res.objective,
+            PFX*"petab_obj"    => petab_obj_at_exa(PEprob, res), PFX*"iter" => res.iter,
         ))
     catch e
-        write_result(rp, Dict("exa_solve_status" => "error",
-                              "exa_error" => sprint(showerror, e)))
-        @error "[$m] EXA solve failed" exception=(e, catch_backtrace())
-        model = nothing; GC.gc(); CUDA.reclaim()
-        return
+        write_result(rp, Dict(PFX*"solve_status" => "error", PFX*"error" => sprint(showerror, e)))
+        @error "[$m] EXA solve failed" exception=(e, catch_backtrace()); model = nothing; gpu_reclaim(); return
     end
 
-    # ── SGM SOLVE RERUNS (kernels cached) ──
-    run_sgm_reruns(m, rp, model)
-    model = nothing; GC.gc(); CUDA.reclaim()
+    if uppercase(get(read_result(rp), PFX*"term_status", "")) in ("SOLVE_SUCCEEDED", "SOLVED_TO_ACCEPTABLE_LEVEL")
+        run_sgm_reruns(m, rp, model)
+    else
+        write_result(rp, Dict(PFX*"sgm_status" => "skipped"))
+    end
+    model = nothing; gpu_reclaim()
     @info "[$m] EXA done"
 end
 
-# ─── PEtab benchmark for the target (copied from run_petab.jl run_worker) ─
-optim_opts() = Optim.Options(
-    iterations     = MAX_ITER,
-    time_limit     = SOLVE_LIMIT,
-    g_tol          = TOL,
-    f_reltol       = BENCH_PETAB_F_RELTOL,
-    allow_f_increases = true,
-    successive_f_tol  = BENCH_PETAB_SUCCESSIVE_FTOL,
-    show_trace     = false,
-    x_abstol       = BENCH_PETAB_X_ABSTOL,
-)
+# ─── PEtab benchmark for the target (backend-independent; runs on the GPU pass) ──
+optim_opts() = Optim.Options(iterations=MAX_ITER, time_limit=SOLVE_LIMIT, g_tol=TOL,
+    f_reltol=BENCH_PETAB_F_RELTOL, allow_f_increases=true, successive_f_tol=BENCH_PETAB_SUCCESSIVE_FTOL,
+    show_trace=false, x_abstol=BENCH_PETAB_X_ABSTOL)
 
 function has_events(PEprob)
     cbs = PEprob.model_info.simulation_info.callbacks
@@ -217,130 +191,97 @@ end
 function bench_petab(m)
     rp   = result_path(m)
     yaml = get_yaml(m)
-    yaml === nothing && (write_result(rp, Dict("petab_compile_status" => "missing_yaml",
-                                               "petab_solve_status"   => "skipped")); return)
+    yaml === nothing && (write_result(rp, Dict("petab_compile_status" => "missing_yaml", "petab_solve_status" => "skipped")); return)
 
-    # ── COMPILE ──
     write_result(rp, Dict(
         "petab_compile_status" => "compiling", "petab_compile_time" => "",
         "petab_solve_status"   => "skipped",   "petab_solve_time"   => "",
         "petab_objective"      => "",           "petab_iter"        => "",
-        "petab_optimum_found"  => "",           "petab_has_events"  => "",
-        "petab_error"          => "",
+        "petab_optimum_found"  => "",           "petab_has_events"  => "", "petab_error" => "",
     ))
     @info "[$m] PEtab compiling..."
-
-    # NOTE: no in-worker warmup here — the process-level warmup on Crauste (NOT the target)
-    # already paid the generic ForwardDiff/Optim JIT, so this compile timing is valid.
     PEprob = nothing
     try
         t0 = time()
         PEprob = with_hard_deadline(PETAB_COMPILE_LIMIT) do
-            p  = PEtabODEProblem(PEtabModel(yaml))
-            x0 = get_x(p); np = length(x0)
-            p.nllh(x0); p.grad!(zeros(np), x0); p.hess!(zeros(np, np), x0)
-            p
+            p  = PEtabODEProblem(PEtabModel(yaml)); x0 = get_x(p); np = length(x0)
+            p.nllh(x0); p.grad!(zeros(np), x0); p.hess!(zeros(np, np), x0); p
         end
-        write_result(rp, Dict(
-            "petab_compile_status" => "ok",
-            "petab_compile_time"   => round(time() - t0; digits=2),
-            "petab_has_events"     => has_events(PEprob),
-        ))
+        write_result(rp, Dict("petab_compile_status" => "ok", "petab_compile_time" => round(time() - t0; digits=2),
+                              "petab_has_events" => has_events(PEprob)))
     catch e
-        write_result(rp, Dict("petab_compile_status" => "error",
-                              "petab_error" => sprint(showerror, e)))
-        return
+        write_result(rp, Dict("petab_compile_status" => "error", "petab_error" => sprint(showerror, e))); return
     end
 
-    # ── SOLVE ──
     @info "[$m] PEtab solving (Optim.IPNewton)..."
     write_result(rp, Dict("petab_solve_status" => "solving"))
     try
         t0 = time()
-        res = with_hard_deadline(SOLVE_LIMIT + 600.0) do
-            calibrate(PEprob, get_x(PEprob), Optim.IPNewton(); options=optim_opts())
-        end
+        res = with_hard_deadline(SOLVE_LIMIT + 600.0) do; calibrate(PEprob, get_x(PEprob), Optim.IPNewton(); options=optim_opts()); end
         write_result(rp, Dict(
-            "petab_solve_status"  => (res.converged === :Optimisation_failed || !isfinite(res.fmin)) ?
-                                     "error" : "ok",
-            "petab_solve_time"    => round(time() - t0; digits=2),
-            "petab_objective"     => res.fmin,
-            "petab_iter"          => res.niterations,
-            "petab_optimum_found" => string(res.converged === true),
+            "petab_solve_status"  => (res.converged === :Optimisation_failed || !isfinite(res.fmin)) ? "error" : "ok",
+            "petab_solve_time"    => round(time() - t0; digits=2), "petab_objective" => res.fmin,
+            "petab_iter"          => res.niterations, "petab_optimum_found" => string(res.converged === true),
         ))
     catch e
-        write_result(rp, Dict("petab_solve_status" => "error",
-                              "petab_error" => sprint(showerror, e)))
+        write_result(rp, Dict("petab_solve_status" => "error", "petab_error" => sprint(showerror, e)))
     end
 
-    # ── PEtab SGM SOLVE RERUNS (n=10 head-to-head; needs a converged first solve) ──
     if PETAB_SGM_N > 0 && get(read_result(rp), "petab_optimum_found", "") == "true"
         write_result(rp, Dict("petab_sgm_status" => "running", "petab_sgm_n" => PETAB_SGM_N))
-        ptimes = Float64[]
-        ok = true
+        ptimes = Float64[]; ok = true
         for i in 1:PETAB_SGM_N
             @info "[$m] PEtab SGM solve $i/$PETAB_SGM_N ..."
             try
                 t0 = time()
-                with_hard_deadline(SOLVE_LIMIT + 600.0) do
-                    calibrate(PEprob, get_x(PEprob), Optim.IPNewton(); options=optim_opts())
-                end
+                with_hard_deadline(SOLVE_LIMIT + 600.0) do; calibrate(PEprob, get_x(PEprob), Optim.IPNewton(); options=optim_opts()); end
                 push!(ptimes, round(time() - t0; digits=2))
             catch e
                 @error "[$m] PEtab SGM solve $i failed" exception=(e, catch_backtrace())
-                write_result(rp, Dict("petab_sgm_status" => "error",
-                                      "petab_sgm_error"  => sprint(showerror, e)))
-                ok = false; break
+                write_result(rp, Dict("petab_sgm_status" => "error", "petab_sgm_error" => sprint(showerror, e))); ok = false; break
             end
         end
         if ok
             psgm = round(exp(sum(log, ptimes) / length(ptimes)); digits=2)
-            write_result(rp, Dict("petab_sgm_status" => "ok", "petab_sgm_n" => PETAB_SGM_N,
-                                  "petab_sgm_solve_time" => psgm))
+            write_result(rp, Dict("petab_sgm_status" => "ok", "petab_sgm_n" => PETAB_SGM_N, "petab_sgm_solve_time" => psgm))
             @info "[$m] PEtab SGM done: solve=$psgm s (n=$PETAB_SGM_N)"
         end
     end
 end
 
-# ─── warmups on the WARMUP_MODEL (NOT the target), one per backend ───────────────
 function warmup_exa()
     yaml = get_yaml(WARMUP_MODEL); yaml === nothing && return
-    @info "EXA warmup: JIT build+solve on $WARMUP_MODEL ..."
+    @info "EXA warmup: JIT build+solve on $WARMUP_MODEL ($BACKEND) ..."
     try
-        t0 = time()
-        mdl, _, _, _ = build_model(yaml, t0)
-        CUDA.synchronize()
-        madnlp(mdl; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER, max_wall_time=250.0,
-               linear_solver=MadNLPGPU.CUDSSSolver)
-        mdl = nothing; GC.gc(); CUDA.reclaim()
-        @info "EXA warmup done"
+        t0 = time(); mdl, _, _, _, _ = build_model(yaml, t0); IS_GPU && CUDA.synchronize()
+        madnlp(mdl; tol=TOL, acceptable_tol=ACCEPT_TOL, acceptable_iter=ACCEPT_ITER, max_iter=MAX_ITER,
+               max_wall_time=250.0, KKT_OPTS..., (IS_GPU ? (; linear_solver=MadNLPGPU.CUDSSSolver) : (;))...)
+        mdl = nothing; gpu_reclaim(); @info "EXA warmup done"
     catch e; @warn "EXA warmup failed" exception=(e, catch_backtrace()); end
 end
-
 function warmup_petab()
     yaml = get_yaml(WARMUP_MODEL); yaml === nothing && return
     @info "PEtab warmup: JIT calibrate on $WARMUP_MODEL ..."
     try
-        wp = PEtabODEProblem(PEtabModel(yaml))
-        calibrate(wp, get_x(wp), Optim.IPNewton(); options=Optim.Options(iterations=3))
+        wp = PEtabODEProblem(PEtabModel(yaml)); calibrate(wp, get_x(wp), Optim.IPNewton(); options=Optim.Options(iterations=3))
         @info "PEtab warmup done"
     catch e; @warn "PEtab warmup failed" exception=(e, catch_backtrace()); end
 end
 
 function main()
-    # gpu_id = the first purely-numeric arg (target name is the non-numeric arg 1); default 0
     gpu_idx = findfirst(a -> occursin(r"^\d+$", a), ARGS)
     gpu_id  = gpu_idx === nothing ? 0 : parse(Int, ARGS[gpu_idx])
-    CUDA.device!(gpu_id)
+    IS_GPU && CUDA.device!(gpu_id)
     mkpath(RESULTDIR)
-    @info "run_bruno: target=$TARGET warmup=$WARMUP_MODEL on GPU $gpu_id ($(CUDA.name(CUDA.device())))"
+    @info "run_bruno: target=$TARGET warmup=$WARMUP_MODEL backend=$BACKEND prefix=$PFX"
 
     warmup_exa()
     bench_exa(TARGET)
 
-    warmup_petab()
-    bench_petab(TARGET)
-
+    if IS_GPU      # PEtab is backend-independent — run it only on the GPU pass
+        warmup_petab()
+        bench_petab(TARGET)
+    end
     @info "run_bruno complete"
 end
 
