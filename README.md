@@ -1,21 +1,22 @@
-# ExaModelsPEtab
+# ExaModelsPEtab.jl
+
+Formulates [ExaModels](https://github.com/exanauts/ExaModels.jl) from
+ [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation models.
+
+Unlike [PEtab.jl](https://github.com/sebapersson/PEtab.jl), which uses the sequential method for
+dynamic optimization, `ExaModelsPEtab.jl` applies the simultaneous method (orthogonal collocation) to
+formulate the problem as an NLP. The `ExaModel` can then be solved with [MadNLP](https://github.com/MadNLP/MadNLP.jl)
+using a CPU or GPU backend.
 
 [![Build Status](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
-Solve [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation models with
-[ExaModels](https://github.com/exanauts/ExaModels.jl).
-
-Unlike [PEtab.jl](https://github.com/sebapersson/PEtab.jl), which uses the sequential method for
-dynamic optimization, ExaModelsPEtab applies the simultaneous method (orthogonal collocation) to
-formulate the problem as an NLP. The `ExaModel` can then be solved with [MadNLP](https://github.com/MadNLP/MadNLP.jl)
-using a CPU or GPU backend.
 
 ## Usage
 
 An `ExaModel` is formulated in a single function call:
 
 ```julia
-petab_examodel(
+examodel = petab_examodel(
   filename::String;
   backend = nothing,
   K::Int = 4
@@ -44,7 +45,6 @@ model_GPU = petab_examodel(
 )
 result_GPU = madnlp(model_GPU; tol = 1e-6)
 ```
-
 
 
 ## References

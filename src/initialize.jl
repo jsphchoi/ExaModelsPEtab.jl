@@ -1,3 +1,6 @@
+# Absolute tolerance for mesh-time comparisons (segment coverage and width caps).
+const _MESH_TOL = 1e-9
+
 # get initial guess for z and a lot of other things
 function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     # Get unique experimental measurement values
@@ -67,9 +70,6 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
 
     return z_init, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes
 end
-
-# Absolute tolerance for mesh-time comparisons (segment coverage and width caps).
-const _MESH_TOL = 1e-9
 
 # Finds the largest interval width within a segment of time [a,b]
 function _seg_maxwidth(tvec, a, b)

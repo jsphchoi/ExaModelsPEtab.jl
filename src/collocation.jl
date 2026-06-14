@@ -1,4 +1,3 @@
-
 # (*) Main function for creating ExaModels collocation equations (*)
 function _create_collocation(
         c::ExaCore,
@@ -28,7 +27,7 @@ function _create_lagrange(
     gate_syms = _get_gate_syms(PEprob)
     Ng = length(gate_syms)
 
-    fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms) # obtain ODE rhs equations
+    fs = _get_rhs_funcs(PEmodel, PEprob) # obtain ODE rhs equations
 
     if adaptive_mesh
         #############################################################################################

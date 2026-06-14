@@ -1,14 +1,21 @@
-#######################################################
-# Steady-state (time = inf) models.
-#
-# A `time = inf` measurement observes the t→∞ steady state, not a trajectory point — no time-course
-# to discretize. We build a separate NLP whose only dynamics are f(zss[:,cidx]) = 0 per condition,
-# reading observables/noise off zss (PEtab's :Rootfinding method). PURE steady-state models only;
-# mixed finite+inf and inf+pre-equilibration are rejected.
-#######################################################
+# !!! for steady-state models := measurement time = Inf
+# Instead of creating collocation equations for the ODE RHS equations, simply set f(zss...) = 0
 
-# A model is (pure) steady-state iff every measurement time is inf. Errors on the mixed case
-# (some finite, some inf) since that needs z and zss to coexist — not yet supported.
+# Creates all of the constraints for pure steady-state models
+function _create_constraints_ss(
+        c::ExaCore, 
+        PEmodel::PEtabModel,
+        PEprob::PEtabODEProblem,
+        PEinfo::PEInfo
+    )
+    c = _create_cv_constraints(c, PEmodel, PEprob, PEinfo)
+    W, b, keep_rows = _conservation_ss(c, PEmodel, PEprob, PEinfo)
+    c = _create_residual_ss(c, PEmodel, PEprob, PEinfo, identity; keep_rows = keep_rows)
+    c = _add_conservation_constraints(c, PEinfo, W, b)
+    return c
+end
+
+# A model is (pure) steady-state iff every measurement time is inf. Error any mixed cases
 function _is_steady_state(PEmodel::PEtabModel)::Bool
     times   = Float64.(PEmodel.petab_tables[:measurements][!, :time])
     any_inf = any(isinf, times)
@@ -20,9 +27,8 @@ function _is_steady_state(PEmodel::PEtabModel)::Bool
     return true
 end
 
-# Forward-simulated steady-state warm start for zss[1:Nz,1:Nc]: integrate each condition's ODE to a
-# large finite horizon (PEtab's inf→1e8 convention) and take the terminal state. This selects the
-# forward-simulated basin when f(u)=0 has multiple roots (same caveat as PEtab's :Rootfinding).
+# Returns the steady-state values for every simulation condition
+# by solving the ODE until steady-state (t=1e8 just like PEtab does) and taking final states
 function _get_zss_init_sim(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nz, Nc) = PEinfo
     p_nominal = PEtab.get_x(PEprob)
@@ -45,154 +51,46 @@ function _get_zss_init_sim(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo:
     return zss0
 end
 
-
-
-# Decision variables for the steady-state path. Mirrors _create_variables but with zss (warm
-# started by forward simulation) in place of the discretized state z, and no collocation mesh.
+# Create decision variables for the steady-state state variables
+# zss[:,cidx]
 function _create_variables_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
-    _assert_supported_events(PEmodel)   # reject true SBML <event> models (silently-wrong otherwise)
+    _assert_supported_events(PEmodel) # reject true SBML <event> models
+
+    # Create unknown parameter decision variables
     c, Np = _create_p(c, PEprob)
 
+    # Get problem info
     Nz  = Int64(PEprob.model_info.nstates)              # number of state variables
     Nc  = length(_get_cids(PEmodel))                    # number of simulation conditions
     Ncv = length(_get_cv_syms(PEmodel))                 # number of condition-dependent variables
     Nm  = length(eachrow(PEmodel.petab_tables[:measurements]))  # number of measurements
-    Ny  = length(_get_obsids(PEmodel))                  # number of model observables
     pscale = _get_pscale(PEprob)
 
-    # Live piecewise(time) gates: no collocation mesh here, so gate_vals (Ng×N×Nc) is empty; the
-    # residual uses the per-condition steady-state gate values gate_vals_ss (identity cv mapping).
+    # Get steady-state gate values
     gate_syms = _get_gate_syms(PEprob)
-    gate_vals_ss = _get_gate_vals_ss(PEmodel, PEprob, gate_syms)
+    gate_vals_ss = _get_gate_vals_ss(PEmodel, PEprob)
 
-    # The mesh fields (N, K, t_meas, t_nodes, h, taus, L1) are never read on this path.
-    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, 0, 0, [Inf], Float64[], Float64[], Float64[], Float64[], pscale,
-                    zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss)  # mesh fields all empty (no mesh)
+    # Create PEinfo with empty fields for mesh info (N, K, t_meas, t_nodes, h, taus, L1)
+    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, 
+        0, 0, [Inf], Float64[], Float64[], Float64[], Float64[], 
+        pscale, zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss
+    )
 
+    # OBJECTIVE FUNCTION: Create auxiliary variables for model observables, y
     c = _create_y(c, PEmodel, PEinfo)
+
+    # OBJECTIVE FUNCTION: Create auxiliary variables for measurement errors, sigma
     c = _create_sigma(c, PEinfo)
+
+    # If there are condition-dependent variables...
     if Ncv >= 1
         c = _create_cv(c, PEmodel, PEprob, PEinfo)
     end
+
+    # Create steady-state variables
     c = _create_zss(c, PEmodel, PEprob, PEinfo; init = _get_zss_init_sim(PEmodel, PEprob, PEinfo))
 
     return c, PEinfo
-end
-
-# Steady-state constraints: cv equalities (no-op if Ncv==0) plus the residual f(zss[:,cidx]) = 0.
-# Conservation laws (e.g. total H4 in Blasi) make f=0 rank-deficient by r; we drop r redundant rows
-# and replace them with r IC-pinned constraints W·zss = W·x0. r=0 (no conservation) => no-op.
-function _create_constraints_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    c = _create_cv_constraints(c, PEmodel, PEprob, PEinfo)
-    W, b, keep_rows = _conservation_ss(c, PEmodel, PEprob, PEinfo)
-    c = _create_residual_ss(c, PEmodel, PEprob, PEinfo, identity; keep_rows = keep_rows)
-    c = _add_conservation_constraints(c, PEinfo, W, b)
-    return c
-end
-
-# Detect conservation laws numerically: the conserved moieties are the left null space of the RHS
-# Jacobian J = ∂f/∂z (w'J ≡ 0), computed once at the forward-simulated warm start. Returns:
-#   W         : r×Nz orthonormal conservation vectors (rows), r = Nz − rank(J)
-#   b         : r×Nc conserved values per condition, b[k,cidx] = W[k,:]·x0[:,cidx]
-#   keep_rows : the Nz−r independent residual rows to keep (dropped rows chosen by pivoted QR of W)
-# r=0 returns empty W/b and keep_rows = 1:Nz (f(zss)=0 is full rank).
-function _conservation_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    (; Nz, Nc, Np, Ncv, pscale, gate_vals_ss) = PEinfo
-    gate_syms = _get_gate_syms(PEprob)   # not stored in PEInfo; recomputed like z_syms/cv_syms
-    zss0 = reshape(_var_starts(c, c.zss), Nz, Nc)
-    cv0  = Ncv >= 1 ? reshape(_var_starts(c, c.cv), Ncv, :) : zeros(Float64, 0, Nc)
-    θ    = PEtab.get_x(PEprob)
-    p0   = [_p_phys_val(θ, m, pscale) for m in 1:Np]
-
-    # f at nominal params / condition-1 inputs (conservation is structural, so any generic point
-    # works). Gates ride as trailing real args, t=0.0 last. Plain numeric call, so splats are fine.
-    gss = size(gate_vals_ss, 2) >= 1 ? gate_vals_ss[:, 1] : Float64[]
-    fs  = _get_rhs_funcs(PEmodel, PEprob, gate_syms)
-    cvc = Ncv >= 1 ? cv0[:, 1] : Float64[]
-    Fz  = z -> Float64[f(z..., p0..., cvc..., gss..., 0.0) for f in fs]
-
-    # Finite-difference Jacobian at the warm-start steady state (Nz extra RHS evals).
-    z1 = zss0[:, 1]
-    F0 = Fz(z1)
-    J  = zeros(Float64, Nz, Nz)
-    for j in 1:Nz
-        hj = 1.0e-7 * (abs(z1[j]) + 1.0)
-        zp = copy(z1); zp[j] += hj
-        J[:, j] = (Fz(zp) .- F0) ./ hj
-    end
-
-    # Left null space of J via SVD: left singular vectors with ~0 singular value.
-    Fsvd = LinearAlgebra.svd(J)
-    smax = isempty(Fsvd.S) ? 0.0 : Fsvd.S[1]
-    tol  = 1.0e-7 * max(smax, 1.0)
-    null_idx = findall(s -> s < tol, Fsvd.S)
-    r = length(null_idx)
-    r == 0 && return (zeros(Float64, 0, Nz), zeros(Float64, 0, Nc), collect(1:Nz))
-
-    W = Matrix(transpose(Fsvd.U[:, null_idx]))   # r×Nz (rows are left-null / conservation vectors)
-
-    # Rows of f made redundant by the conservation laws: the r pivot columns of W (pivoted QR).
-    drop_rows = sort(LinearAlgebra.qr(W, LinearAlgebra.ColumnNorm()).p[1:r])
-    keep_rows = setdiff(1:Nz, drop_rows)
-
-    # Conserved totals from the per-condition initial condition (x0). Guard against an IC that
-    # depends on estimated parameters (the conserved total would then be θ-dependent — not yet
-    # supported; would freeze it at the nominal value).
-    u0s, ic_theta_dep = _initial_conditions_ss(PEmodel, PEprob, PEinfo)
-    ic_theta_dep && error(
-        "Steady-state model has a conservation law whose conserved total is set by an initial " *
-        "condition that depends on estimated parameters; not supported yet."
-    )
-    b = zeros(Float64, r, Nc)
-    for cidx in 1:Nc, k in 1:r
-        b[k, cidx] = LinearAlgebra.dot(view(W, k, :), view(u0s, :, cidx))
-    end
-    return (W, b, keep_rows)
-end
-
-# Per-condition initial condition x0 (= PEtab ODE problem u0), plus whether it depends on the
-# estimated parameters θ (detected by perturbing θ and checking whether u0 moves).
-function _initial_conditions_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
-    (; Nz, Nc) = PEinfo
-    cids = Symbol.(_get_cids(PEmodel))
-    θ    = PEtab.get_x(PEprob)
-    # Baseline u0 per condition at nominal θ
-    u0s  = zeros(Float64, Nz, Nc)
-    for (cidx, cid) in enumerate(cids)
-        oprob, _ = PEtab.get_odeproblem(θ, PEprob; condition = cid)
-        u0s[:, cidx] = oprob.u0[1:Nz]
-    end
-    # Perturb θ; if any condition's u0 moves, the initial condition is θ-dependent
-    θ2 = θ .+ 0.1
-    ic_theta_dep = false
-    for (cidx, cid) in enumerate(cids)
-        oprob, _ = PEtab.get_odeproblem(θ2, PEprob; condition = cid)
-        if maximum(abs, oprob.u0[1:Nz] .- view(u0s, :, cidx)) > 1.0e-8 * (1.0 + maximum(abs, view(u0s, :, cidx)))
-            ic_theta_dep = true
-            break
-        end
-    end
-    return u0s, ic_theta_dep
-end
-
-# Add the r×Nc conservation constraints W·zss[:,cidx] = b[:,cidx]. Built with the base-row +
-# @add_con! augmentation idiom (one sparse term per (conservation, state, condition)) — NO sum()
-# fused inside @add_con, so the kernel expression stays small regardless of Nz. r=0 => no-op.
-function _add_conservation_constraints(c::ExaCore, PEinfo::PEInfo, W::AbstractMatrix, b::AbstractMatrix)
-    r = size(W, 1)
-    r == 0 && return c
-    (; Nz, Nc) = PEinfo
-    zss = c.zss
-
-    # Base rows: one per (k, cidx), value −b[k,cidx] (carried in the iterator tuple, not indexed
-    # inside the macro). Flat vector fixes the row order so the augmentation keys by row position.
-    itr_base = [(k, cidx, b[k, cidx]) for cidx in 1:Nc for k in 1:r]
-    con = ExaModels.@add_con(c, -bval for (k, cidx, bval) in itr_base)
-    # Augmentation: row pos gets W[k,v]·zss[v,cidx] for every state v with a nonzero coefficient.
-    itr_aug = [(pos, W[k, v], v, cidx)
-               for (pos, (k, cidx, bval)) in enumerate(itr_base) for v in 1:Nz if W[k, v] != 0.0]
-    ExaModels.@add_con!(c, con, pos => Wkv * zss[v, cidx] for (pos, Wkv, v, cidx) in itr_aug)
-    return c
 end
 
 # Objective + observable (y) / noise (sigma) constraints for the steady-state path. Parallel to
@@ -234,7 +132,12 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
         keys(Dict(dict_all_val)),
         union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
     )
-    dict_fixed_val = Dict(sym => val for (sym, val) in dict_all_val if (sym in fixed_syms))
+    # Parametermap fixed values PLUS table-only fixed params (observable/noise sd/scale absent from
+    # the SBML model); parametermap wins on overlap.
+    dict_fixed_val = merge(
+        _get_table_fixed_vals(PEmodel, PEprob),
+        Dict(sym => val for (sym, val) in dict_all_val if (sym in fixed_syms)),
+    )
 
     apply_rules = _assignment_substitutor(PEprob; remove_t = true)
 
@@ -472,4 +375,108 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     end
 
     return c, y0, sigma0
+end
+
+# Detect conservation laws numerically: the conserved moieties are the left null space of the RHS
+# Jacobian J = ∂f/∂z (w'J ≡ 0), computed once at the forward-simulated warm start. Returns:
+#   W         : r×Nz orthonormal conservation vectors (rows), r = Nz − rank(J)
+#   b         : r×Nc conserved values per condition, b[k,cidx] = W[k,:]·x0[:,cidx]
+#   keep_rows : the Nz−r independent residual rows to keep (dropped rows chosen by pivoted QR of W)
+# r=0 returns empty W/b and keep_rows = 1:Nz (f(zss)=0 is full rank).
+function _conservation_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+    (; Nz, Nc, Np, Ncv, pscale, gate_vals_ss) = PEinfo
+    zss0 = reshape(_var_starts(c, c.zss), Nz, Nc)
+    cv0  = Ncv >= 1 ? reshape(_var_starts(c, c.cv), Ncv, :) : zeros(Float64, 0, Nc)
+    θ    = PEtab.get_x(PEprob)
+    p0   = [_p_phys_val(θ, m, pscale) for m in 1:Np]
+
+    # f at nominal params / condition-1 inputs (conservation is structural, so any generic point
+    # works). Gates ride as trailing real args, t=0.0 last. Plain numeric call, so splats are fine.
+    gss = size(gate_vals_ss, 2) >= 1 ? gate_vals_ss[:, 1] : Float64[]
+    fs  = _get_rhs_funcs(PEmodel, PEprob)
+    cvc = Ncv >= 1 ? cv0[:, 1] : Float64[]
+    Fz  = z -> Float64[f(z..., p0..., cvc..., gss..., 0.0) for f in fs]
+
+    # Finite-difference Jacobian at the warm-start steady state (Nz extra RHS evals).
+    z1 = zss0[:, 1]
+    F0 = Fz(z1)
+    J  = zeros(Float64, Nz, Nz)
+    for j in 1:Nz
+        hj = 1.0e-7 * (abs(z1[j]) + 1.0)
+        zp = copy(z1); zp[j] += hj
+        J[:, j] = (Fz(zp) .- F0) ./ hj
+    end
+
+    # Left null space of J via SVD: left singular vectors with ~0 singular value.
+    Fsvd = LinearAlgebra.svd(J)
+    smax = isempty(Fsvd.S) ? 0.0 : Fsvd.S[1]
+    tol  = 1.0e-7 * max(smax, 1.0)
+    null_idx = findall(s -> s < tol, Fsvd.S)
+    r = length(null_idx)
+    r == 0 && return (zeros(Float64, 0, Nz), zeros(Float64, 0, Nc), collect(1:Nz))
+
+    W = Matrix(transpose(Fsvd.U[:, null_idx]))   # r×Nz (rows are left-null / conservation vectors)
+
+    # Rows of f made redundant by the conservation laws: the r pivot columns of W (pivoted QR).
+    drop_rows = sort(LinearAlgebra.qr(W, LinearAlgebra.ColumnNorm()).p[1:r])
+    keep_rows = setdiff(1:Nz, drop_rows)
+
+    # Conserved totals from the per-condition initial condition (x0). Guard against an IC that
+    # depends on estimated parameters (the conserved total would then be θ-dependent — not yet
+    # supported; would freeze it at the nominal value).
+    u0s, ic_theta_dep = _initial_conditions_ss(PEmodel, PEprob, PEinfo)
+    ic_theta_dep && error(
+        "Steady-state model has a conservation law whose conserved total is set by an initial " *
+        "condition that depends on estimated parameters; not supported yet."
+    )
+    b = zeros(Float64, r, Nc)
+    for cidx in 1:Nc, k in 1:r
+        b[k, cidx] = LinearAlgebra.dot(view(W, k, :), view(u0s, :, cidx))
+    end
+    return (W, b, keep_rows)
+end
+
+# Per-condition initial condition x0 (= PEtab ODE problem u0), plus whether it depends on the
+# estimated parameters θ (detected by perturbing θ and checking whether u0 moves).
+function _initial_conditions_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
+    (; Nz, Nc) = PEinfo
+    cids = Symbol.(_get_cids(PEmodel))
+    θ    = PEtab.get_x(PEprob)
+    # Baseline u0 per condition at nominal θ
+    u0s  = zeros(Float64, Nz, Nc)
+    for (cidx, cid) in enumerate(cids)
+        oprob, _ = PEtab.get_odeproblem(θ, PEprob; condition = cid)
+        u0s[:, cidx] = oprob.u0[1:Nz]
+    end
+    # Perturb θ; if any condition's u0 moves, the initial condition is θ-dependent
+    θ2 = θ .+ 0.1
+    ic_theta_dep = false
+    for (cidx, cid) in enumerate(cids)
+        oprob, _ = PEtab.get_odeproblem(θ2, PEprob; condition = cid)
+        if maximum(abs, oprob.u0[1:Nz] .- view(u0s, :, cidx)) > 1.0e-8 * (1.0 + maximum(abs, view(u0s, :, cidx)))
+            ic_theta_dep = true
+            break
+        end
+    end
+    return u0s, ic_theta_dep
+end
+
+# Add the r×Nc conservation constraints W·zss[:,cidx] = b[:,cidx]. Built with the base-row +
+# @add_con! augmentation idiom (one sparse term per (conservation, state, condition)) — NO sum()
+# fused inside @add_con, so the kernel expression stays small regardless of Nz. r=0 => no-op.
+function _add_conservation_constraints(c::ExaCore, PEinfo::PEInfo, W::AbstractMatrix, b::AbstractMatrix)
+    r = size(W, 1)
+    r == 0 && return c
+    (; Nz, Nc) = PEinfo
+    zss = c.zss
+
+    # Base rows: one per (k, cidx), value −b[k,cidx] (carried in the iterator tuple, not indexed
+    # inside the macro). Flat vector fixes the row order so the augmentation keys by row position.
+    itr_base = [(k, cidx, b[k, cidx]) for cidx in 1:Nc for k in 1:r]
+    con = ExaModels.@add_con(c, -bval for (k, cidx, bval) in itr_base)
+    # Augmentation: row pos gets W[k,v]·zss[v,cidx] for every state v with a nonzero coefficient.
+    itr_aug = [(pos, W[k, v], v, cidx)
+               for (pos, (k, cidx, bval)) in enumerate(itr_base) for v in 1:Nz if W[k, v] != 0.0]
+    ExaModels.@add_con!(c, con, pos => Wkv * zss[v, cidx] for (pos, Wkv, v, cidx) in itr_aug)
+    return c
 end

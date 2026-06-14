@@ -11,15 +11,12 @@ function _create_variables(
     c, Np = _create_p(c, PEprob)
     c, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes = _create_z(c, PEmodel, PEprob, K)
 
-    # Get ::PEInfo
+    # Get ::PEInfo details
     Ncv = length(_get_cv_syms(PEmodel)) # number of condition-dependent variables
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
-    Ny = length(_get_obsids(PEmodel)) # number of model observables
     pscale = _get_pscale(PEprob) # per-parameter estimation scale (:log10/:log/:lin), aligned 1:Np
-    gate_syms = _get_gate_syms(PEprob) # get symbolic variables of gate variables
-    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, gate_syms, h, taus, t_nodes) # get gate value profiles and steady-state values
-
-    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, Ny, N, K, t_meas, t_nodes, h, taus, L1, pscale, gate_vals, gate_vals_ss)
+    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, h, taus, t_nodes) # get gate value profiles and steady-state values
+    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, N, K, t_meas, t_nodes, h, taus, L1, pscale, gate_vals, gate_vals_ss)
 
     # OBJECTIVE FUNCTION: Create auxiliary variables for model observables, y
     c = _create_y(c, PEmodel, PEinfo)
@@ -45,6 +42,7 @@ end
 function _create_p(c::ExaCore, PEprob::PEtabODEProblem)
     (; lower_bounds, upper_bounds, nparameters_estimate) = PEprob
     Np = nparameters_estimate  # number of unknown parameters to fit
+    # p[1:Np] := θ, the actual decision variable for ExaModels.
     θ_LB   = Array(lower_bounds)        # estimation scale
     θ_UB   = Array(upper_bounds)        # estimation scale
     θ_init = Array(PEtab.get_x(PEprob)) # estimation-scale nominal (the ODE-solve point)
@@ -78,15 +76,12 @@ end
 function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Np, Ncv, pscale) = PEinfo
     conditions_df  = PEmodel.petab_tables[:conditions]
-    cv_names        = _get_cv_names(PEmodel) # cv column names, aligned 1:Ncv
-    # cv columns span the simulation conditions (1:Nc) PLUS any distinct pre-equilibration
-    # conditions (so the steady-state residual can read the pre-eq inputs); see _get_cv_cids.
+    cv_names       = _get_cv_names(PEmodel)
     cv_rows        = _get_cv_cid_rows(PEmodel, PEprob)  # cv column => conditions-table row
     Ncc            = length(cv_rows)
     dict_pstr_pidx = _get_dict_pstr_pidx(PEprob)        # parameter name => p decision-var index
     θ0             = _var_starts(c, c.p)                # p (= θ, estimation scale) initial guesses
-    # physical parameter starts (cv == linearized p value)
-    p0             = [_p_phys_val(θ0, m, pscale) for m in 1:Np]
+    p0             = [_p_phys_val(θ0, m, pscale) for m in 1:Np] # physical parameter starts (cv == linearized p value)
 
     # Only two possible paths: cv = fixed value or cv = p, so init with fixed val or p0
     cv_init = zeros(Float64, Ncv, Ncc)
@@ -108,7 +103,6 @@ function _create_cv(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, PE
             end
         end
     end
-
     ExaModels.@add_var(c,
         cv,
         1:Ncv, 1:Ncc;

@@ -29,7 +29,7 @@ function _create_residual_ss(
     end
 
     # Create ODE RHS functions
-    fs = _get_rhs_funcs(PEmodel, PEprob, gate_syms) # obtain ODE rhs functions
+    fs = _get_rhs_funcs(PEmodel, PEprob) # obtain ODE rhs functions
     keep_rows !== nothing && (fs = fs[keep_rows]) # get rid of the empty rows (redunant eqn)
 
     # Create steady-state ODE rhs residual equation f(zss...) = 0
@@ -120,11 +120,11 @@ function _create_initial_conditions(
         ###############################################################
         # if x0fix, x0 = p, x0 = f(p)...
 
-        # Obtain initial condition symbolic expressions
-        dict_z0sym_expr = Dict(PEprob.model_info.model.speciemap) # get mapping of initial condition: symbolic state variable => number/var(p?cv?)/expr
+        # Get mapping of initial condition: symbolic state variable => number/var(p?cv?)/expr
+        dict_z0sym_expr = Dict(PEprob.model_info.model.speciemap) 
 
         # Substitute fixed constants
-        dict_fixed_val = _resolve_fixed_vals(PEmodel, PEprob)
+        dict_fixed_val = _get_dict_fixed_val(PEmodel, PEprob)
         dict_z0sym_expr = Dict( # substitute fixed constant into all z0 expressions
             z0sym => Symbolics.simplify(Symbolics.substitute(expr, dict_fixed_val))
             for (z0sym, expr) in dict_z0sym_expr

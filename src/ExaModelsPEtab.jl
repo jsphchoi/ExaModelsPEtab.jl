@@ -5,12 +5,12 @@ Solve [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation problems 
 using simultaneous method for dynamic optimization (orthogonal collocation), built as an 
 [ExaModels](https://github.com/exanauts/ExaModels.jl) `ExaModel`.
 
-# Entry point
+# Usage
 [`petab_examodel`](@ref) builds the `ExaModel` from a PEtab problem YAML.
 
 ```julia
 using ExaModelsPEtab, MadNLP
-m = petab_examodel("path/to/problem.yaml"; backend = nothing)
+m = petab_examodel("path/to/problem.yaml")
 madnlp(m)
 ```
 """

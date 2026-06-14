@@ -1,137 +1,3 @@
-
-# Reduce a noise (σ) expression so its state-dependence enters ONLY through the observable. Every
-# PEtab benchmark noise form (c | θ | β·y | α+β·y | √(α²+(β·y)²)) is a function of the observable and
-# parameters, and the observable is affine in the states, so we solve O = Y for one observable-state
-# and substitute into σ; if σ depends on states only through O, every other state cancels. Robust to
-# Symbolics flattening β*(state*param). Returns (reduced_expr, ok); ok=true means no state remains.
-function _reduce_sigma_to_obs(sigma_expr, obs_expr, Y_sym, z_syms)
-    has_z(e) = any(zv -> any(isequal(v, zv) for v in Symbolics.get_variables(e)), z_syms)
-    obs_states = [zv for zv in z_syms
-                  if any(isequal(v, zv) for v in Symbolics.get_variables(obs_expr))]
-    isempty(obs_states) && return (sigma_expr, !has_z(sigma_expr))  # σ has no state via obs
-    # require the observable affine in its states: each ∂O/∂sᵢ must itself be state-free
-    coeffs = [Symbolics.expand_derivatives(Symbolics.Differential(s)(obs_expr)) for s in obs_states]
-    any(has_z, coeffs) && return (sigma_expr, false)               # observable nonlinear in states
-    a0     = Symbolics.substitute(obs_expr, Dict(s => 0 for s in obs_states))  # O at states=0
-    s1, b1 = obs_states[1], coeffs[1]
-    rest   = length(obs_states) > 1 ?
-             sum(coeffs[i] * obs_states[i] for i in 2:length(obs_states)) : 0
-    s1_sol  = (Y_sym - a0 - rest) / b1                              # solve O = Y for s₁
-    reduced = Symbolics.expand(Symbolics.substitute(sigma_expr, Dict(s1 => s1_sol)))
-    has_z(reduced) && (reduced = Symbolics.expand(Symbolics.simplify(reduced)))
-    return (reduced, !has_z(reduced))
-end
-
-# Gaussian negative log-likelihood objective, matching PEtab.jl. Noise acts on the observable's
-# `observableTransformation` scale, so the residual is in transformed space with the change-of-
-# variables Jacobian:
-#   lin   : 0.5(y-ymeas)²/σ²               + log σ + 0.5log2π
-#   log   : 0.5(ln y - ln ymeas)²/σ²       + log σ + 0.5log2π + ln ymeas
-#   log10 : 0.5(log10 y - log10 ymeas)²/σ² + log σ + 0.5log2π + ln ymeas + ln(ln10)
-# y[midx]/sigma[midx] are the aux vars bound to states by the y/σ constraints; ymeas is data, so the
-# trailing terms are per-measurement constants. Shared by the time-course and steady-state paths.
-function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
-    (; Nm) = PEinfo
-    measurements_df = PEmodel.petab_tables[:measurements]
-    y = c.y
-    sigma = c.sigma
-
-    _assert_normal_noise(PEmodel)
-    transforms = _get_meas_transforms(PEmodel)
-    HALF_LOG2PI = 0.5 * log(2π)
-    itr_obj_lin   = Tuple{Int, Float64, Float64}[]  # (midx, ymeas,     const)
-    itr_obj_log   = Tuple{Int, Float64, Float64}[]  # (midx, ln(ymeas), const)
-    itr_obj_log10 = Tuple{Int, Float64, Float64}[]  # (midx, log10(ymeas), const)
-    for midx in 1:Nm
-        ymeas = Float64(measurements_df[midx, :measurement])
-        tr    = transforms[midx]
-        if tr === :lin
-            push!(itr_obj_lin, (midx, ymeas, HALF_LOG2PI))
-        elseif tr === :log
-            @assert ymeas > 0 "log-transformed observable needs ymeas>0 (midx=$midx)"
-            push!(itr_obj_log, (midx, log(ymeas), HALF_LOG2PI + log(ymeas)))
-        elseif tr === :log10
-            @assert ymeas > 0 "log10-transformed observable needs ymeas>0 (midx=$midx)"
-            push!(itr_obj_log10, (midx, log10(ymeas), HALF_LOG2PI + log(ymeas) + log(log(10.0))))
-        else
-            error("Unsupported observableTransformation '$tr' (midx=$midx)")
-        end
-    end
-    if !isempty(itr_obj_lin)
-        ExaModels.@add_obj(c,
-            0.5*(y[midx] - ymeas)^2/sigma[midx]^2 + log(sigma[midx]) + cst
-            for (midx, ymeas, cst) in itr_obj_lin
-        )
-    end
-    if !isempty(itr_obj_log)
-        ExaModels.@add_obj(c,
-            0.5*(log(y[midx]) - lnym)^2/sigma[midx]^2 + log(sigma[midx]) + cst
-            for (midx, lnym, cst) in itr_obj_log
-        )
-    end
-    if !isempty(itr_obj_log10)
-        ExaModels.@add_obj(c,
-            0.5*(log(y[midx])/log(10.0) - l10ym)^2/sigma[midx]^2 + log(sigma[midx]) + cst
-            for (midx, l10ym, cst) in itr_obj_log10
-        )
-    end
-    return c
-end
-
-# Parameter priors (MAP objective). PEtab's nllh adds a negative-log prior for every parameter with
-# an objectivePrior; omitting them leaves a constant objective offset vs PEtab (e.g. Schwen's 6
-# parameterScaleNormal priors = its entire gap). Supported: parameterScaleNormal/Laplace (on the
-# estimation-scale decision variable p[pidx]), uniform, and laplace (linear value, by parameter
-# scale); normalization constants are included so the objective matches PEtab.nllh. Unsupported
-# types (e.g. linear-scale normal) warn and are omitted. Models without priors are byte-identical.
-function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
-    params_df = PEmodel.petab_tables[:parameters]
-    (:objectivePriorType in propertynames(params_df)) || return c   # no priors in this model
-    p           = c.p
-    HALF_LOG2PI = 0.5 * log(2π)
-    dict_pidx   = _get_dict_pstr_pidx(PEprob)            # estimated-param name => p[pidx]
-    # parameterScale* priors act on the decision variable p[pidx] (estimation scale); normal/laplace/
-    # uniform priors act on the physical value (10^p / e^p for log10/log scale, p itself for lin).
-    psnorm = Tuple{Int,Float64,Float64}[]    # parameterScaleNormal:  0.5((p-μ)/σ)² + logσ + ½log2π
-    pslap  = Tuple{Int,Float64,Float64}[]    # parameterScaleLaplace: |p-μ|/b + log2b
-    lap_li = Tuple{Int,Float64,Float64}[]    # laplace, lin-scale param:  |p-μ|/b + log2b
-    lap_10 = Tuple{Int,Float64,Float64}[]    # laplace, log10-scale:      |10^p-μ|/b + log2b
-    lap_e  = Tuple{Int,Float64,Float64}[]    # laplace, log-scale:        |e^p-μ|/b + log2b
-    unif   = Tuple{Int,Float64}[]            # uniform: constant log(b-a) (param stays in [a,b])
-    for row in eachrow(params_df)
-        ptype = _norm_cell(row[:objectivePriorType], Symbol(""))
-        ptype === Symbol("") && continue                # blank => no prior
-        pid = string(row[:parameterId])
-        haskey(dict_pidx, pid) || continue              # only estimated params are decision vars
-        idx = dict_pidx[pid]
-        pp  = strip.(split(string(row[:objectivePriorParameters]), ";"))
-        a   = parse(Float64, pp[1]); b = length(pp) >= 2 ? parse(Float64, pp[2]) : NaN
-        if     ptype === :parameterscalenormal  ; push!(psnorm, (idx, a, b))
-        elseif ptype === :parameterscalelaplace ; push!(pslap,  (idx, a, b))
-        elseif ptype === :uniform               ; push!(unif,   (idx, log(b - a)))
-        elseif ptype === :normal
-            @warn "objectivePriorType 'normal' (linear-scale Gaussian) not yet implemented for param $pid — prior OMITTED"
-        elseif ptype === :laplace
-            sc = _norm_cell(row[:parameterScale], :lin)
-            sc === :log10 ? push!(lap_10, (idx, a, b)) :
-            sc === :log   ? push!(lap_e,  (idx, a, b)) :
-                            push!(lap_li, (idx, a, b))   # :lin (and any non-log scale)
-        else
-            @warn "objectivePriorType '$ptype' (parameter $pid) not supported — prior OMITTED; " *
-                  "objective will NOT match PEtab.nllh for this model"
-        end
-    end
-    # Each @add_obj accumulates into the objective (capture the rebound core). abs is a registered
-    # ExaModels op (subgradient at the kink); the value is exact so the objective matches PEtab.nllh.
-    isempty(psnorm) || ExaModels.@add_obj(c, 0.5*((p[i]-mu)/sg)^2 + log(sg) + HALF_LOG2PI for (i,mu,sg) in psnorm)
-    isempty(pslap)  || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in pslap)
-    isempty(lap_li) || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in lap_li)
-    isempty(lap_10) || ExaModels.@add_obj(c, abs(exp(log(10.0)*p[i])-mu)/b + log(2*b)     for (i,mu,b) in lap_10)
-    isempty(lap_e)  || ExaModels.@add_obj(c, abs(exp(p[i])-mu)/b + log(2*b)          for (i,mu,b) in lap_e)
-    isempty(unif)   || ExaModels.@add_obj(c, cst + 0.0*p[i]                          for (i,cst) in unif)  # constant; 0·p keeps a var ref
-    return c
-end
-
 # (*) Main function for creating ExaModels objective function (*)
 function _create_objective(
         c::ExaCore,
@@ -140,7 +6,7 @@ function _create_objective(
         PEinfo::PEInfo
     )
     # Unpack problem info
-    (; Np, Ncv, Nz, Nc, Nm, Ny, N, K, t_meas, L1, pscale, t_nodes) = PEinfo
+    (; Np, Ncv, Nz, Nc, Nm, N, K, t_meas, L1, pscale, t_nodes) = PEinfo
     z = c.z
     p = c.p
     y = c.y
@@ -706,4 +572,137 @@ function _create_objective(
     end
 
     return c, y0, sigma0
+end
+
+# Reduce a noise (σ) expression so its state-dependence enters ONLY through the observable. Every
+# PEtab benchmark noise form (c | θ | β·y | α+β·y | √(α²+(β·y)²)) is a function of the observable and
+# parameters, and the observable is affine in the states, so we solve O = Y for one observable-state
+# and substitute into σ; if σ depends on states only through O, every other state cancels. Robust to
+# Symbolics flattening β*(state*param). Returns (reduced_expr, ok); ok=true means no state remains.
+function _reduce_sigma_to_obs(sigma_expr, obs_expr, Y_sym, z_syms)
+    has_z(e) = any(zv -> any(isequal(v, zv) for v in Symbolics.get_variables(e)), z_syms)
+    obs_states = [zv for zv in z_syms
+                  if any(isequal(v, zv) for v in Symbolics.get_variables(obs_expr))]
+    isempty(obs_states) && return (sigma_expr, !has_z(sigma_expr))  # σ has no state via obs
+    # require the observable affine in its states: each ∂O/∂sᵢ must itself be state-free
+    coeffs = [Symbolics.expand_derivatives(Symbolics.Differential(s)(obs_expr)) for s in obs_states]
+    any(has_z, coeffs) && return (sigma_expr, false)               # observable nonlinear in states
+    a0     = Symbolics.substitute(obs_expr, Dict(s => 0 for s in obs_states))  # O at states=0
+    s1, b1 = obs_states[1], coeffs[1]
+    rest   = length(obs_states) > 1 ?
+             sum(coeffs[i] * obs_states[i] for i in 2:length(obs_states)) : 0
+    s1_sol  = (Y_sym - a0 - rest) / b1                              # solve O = Y for s₁
+    reduced = Symbolics.expand(Symbolics.substitute(sigma_expr, Dict(s1 => s1_sol)))
+    has_z(reduced) && (reduced = Symbolics.expand(Symbolics.simplify(reduced)))
+    return (reduced, !has_z(reduced))
+end
+
+# Gaussian negative log-likelihood objective, matching PEtab.jl. Noise acts on the observable's
+# `observableTransformation` scale, so the residual is in transformed space with the change-of-
+# variables Jacobian:
+#   lin   : 0.5(y-ymeas)²/σ²               + log σ + 0.5log2π
+#   log   : 0.5(ln y - ln ymeas)²/σ²       + log σ + 0.5log2π + ln ymeas
+#   log10 : 0.5(log10 y - log10 ymeas)²/σ² + log σ + 0.5log2π + ln ymeas + ln(ln10)
+# y[midx]/sigma[midx] are the aux vars bound to states by the y/σ constraints; ymeas is data, so the
+# trailing terms are per-measurement constants. Shared by the time-course and steady-state paths.
+function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
+    (; Nm) = PEinfo
+    measurements_df = PEmodel.petab_tables[:measurements]
+    y = c.y
+    sigma = c.sigma
+
+    _assert_normal_noise(PEmodel)
+    transforms = _get_meas_transforms(PEmodel)
+    HALF_LOG2PI = 0.5 * log(2π)
+    itr_obj_lin   = Tuple{Int, Float64, Float64}[]  # (midx, ymeas,     const)
+    itr_obj_log   = Tuple{Int, Float64, Float64}[]  # (midx, ln(ymeas), const)
+    itr_obj_log10 = Tuple{Int, Float64, Float64}[]  # (midx, log10(ymeas), const)
+    for midx in 1:Nm
+        ymeas = Float64(measurements_df[midx, :measurement])
+        tr    = transforms[midx]
+        if tr === :lin
+            push!(itr_obj_lin, (midx, ymeas, HALF_LOG2PI))
+        elseif tr === :log
+            @assert ymeas > 0 "log-transformed observable needs ymeas>0 (midx=$midx)"
+            push!(itr_obj_log, (midx, log(ymeas), HALF_LOG2PI + log(ymeas)))
+        elseif tr === :log10
+            @assert ymeas > 0 "log10-transformed observable needs ymeas>0 (midx=$midx)"
+            push!(itr_obj_log10, (midx, log10(ymeas), HALF_LOG2PI + log(ymeas) + log(log(10.0))))
+        else
+            error("Unsupported observableTransformation '$tr' (midx=$midx)")
+        end
+    end
+    if !isempty(itr_obj_lin)
+        ExaModels.@add_obj(c,
+            0.5*(y[midx] - ymeas)^2/sigma[midx]^2 + log(sigma[midx]) + cst
+            for (midx, ymeas, cst) in itr_obj_lin
+        )
+    end
+    if !isempty(itr_obj_log)
+        ExaModels.@add_obj(c,
+            0.5*(log(y[midx]) - lnym)^2/sigma[midx]^2 + log(sigma[midx]) + cst
+            for (midx, lnym, cst) in itr_obj_log
+        )
+    end
+    if !isempty(itr_obj_log10)
+        ExaModels.@add_obj(c,
+            0.5*(log(y[midx])/log(10.0) - l10ym)^2/sigma[midx]^2 + log(sigma[midx]) + cst
+            for (midx, l10ym, cst) in itr_obj_log10
+        )
+    end
+    return c
+end
+
+# Parameter priors (MAP objective). PEtab's nllh adds a negative-log prior for every parameter with
+# an objectivePrior; omitting them leaves a constant objective offset vs PEtab (e.g. Schwen's 6
+# parameterScaleNormal priors = its entire gap). Supported: parameterScaleNormal/Laplace (on the
+# estimation-scale decision variable p[pidx]), uniform, and laplace (linear value, by parameter
+# scale); normalization constants are included so the objective matches PEtab.nllh. Unsupported
+# types (e.g. linear-scale normal) warn and are omitted. Models without priors are byte-identical.
+function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
+    params_df = PEmodel.petab_tables[:parameters]
+    (:objectivePriorType in propertynames(params_df)) || return c   # no priors in this model
+    p           = c.p
+    HALF_LOG2PI = 0.5 * log(2π)
+    dict_pidx   = _get_dict_pstr_pidx(PEprob)            # estimated-param name => p[pidx]
+    # parameterScale* priors act on the decision variable p[pidx] (estimation scale); normal/laplace/
+    # uniform priors act on the physical value (10^p / e^p for log10/log scale, p itself for lin).
+    psnorm = Tuple{Int,Float64,Float64}[]    # parameterScaleNormal:  0.5((p-μ)/σ)² + logσ + ½log2π
+    pslap  = Tuple{Int,Float64,Float64}[]    # parameterScaleLaplace: |p-μ|/b + log2b
+    lap_li = Tuple{Int,Float64,Float64}[]    # laplace, lin-scale param:  |p-μ|/b + log2b
+    lap_10 = Tuple{Int,Float64,Float64}[]    # laplace, log10-scale:      |10^p-μ|/b + log2b
+    lap_e  = Tuple{Int,Float64,Float64}[]    # laplace, log-scale:        |e^p-μ|/b + log2b
+    unif   = Tuple{Int,Float64}[]            # uniform: constant log(b-a) (param stays in [a,b])
+    for row in eachrow(params_df)
+        ptype = _norm_cell(row[:objectivePriorType], Symbol(""))
+        ptype === Symbol("") && continue                # blank => no prior
+        pid = string(row[:parameterId])
+        haskey(dict_pidx, pid) || continue              # only estimated params are decision vars
+        idx = dict_pidx[pid]
+        pp  = strip.(split(string(row[:objectivePriorParameters]), ";"))
+        a   = parse(Float64, pp[1]); b = length(pp) >= 2 ? parse(Float64, pp[2]) : NaN
+        if     ptype === :parameterscalenormal  ; push!(psnorm, (idx, a, b))
+        elseif ptype === :parameterscalelaplace ; push!(pslap,  (idx, a, b))
+        elseif ptype === :uniform               ; push!(unif,   (idx, log(b - a)))
+        elseif ptype === :normal
+            @warn "objectivePriorType 'normal' (linear-scale Gaussian) not yet implemented for param $pid — prior OMITTED"
+        elseif ptype === :laplace
+            sc = _norm_cell(row[:parameterScale], :lin)
+            sc === :log10 ? push!(lap_10, (idx, a, b)) :
+            sc === :log   ? push!(lap_e,  (idx, a, b)) :
+                            push!(lap_li, (idx, a, b))   # :lin (and any non-log scale)
+        else
+            @warn "objectivePriorType '$ptype' (parameter $pid) not supported — prior OMITTED; " *
+                  "objective will NOT match PEtab.nllh for this model"
+        end
+    end
+    # Each @add_obj accumulates into the objective (capture the rebound core). abs is a registered
+    # ExaModels op (subgradient at the kink); the value is exact so the objective matches PEtab.nllh.
+    isempty(psnorm) || ExaModels.@add_obj(c, 0.5*((p[i]-mu)/sg)^2 + log(sg) + HALF_LOG2PI for (i,mu,sg) in psnorm)
+    isempty(pslap)  || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in pslap)
+    isempty(lap_li) || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in lap_li)
+    isempty(lap_10) || ExaModels.@add_obj(c, abs(exp(log(10.0)*p[i])-mu)/b + log(2*b)     for (i,mu,b) in lap_10)
+    isempty(lap_e)  || ExaModels.@add_obj(c, abs(exp(p[i])-mu)/b + log(2*b)          for (i,mu,b) in lap_e)
+    isempty(unif)   || ExaModels.@add_obj(c, cst + 0.0*p[i]                          for (i,cst) in unif)  # constant; 0·p keeps a var ref
+    return c
 end
