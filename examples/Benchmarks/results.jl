@@ -65,7 +65,7 @@ function madnlp_code(d, pfx)
         gp   = gap_val(d, pfx)
         return (gp !== nothing && gp >= SUBOPT_GAP_PCT) ? base * "S" : base
     end
-    occursin("WALLTIME",         term) && return "W"
+    occursin("WALLTIME",         term) && return "T"
     occursin("RESTORATION",      term) && return "R"
     occursin("SEARCH_DIRECTION", term) && return "D"
     return "5"
@@ -87,10 +87,15 @@ pct_exa_str(d, pfx) = begin
 end
 fmt_cmp(d, pfx) = (g(d, pfx * "compile_status") == "ok" && !isempty(g(d, pfx * "compile_time"))) ? g(d, pfx * "compile_time") : "-"
 fmt_slv(d, pfx) = begin
-    if USE_SGM
-        (g(d, pfx * "sgm_status") == "ok" && !isempty(g(d, pfx * "sgm_solve_time"))) ? g(d, pfx * "sgm_solve_time") : "-"
+    if USE_SGM && g(d, pfx * "sgm_status") == "ok" && !isempty(g(d, pfx * "sgm_solve_time"))
+        g(d, pfx * "sgm_solve_time")
+    elseif !USE_SGM && g(d, pfx * "solve_status") == "ok" && !isempty(g(d, pfx * "solve_time"))
+        g(d, pfx * "solve_time")
+    elseif occursin("WALLTIME", uppercase(g(d, pfx * "term_status"))) && !isempty(g(d, pfx * "solve_time"))
+        # timeout: no SGM is recorded, so show the elapsed solve time (≈ max walltime) instead of "-"
+        g(d, pfx * "solve_time")
     else
-        (g(d, pfx * "solve_status") == "ok" && !isempty(g(d, pfx * "solve_time"))) ? g(d, pfx * "solve_time") : "-"
+        "-"
     end
 end
 
@@ -149,9 +154,9 @@ println(buf, "  GAP(%)  := (petab.nllh(exa_p*) - petab_obj) / |petab_obj| × 100
 madnlp_desc = Dict("0"=>"SOLVE_SUCCEEDED", "0A"=>"SOLVED_TO_ACCEPTABLE_LEVEL",
     "0S"=>"SOLVE_SUCCEEDED, suboptimal (≥+$(SUBOPT_GAP_PCT)% vs PEtab)",
     "0AS"=>"SOLVED_TO_ACCEPTABLE_LEVEL, suboptimal (≥+$(SUBOPT_GAP_PCT)% vs PEtab)",
-    "W"=>"WALLTIME_EXCEEDED", "R"=>"RESTORATION_FAILED", "D"=>"SEARCH_DIRECTION_BECOMES_TOO_SMALL",
+    "T"=>"WALLTIME_EXCEEDED (timeout)", "R"=>"RESTORATION_FAILED", "D"=>"SEARCH_DIRECTION_BECOMES_TOO_SMALL",
     "5"=>"other", "E"=>"Error", "-"=>"compile_failed/not_run")
-const MADNLP_ORDER = ["0","0A","0S","0AS","W","R","D","5","E","-"]
+const MADNLP_ORDER = ["0","0A","0S","0AS","T","R","D","5","E","-"]
 petab_desc = Dict("0"=>"Converged to local min", "1"=>"Converged but not certified local min",
     "E"=>"Error", "-"=>"compile_failed/not_run")
 const PETAB_ORDER = ["0","1","E","-"]

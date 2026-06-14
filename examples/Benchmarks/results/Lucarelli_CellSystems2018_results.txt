@@ -1,16 +1,32 @@
+exacpu_K=4
+exacpu_compile_status=ok
+exacpu_compile_time=765.44
+exacpu_error=
+exacpu_iter=90
+exacpu_ncon=597904
+exacpu_nvar=597988
+exacpu_objective=1670.0050064970414
+exacpu_petab_obj=1682.1889004864536
+exacpu_presolve_time=76.92
+exacpu_sgm_error=first solve term=MAXIMUM_WALLTIME_EXCEEDED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
+exacpu_sgm_status=skipped
+exacpu_solve_status=ok
+exacpu_solve_time=3680.75
+exacpu_term_status=MAXIMUM_WALLTIME_EXCEEDED
 exagpu_K=4
 exagpu_compile_status=ok
-exagpu_compile_time=995.75
+exagpu_compile_time=609.6
 exagpu_error=
-exagpu_iter=2614
+exagpu_iter=3136
 exagpu_ncon=597904
 exagpu_nvar=597988
-exagpu_objective=1593.0250382833456
-exagpu_presolve_time=98.88
+exagpu_objective=1594.349087580505
+exagpu_petab_obj=1727.4619623537567
+exagpu_presolve_time=60.95
 exagpu_sgm_error=first solve term=MAXIMUM_WALLTIME_EXCEEDED∉{SUCCEEDED,ACCEPTABLE}; SGM skipped
 exagpu_sgm_status=skipped
 exagpu_solve_status=ok
-exagpu_solve_time=3603.89
+exagpu_solve_time=3602.48
 exagpu_term_status=MAXIMUM_WALLTIME_EXCEEDED
 petab_compile_status=ok
 petab_compile_time=229.42
