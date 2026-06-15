@@ -137,6 +137,13 @@ function _get_cv_cid_rows(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{
     return [dict_cid_row[cid] for cid in _get_cv_cids(PEmodel, PEprob)]
 end
 
+# Strip the MTK (t) from a variable, returning the bare symbol (e.g. x(t) -> x).
+# Module-scope so both _assignment_substitutor and _rule_table can use them.
+_strip_t(s) = Symbolics.Num(Symbolics.variable(Symbol(split(string(s), "(")[1])))
+# Rewrite every variable in an expression to its bare (no (t)) form.
+_rebare(e) = (vs = collect(Symbolics.get_variables(e));
+            isempty(vs) ? e : Symbolics.substitute(e, Dict(v => _strip_t(v) for v in vs)))
+
 # Automatically substitutes/applies in "assignment rules" (MTK "observed" variable expressions)
 # into existing expressions until only the core {p,z,cv,...} (ExaModels-scope variables) remain
 function _assignment_substitutor(PEprob::PEtabODEProblem; remove_t::Bool)
@@ -149,12 +156,6 @@ function _assignment_substitutor(PEprob::PEtabODEProblem; remove_t::Bool)
         any(isequal(eq.lhs, z) for z in z_syms) && continue       # never rewrite a state alias
         rules_t[eq.lhs] = Symbolics.substitute(eq.rhs, rules_t)   # topological order ⇒ fully flattened
     end
-
-    # Strip the MTK (t) from a variable, returning the bare symbol (e.g. x(t) -> x).
-    _strip_t(s) = Symbolics.Num(Symbolics.variable(Symbol(split(string(s), "(")[1])))
-    # Rewrite every variable in an expression to its bare (no (t)) form.
-    _rebare(e) = (vs = collect(Symbolics.get_variables(e));
-                isempty(vs) ? e : Symbolics.substitute(e, Dict(v => _strip_t(v) for v in vs)))
 
     # optionally strip (t)
     rules = remove_t ? Dict(_strip_t(k) => _rebare(v) for (k, v) in rules_t) : rules_t
