@@ -1,0 +1,72 @@
+======================================================================================================================
+               |       ExaModels + MadNLP (GPU)        |       ExaModels + MadNLP (CPU)        |   PEtab + IPNewton   
+Model          | CMPL(s) EXA(%)  SOL(s)  STAT   GAP(%) | CMPL(s) EXA(%)  SOL(s)  STAT   GAP(%) | CMPL(s)  SOL(s)  STAT
+----------------------------------------------------------------------------------------------------------------------
+Alkan          |       -      -       -     -        - |       -      -       -     -        - |       -       -     -
+Armistead      |   86.54    58%    1.25     0  +5.2e-1 |   81.14    57%       -     E        - |   78.05    2.82     0
+Bachmann       |   840.6    94%       -     E        - |  774.41    93% 5668.43     T  +2.6e-1 |  141.06  100.94     0
+Beer           |       -      -       -     -        - |       -      -       -     -        - |   342.2  414.38     0
+Bertozzi       |   81.26    56%    0.27    0S  +1.9e+2 |    81.4    53%    0.82    0S  +1.9e+2 |  214.36   95.21     0
+Blasi          |  113.28    66%    0.35     0  +5.0e-5 |  106.96    63%    0.01     0  +4.2e-8 |  129.34    1.63     0
+Boehm          |   90.45    65%    0.39     0  -1.6e-5 |   88.72    62%    1.39     0  -1.6e-5 |  279.42    0.03     0
+Borghans       |   79.25    60% 3601.07     T        - |    82.5    61%       -     E        - |  292.09 1964.51     0
+Brannmark      |  176.46    65%       -     D +2.3e+10 |  154.01    61%       -     E        - |  304.83   68.22     0
+Bruno          |   77.47    59%     0.3     0  +1.6e-6 |   84.92    59%    0.86     0  +1.1e-8 |   84.49    3.78     0
+Chen           |       -      -       -     -        - |       -      -       -     -        - |       -       -     -
+Crauste        |   71.84    58%    0.31     0  +1.1e-1 |   70.81    57%    1.24     0  +6.0e-4 |   274.5    8.27     0
+Elowitz        |   80.75    62%       -     R  +8.4e+1 |   81.54    60%       -     E        - |  260.17   40.11     0
+Fiedler        |       -      -       -     -        - |       -      -       -     -        - |  655.03    0.01     0
+Froehlich      |       -      -       -     -        - |       -      -       -     -        - |       -       -     -
+Fujita         |  114.32    59%   16.69    0S  +8.7e+3 |  109.29    56% 3611.77     T  +1.1e+5 |  309.44    0.03     0
+Giordano       |  182.47    48%       -     D  +7.5e+1 |  203.54    45%       -     E        - |  231.57   38.66     0
+Isensee        |  609.78    82%       -     E        - |  533.53    78%       -     -        - |  253.86 1219.06     0
+Lang           |       -      -       -     -        - |       -      -       -     -        - | 9544.84       -     E
+Laske          |  738.58    88%       -     R  +6.5e+0 |  756.84    87%       -     E        - |   192.9   36.29     0
+Liu            |       -      -       -     -        - |       -      -       -     -        - |  246.28    1.96     0
+Lucarelli      |  673.88    89% 3602.77     T  +2.5e+0 |  733.96    88% 3653.71     T  +3.1e-2 |  229.42 2658.93     0
+Okuonghae      |   96.89    64%    9.91     0  +1.9e+0 |    98.3    61%   18.79   0AS  +1.9e+1 |  203.68   25.74     0
+Oliveira       |  122.99    57%    1.73   0AS  +3.8e+6 |  115.32    55%    3.42   0AS  +3.8e+6 |  319.93   19.03     0
+Perelson       |   69.15    57%    1.04     0  -1.8e+0 |    67.5    55%    0.14    0S  +9.0e+1 |  197.65    0.49     0
+Rahman         |  119.34    72%    0.31     0  +1.8e-5 |  118.23    70%    0.69     0  +1.8e-5 |  241.14    1.42     0
+Raia           |       -      -       -     -        - |       -      -       -     -        - |       -       -     -
+Raimundez      |  736.34    86% 3602.79     T  -1.4e+0 |  674.51    84% 3719.85     T  -1.7e+0 |  210.51  152.38     0
+SalazarCavazos | 1236.53    90%   49.69     0  +8.9e-2 | 1003.25    87%  462.89     0  +8.9e-2 |  451.98  579.52     0
+Schwen         |  125.02    72%   48.14    0A  +3.3e-4 |  119.85    69%  324.78    0A  +2.8e-4 |  271.12  197.08     0
+Smith          |       -      -       -     -        - |       -      -       -     -        - | 1261.71       -     1
+Sneyd          |  168.46    79%    6.76     0  +3.3e-3 |  160.18    78% 3620.29     T  +6.2e-4 |   210.3   24.63     0
+Weber          |       -      -       -     -        - |       -      -       -     -        - |       -       -     -
+Zhao           |  267.93    81%   19.25   0AS  +1.3e+1 |  278.29    80%  477.22   0AS  +2.0e+1 |  116.58  145.91     0
+Zheng          |  359.67    81%       -     5  +7.7e-2 |  324.04    79%   70.25    0A  +8.4e-4 |  177.53    5.51     0
+----------------------------------------------------------------------------------------------------------------------
+
+SUMMARY (all models in Benchmark-Models)
+  Benchmark models       : 35       (PEtab-solved 28 / exa-supported 25)
+  PEtab converged        : 28 / 35  (status 0)
+  ExaModels solved       : 11 / 25  (status 0 + 0A — full/acceptable optimum; of the exa-supported set)
+  Solved-but-suboptimal  :  4       (0S / 0AS — converged but obj ≥+2.0% vs PEtab; excluded above)
+
+  CMPL(s) := Model compilation time
+  EXA(%)  := Fraction of model compile time spent on actual ExaModels build (PEtab setup + mesh generation)
+  SOL(s)  := Solver solve time, standard geometric mean over n=5 reruns
+  STAT    := Solver status
+  GAP(%)  := (petab.nllh(exa_p*) - petab_obj) / |petab_obj| × 100%  (negative => ExaModels lower)
+
+  MadNLP (Status)
+     0 : SOLVE_SUCCEEDED
+    0A : SOLVED_TO_ACCEPTABLE_LEVEL
+    0S : SOLVE_SUCCEEDED, suboptimal (≥+2.0% vs PEtab)
+   0AS : SOLVED_TO_ACCEPTABLE_LEVEL, suboptimal (≥+2.0% vs PEtab)
+     T : WALLTIME_EXCEEDED (timeout)
+     R : RESTORATION_FAILED
+     D : SEARCH_DIRECTION_BECOMES_TOO_SMALL
+     5 : other
+     E : Error
+     - : compile_failed/not_run
+
+  PEtab  (Status)
+     0 : Converged to local min
+     1 : Converged but not certified local min
+     E : Error
+     - : compile_failed/not_run
+
+======================================================================================================================
