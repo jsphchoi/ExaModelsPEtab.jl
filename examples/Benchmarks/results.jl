@@ -12,8 +12,9 @@ const USE_SGM    = !("--cold" in ARGS)
 
 include(joinpath(@__DIR__, "options.jl"))
 
-const ALL_MODELS = sort(BENCHMARK_MODELS)  # 35 (full benchmark collection, alphabetical)
+const ALL_MODELS = sort(EXA_SUPPORTED_MODELS)  # 20 (reported exa target set: continuous + PEtab-solved)
 const SGM_N      = BENCH_SGM_N
+const SGM_SHIFT  = BENCH_SGM_SHIFT
 
 # A SOLVE_SUCCEEDED/ACCEPTABLE whose objective is worse than PEtab's by ≥ this % is converged-but-
 # suboptimal (0S / 0AS) and is EXCLUDED from the "ExaModels solved" count.
@@ -56,7 +57,8 @@ gap_str(d, pfx) = (gp = gap_val(d, pfx); gp === nothing ? "-" :
 function madnlp_code(d, pfx)
     g(d, pfx * "compile_status") != "ok" && return "-"
     ss = g(d, pfx * "solve_status")
-    ss in ("skipped", "timeout") && return "-"
+    ss == "skipped" && return "-"
+    ss == "timeout" && return "T"   # compiled+ran but hard-killed at the deadline (overshot max_wall_time) ⇒ timeout
     ss == "error" && return "E"
     term = uppercase(g(d, pfx * "term_status"))
     isempty(term) && return "-"
@@ -87,12 +89,20 @@ pct_exa_str(d, pfx) = begin
 end
 fmt_cmp(d, pfx) = (g(d, pfx * "compile_status") == "ok" && !isempty(g(d, pfx * "compile_time"))) ? g(d, pfx * "compile_time") : "-"
 fmt_slv(d, pfx) = begin
-    if USE_SGM && g(d, pfx * "sgm_status") == "ok" && !isempty(g(d, pfx * "sgm_solve_time"))
-        g(d, pfx * "sgm_solve_time")
+    if USE_SGM && g(d, pfx * "sgm_status") == "ok"
+        raw = g(d, pfx * "solve_times")
+        ts  = isempty(raw) ? Float64[] : Float64[x for x in (tryparse(Float64, s) for s in split(raw, ",")) if x !== nothing]
+        if !isempty(ts)
+            string(shifted_geomean(ts, SGM_SHIFT))   # report-time shift from the raw per-rerun times
+        elseif !isempty(g(d, pfx * "sgm_solve_time"))
+            g(d, pfx * "sgm_solve_time")             # legacy file (no raw times): pre-refactor stored aggregate
+        else
+            "-"
+        end
     elseif !USE_SGM && g(d, pfx * "solve_status") == "ok" && !isempty(g(d, pfx * "solve_time"))
         g(d, pfx * "solve_time")
     elseif occursin("WALLTIME", uppercase(g(d, pfx * "term_status"))) && !isempty(g(d, pfx * "solve_time"))
-        # timeout: no SGM is recorded, so show the elapsed solve time (≈ max walltime) instead of "-"
+        # timeout: no rerun times recorded, so show the elapsed solve time (≈ max walltime) instead of "-"
         g(d, pfx * "solve_time")
     else
         "-"
@@ -136,17 +146,16 @@ println(buf, sep)
 exa_opt(d)    = madnlp_code(d,"exagpu_") in ("0", "0A")
 exa_subopt(d) = madnlp_code(d,"exagpu_") in ("0S", "0AS")
 
-println(buf, "\nSUMMARY (all models in Benchmark-Models)")
-@printf(buf, "  Benchmark models       : %2d       (PEtab-solved %d / exa-supported %d)\n",
-        length(ALL_MODELS), length(PETAB_SOLVED_MODELS), length(EXA_SUPPORTED_MODELS))
-@printf(buf, "  PEtab converged        : %2d / %2d  (status 0)\n", count(d -> petab_code(d) == "0", all_d), length(ALL_MODELS))
-@printf(buf, "  ExaModels solved       : %2d / %2d  (status 0 + 0A — full/acceptable optimum; of the exa-supported set)\n", count(exa_opt, all_d), length(EXA_SUPPORTED_MODELS))
+println(buf, "\nSUMMARY (ExaModelsPEtab target set: continuous + PEtab-solved)")
+@printf(buf, "  Target models          : %2d       (of %d; %d 'Possible Discontinuities' out of scope, %d PEtab.jl-unsolved)\n",
+        length(EXA_SUPPORTED_MODELS), length(BENCHMARK_MODELS), length(_POSSIBLE_DISCONTINUITIES), length(_PETAB_UNSOLVED))
+@printf(buf, "  ExaModels solved (GPU) : %2d / %2d  (status 0 + 0A — full/acceptable optimum)\n", count(exa_opt, all_d), length(ALL_MODELS))
 @printf(buf, "  Solved-but-suboptimal  : %2d       (0S / 0AS — converged but obj ≥+%.1f%% vs PEtab; excluded above)\n", count(exa_subopt, all_d), SUBOPT_GAP_PCT)
 
 println(buf, "")
 println(buf, "  CMPL(s) := Model compilation time")
 println(buf, "  EXA(%)  := Fraction of model compile time spent on actual ExaModels build (PEtab setup + mesh generation)")
-println(buf, "  SOL(s)  := Solver solve time, standard geometric mean over n=$SGM_N reruns")
+println(buf, "  SOL(s)  := Solver solve time, shifted geometric mean (by δ = $(SGM_SHIFT)s) over n=$SGM_N reruns")
 println(buf, "  STAT    := Solver status")
 println(buf, "  GAP(%)  := (petab.nllh(exa_p*) - petab_obj) / |petab_obj| × 100%  (negative => ExaModels lower)")
 

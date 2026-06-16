@@ -34,6 +34,7 @@ const COMPILE_LIMIT = BENCH_COMPILE_LIMIT
 const SOLVE_LIMIT   = BENCH_SOLVE_LIMIT
 const MAX_ITER      = BENCH_MAX_ITER
 const N_SGM_RERUNS  = BENCH_SGM_N
+const SGM_SHIFT     = BENCH_SGM_SHIFT
 const ACCEPT_TOL    = BENCH_ACCEPT_TOL
 const ACCEPT_ITER   = BENCH_ACCEPT_ITER
 const WARMUP_MODEL  = BENCH_WARMUP_MODEL
@@ -115,6 +116,14 @@ function petab_obj_at_exa(PEprob, res)
     try; return PEprob.nllh(xstar); catch; return NaN; end
 end
 
+# inf-norm (max) constraint violation max(lcon - c(x), c(x) - ucon, 0) at point x; 0 if unconstrained.
+function max_constr_viol(model, x)
+    model.meta.ncon == 0 && return 0.0
+    c = similar(x, model.meta.ncon); ExaModels.cons!(model, x, c)
+    c = Array(c); lc = Array(model.meta.lcon); uc = Array(model.meta.ucon)
+    maximum(max.(lc .- c, c .- uc, 0.0))
+end
+
 # ─── build one ExaModel (compile phases 1+2); returns the PEtabODEProblem too ──
 function build_model(yaml, t_origin)
     PEmodel = PEtab.PEtabModel(yaml)
@@ -157,8 +166,9 @@ function run_sgm_reruns(m, rp, model)
             return
         end
     end
-    sgm_solve = round(exp(sum(log, solve_times) / length(solve_times)); digits=2)
-    write_result(rp, Dict(PFX*"sgm_status" => "ok", PFX*"sgm_n" => N_SGM_RERUNS, PFX*"sgm_solve_time" => sgm_solve))
+    sgm_solve = shifted_geomean(solve_times, SGM_SHIFT)
+    write_result(rp, Dict(PFX*"sgm_status" => "ok", PFX*"sgm_n" => N_SGM_RERUNS,
+                          PFX*"solve_times" => join(solve_times, ","), PFX*"sgm_solve_time" => sgm_solve))
     @info "[$m] SGM done: solve=$sgm_solve s (n=$N_SGM_RERUNS)"
 end
 
@@ -182,6 +192,7 @@ function bench_one(m)
             PFX*"solve_status"   => "skipped",   PFX*"solve_time"   => "", PFX*"term_status"   => "",
             PFX*"objective"      => "",          PFX*"petab_obj"    => "", PFX*"iter" => "",
             PFX*"nvar"           => "",          PFX*"ncon"         => "", PFX*"error" => "",
+            PFX*"constr_viol"    => "",
         ))
         @info "[$m] compiling on $BACKEND (K=$K, compile_limit=$(COMPILE_LIMIT)s)..."
         local PEprob
@@ -216,6 +227,7 @@ function bench_one(m)
                 PFX*"objective"    => res.objective,
                 PFX*"petab_obj"    => petab_obj_at_exa(PEprob, res),
                 PFX*"iter"         => res.iter,
+                PFX*"constr_viol"  => max_constr_viol(model, res.solution),
             ))
         catch e
             write_result(rp, Dict(PFX*"solve_status" => "error", PFX*"error" => sprint(showerror, e)))

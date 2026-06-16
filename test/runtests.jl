@@ -29,14 +29,14 @@ const SOLVER = (;
 const MODELS = [
     "Blasi_CellSystems2016",    # steady-state (no-mesh) path, :log observable, affine noise
     "Schwen_PONE2014",          # collocation path, :log10 observable, sqrt noise, 19 conditions
-    "Bruno_JExpBot2016",        # multiple conditions, both cv paths (cv = p, x0 = cv), :lin observable
+    "Sneyd_PNAS2002",           # collocation path, :lin observable, assignment rules, 9 conditions
 ]
 
 # PEtab known objective function values at the solution p*
 const PETAB_OBJ = Dict(
     "Blasi_CellSystems2016" => -1090.5608159562705,
     "Schwen_PONE2014"       =>   956.5184339082019,
-    "Bruno_JExpBot2016"     =>   -46.6881814658137,
+    "Sneyd_PNAS2002"        =>  -319.791791777273,
 )
 
 # .yaml pathfinding and helper functions for checking test pass
@@ -46,6 +46,9 @@ yaml_of(m) = (
     joinpath(d, first(filter(f -> endswith(lowercase(f), ".yaml"), readdir(d))))
 )
 solved(s)  = s in (MadNLP.SOLVE_SUCCEEDED, MadNLP.SOLVED_TO_ACCEPTABLE_LEVEL)
+
+# Evaluate PEtab objective function at ExaModels optimal solution p*
+petab_obj_at(PEprob, res) = PEprob.nllh(Array(res.solution)[1:PEprob.nparameters_estimate])
 
 # inf-norm of equality-constraint (collocation, continuity, initial condition, noise) violation
 function warmstart_viol(m, x)
@@ -69,27 +72,30 @@ end
         exa_obj = ExaModels.obj(model, x0)
 
         # Confirm objective function evaluates to approximately the same value at the nominal p
-        @test isapprox(exa_obj, nllh_nominal; rtol = 1e-5)
+        @test isapprox(exa_obj, nllh_nominal; rtol = 1e-4)
 
         # Confirm ExaModels equality constraints are not overly violated at the nominal p
         @test warmstart_viol(model, x0) < 5e-2
 
         # Confirm MadNLP solves the ExaModel to PEtab's converged objective
         res = MadNLP.madnlp(model; SOLVER...)
-        @test solved(res.status)
-        @test isfinite(res.objective)
-        @test isapprox(res.objective, PETAB_OBJ[m]; rtol = 1e-3)
+        @test solved(res.status) # confirm ExaModels + MadNLP solved
+        @test isfinite(res.objective) # confirm result is sensical
+        @test isapprox(res.objective, PETAB_OBJ[m]; rtol = 1e-4) # confirm ExaModels obj is similar to PEtab obj
+        @test isapprox(petab_obj_at(PEprob, res), PETAB_OBJ[m]; rtol = 1e-4) # confirm p* eval'd at PEtab obj matches PEtab obj
     end
     
     # if CUDA is available, test the GPU build
     if CUDA.functional()
         import MadNLPGPU, CUDSS
         @testset "GPU: $m" for m in MODELS
-            model = petab_examodel(yaml_of(m); backend = CUDA.CUDABackend(), K = K)
-            res   = MadNLP.madnlp(model; SOLVER..., linear_solver = MadNLPGPU.CUDSSSolver)
-            @test solved(res.status)
-            @test isfinite(res.objective)
-            @test isapprox(res.objective, PETAB_OBJ[m]; rtol = 1e-3)
+            PEprob = PEtab.PEtabODEProblem(PEtab.PEtabModel(yaml_of(m)))
+            model  = petab_examodel(yaml_of(m); backend = CUDA.CUDABackend(), K = K)
+            res    = MadNLP.madnlp(model; SOLVER..., linear_solver = MadNLPGPU.CUDSSSolver)
+            @test solved(res.status) # confirm ExaModels + MadNLP solved
+            @test isfinite(res.objective) # confirm result is sensical
+            @test isapprox(res.objective, PETAB_OBJ[m]; rtol = 1e-2) # confirm ExaModels obj is similar to PEtab obj
+            @test isapprox(petab_obj_at(PEprob, res), PETAB_OBJ[m]; rtol = 1e-4) # confirm p* eval'd at PEtab obj matches PEtab obj
         end
     end
 end

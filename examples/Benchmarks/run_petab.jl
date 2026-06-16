@@ -33,6 +33,7 @@ const SOLVE_LIMIT   = BENCH_SOLVE_LIMIT          # Optim time_limit [s] (== MadN
 const COMPILE_LIMIT = BENCH_PETAB_COMPILE_LIMIT  # PEtab build wall cap [s]
 const MAX_ITER      = BENCH_MAX_ITER
 const N_SGM_RERUNS  = BENCH_SGM_N                 # shared SGM rerun count (== exa's)
+const SGM_SHIFT     = BENCH_SGM_SHIFT             # shared shift δ (== exa's)
 const WARMUP_MODEL  = BENCH_WARMUP_MODEL          # benchmark Bruno separately via run_bruno.jl (Crauste-warmed)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ optim_opts() = Optim.Options(
 
 # ─── PEtab SGM solve reruns ─────────────────────────────────────────────────────
 # Mirrors the exa SGM pass: re-solve the SAME compiled PEtabODEProblem from the SAME nominal
-# start N_SGM_RERUNS times and store the geometric mean solve time under petab_sgm_* — so the
+# start N_SGM_RERUNS times and store the shifted geometric mean (δ=10s) solve time under petab_sgm_* — so the
 # PEtab column is an n=10 head-to-head against exa_sgm_solve_time. Only meaningful after a
 # converged first solve (petab_optimum_found=true); skipped otherwise.
 function run_petab_sgm(rp, PEprob)
@@ -121,9 +122,10 @@ function run_petab_sgm(rp, PEprob)
             return
         end
     end
-    sgm_solve = round(exp(sum(log, solve_times) / length(solve_times)); digits=2)
+    sgm_solve = shifted_geomean(solve_times, SGM_SHIFT)
     write_result(rp, Dict("petab_sgm_status"     => "ok",
                           "petab_sgm_n"          => N_SGM_RERUNS,
+                          "petab_solve_times"    => join(solve_times, ","),
                           "petab_sgm_solve_time" => sgm_solve))
     @info "[petab SGM] done: solve=$sgm_solve s (n=$N_SGM_RERUNS)"
 end

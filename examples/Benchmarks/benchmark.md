@@ -123,10 +123,12 @@ Result-file fields (`results/{Model}_results.txt`, written incrementally; `<pfx>
 | `<pfx>compile_time` | **build only** (after warmup); authoritative, NOT wall-clock |
 | `<pfx>presolve_time` | sub-portion: PEtab construction + ExaCore + `_create_variables` |
 | `<pfx>solve_time` | **COLD** first solve (includes one-time GPU-kernel JIT) |
-| `<pfx>sgm_solve_time` | **WARM** solve, geo-mean of `BENCH_SGM_N` reruns — the representative metric |
+| `<pfx>solve_times` | **WARM** raw per-rerun solve times (CSV, `BENCH_SGM_N` of them) — source of truth; `results.jl` applies the δ shift at report time |
+| `<pfx>sgm_solve_time` | **WARM** solve, shifted geometric mean (δ=10s) of `solve_times` — cached aggregate (the representative metric) |
 | `<pfx>term_status` | `SOLVE_SUCCEEDED` / `SOLVED_TO_ACCEPTABLE_LEVEL` / `WALLTIME_EXCEEDED` / ... |
 | `<pfx>objective` | ExaModels' optimal collocation objective |
 | `<pfx>petab_obj` | **`petab.nllh(exa_p*)`** — ExaModels' optimum scored under PEtab's own objective (the fair GAP numerator) |
+| `<pfx>constr_viol` | inf-norm (max) constraint violation `max(lcon-c, c-ucon, 0)` at the solution — diagnostic, not shown in `results.jl` |
 
 Cold vs warm matters — always label which solve time you quote.
 
@@ -157,7 +159,12 @@ julia --project=examples examples/Benchmarks/results.jl --cold   # cold first-ru
 ## 8. Canonical model lists
 
 `options.jl` is the single source of truth (included by all scripts):
-`BENCHMARK_MODELS` (35) ⊇ `PETAB_SOLVED_MODELS` (28) ⊇ `EXA_SUPPORTED_MODELS` (25);
+`BENCHMARK_MODELS` (35) ⊇ `CONTINUOUS_MODELS` (23) ⊇ `EXA_SUPPORTED_MODELS` (20).
+The 12 dropped at (35→23) carry the "Possible Discontinuities" feature on the official table
+(https://benchmarking-initiative.github.io/Benchmark-Models-PEtab/) — events / piecewise(t) /
+state-triggered switches the collocation transcription cannot represent (out of scope by
+construction). The 3 dropped at (23→20) are continuous models the PEtab.jl reference itself could
+not compile/solve (Froehlich, Lang, Raia), so there is no baseline to compare against.
 `EXA_RERUN_INLOOP` is the timed exa loop (Bruno/Crauste excluded as warmup).
 Solver/benchmark config (K, SGM_N, tols, limits) lives there too — edit it THERE, never in the
 individual scripts.
