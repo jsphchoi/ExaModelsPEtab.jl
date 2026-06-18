@@ -78,8 +78,22 @@ function petab_code(d)
     ss = g(d, "petab_solve_status")
     ss in ("skipped", "timeout") && return "-"
     ss == "error" && return "E"
-    g(d, "petab_optimum_found") == "true"  && return "0"
-    g(d, "petab_optimum_found") == "false" && return "1"
+    if g(d, "petab_optimum_found") == "true"
+        # Optim has no single status code — report WHICH convergence criterion fired. Precedence:
+        # gradient (strongest; genuine first-order stationary) → F_RELTOL plateau → X_ABSTOL zero-step.
+        # Anything but "0" means Optim declared success with |g| > g_tol (NOT certified stationary).
+        g(d, "petab_gconverged") == "true" && return "0"   # gradient criterion: |g| ≤ g_tol
+        g(d, "petab_fconverged") == "true" && return "0F"  # F_RELTOL: objective-change plateau
+        g(d, "petab_xconverged") == "true" && return "0X"  # X_ABSTOL: step-size collapse / zero step
+        return "0"  # unreachable: converged ⟺ (x||f||g), all three captured above; default if flag-read failed
+    end
+    if g(d, "petab_optimum_found") == "false"
+        # distinguish a wall-time timeout (Optim hit time_limit, ≈ MadNLP "T") from generic
+        # non-convergence: solve_time reaching the wall is a solid timeout signal.
+        st = fparse(g(d, "petab_solve_time"))
+        (st !== nothing && st >= 0.99 * BENCH_SOLVE_LIMIT) && return "T"
+        return "1"
+    end
     return "-"
 end
 
@@ -103,6 +117,11 @@ fmt_slv(d, pfx) = begin
         g(d, pfx * "solve_time")
     elseif occursin("WALLTIME", uppercase(g(d, pfx * "term_status"))) && !isempty(g(d, pfx * "solve_time"))
         # timeout: no rerun times recorded, so show the elapsed solve time (≈ max walltime) instead of "-"
+        g(d, pfx * "solve_time")
+    elseif !isempty(g(d, pfx * "solve_time")) &&
+           (st = fparse(g(d, pfx * "solve_time"))) !== nothing && st >= 0.99 * BENCH_SOLVE_LIMIT
+        # timeout with no term_status / SGM (e.g. PEtab non-converged at the wall): show elapsed time,
+        # matching the exa WALLTIME behavior above instead of "-"
         g(d, pfx * "solve_time")
     else
         "-"
@@ -147,10 +166,10 @@ exa_opt(d)    = madnlp_code(d,"exagpu_") in ("0", "0A")
 exa_subopt(d) = madnlp_code(d,"exagpu_") in ("0S", "0AS")
 
 println(buf, "\nSUMMARY (ExaModelsPEtab target set: continuous + PEtab-solved)")
-@printf(buf, "  Target models          : %2d       (of %d; %d 'Possible Discontinuities' out of scope, %d PEtab.jl-unsolved)\n",
+@printf(buf, "  Target models          : %2d       (of %d; %d 'Possible Discontinuities', %d PEtab.jl failed compile)\n",
         length(EXA_SUPPORTED_MODELS), length(BENCHMARK_MODELS), length(_POSSIBLE_DISCONTINUITIES), length(_PETAB_UNSOLVED))
-@printf(buf, "  ExaModels solved (GPU) : %2d / %2d  (status 0 + 0A — full/acceptable optimum)\n", count(exa_opt, all_d), length(ALL_MODELS))
-@printf(buf, "  Solved-but-suboptimal  : %2d       (0S / 0AS — converged but obj ≥+%.1f%% vs PEtab; excluded above)\n", count(exa_subopt, all_d), SUBOPT_GAP_PCT)
+@printf(buf, "  ExaModels solved (GPU) : %2d / %2d  (status 0 + 0A, full/acceptable optimum)\n", count(exa_opt, all_d), length(ALL_MODELS))
+@printf(buf, "  Solved-but-suboptimal  : %2d       (0S / 0AS, converged but obj ≥+%.1f%% vs PEtab; excluded above)\n", count(exa_subopt, all_d), SUBOPT_GAP_PCT)
 
 println(buf, "")
 println(buf, "  CMPL(s) := Model compilation time")
@@ -166,9 +185,14 @@ madnlp_desc = Dict("0"=>"SOLVE_SUCCEEDED", "0A"=>"SOLVED_TO_ACCEPTABLE_LEVEL",
     "T"=>"WALLTIME_EXCEEDED (timeout)", "R"=>"RESTORATION_FAILED", "D"=>"SEARCH_DIRECTION_BECOMES_TOO_SMALL",
     "5"=>"other", "E"=>"Error", "-"=>"compile_failed/not_run")
 const MADNLP_ORDER = ["0","0A","0S","0AS","T","R","D","5","E","-"]
-petab_desc = Dict("0"=>"Converged to local min", "1"=>"Converged but not certified local min",
-    "E"=>"Error", "-"=>"compile_failed/not_run")
-const PETAB_ORDER = ["0","1","E","-"]
+petab_desc = Dict(
+    "0"  => "Converged by G_ABSTOL, ‖g‖∞ ≤ g_tol",
+    "0F" => "Converged by F_RELTOL, |Δf| ≤ f_reltol·|f| (with ‖g‖ > g_tol)",
+    "0X" => "Converged by X_ABSTOL, ‖Δx‖∞ ≤ x_abstol (with ‖g‖ > g_tol)",
+    "T"  => "Walltime exceeded (timeout)",
+    "1"  => "Not converged",
+    "E"  => "Error", "-" => "compile_failed/not_run")
+const PETAB_ORDER = ["0","0F","0X","T","1","E","-"]
 
 madnlp_present = Set(madnlp_code(d,p) for d in all_d for p in ("exagpu_","exacpu_"))
 petab_present  = Set(petab_code(d) for d in all_d)

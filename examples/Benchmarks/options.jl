@@ -55,9 +55,11 @@ const BENCH_ACCEPT_ITER   = 15         # iters at acceptable_tol before acceptin
 
 # ── PEtab / Optim.IPNewton-only ──
 const BENCH_PETAB_COMPILE_LIMIT   = 3600.0  # PEtab build wall cap [s] (1 hr — canonical compile cap, same as exa)
-const BENCH_PETAB_F_RELTOL        = 1e-8    # Optim.Options fine-tuning ↓
-const BENCH_PETAB_SUCCESSIVE_FTOL = 3
-const BENCH_PETAB_X_ABSTOL        = 0.0
+# Optim defaults except iterations/time_limit/g_tol: f_reltol=0 and x_abstol=0 are the generic
+# Optim.Options defaults; successive_f_tol=2 and allow_f_increases=true are IPNewton's own defaults.
+const BENCH_PETAB_F_RELTOL        = 0.0     # Optim default (was 1e-8)
+const BENCH_PETAB_SUCCESSIVE_FTOL = 2       # IPNewton default (was 3)
+const BENCH_PETAB_X_ABSTOL        = 0.0     # Optim default
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Shifted geometric mean of solve times [s] with shift δ: exp(mean(log(tᵢ + δ))) − δ  (δ=0 ⇒ ordinary GM).

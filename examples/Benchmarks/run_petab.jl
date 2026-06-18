@@ -35,6 +35,9 @@ const MAX_ITER      = BENCH_MAX_ITER
 const N_SGM_RERUNS  = BENCH_SGM_N                 # shared SGM rerun count (== exa's)
 const SGM_SHIFT     = BENCH_SGM_SHIFT             # shared shift δ (== exa's)
 const WARMUP_MODEL  = BENCH_WARMUP_MODEL          # benchmark Bruno separately via run_bruno.jl (Crauste-warmed)
+# When set, PRESERVE an already-computed SGM (petab_sgm_*) and only re-solve once to (re)capture the
+# x/f/g convergence flags — a cheap flag-only re-pass after a full SGM run, avoiding redoing SGM.
+const KEEP_SGM      = get(ENV, "BENCH_PETAB_KEEP_SGM", "0") == "1"
 # ──────────────────────────────────────────────────────────────────────────────
 
 # PEtab attempts EVERY benchmark model (optimum-found is only known after solving), minus the
@@ -142,13 +145,23 @@ function run_worker(m)
     end
 
     # ── COMPILE ──────────────────────────────────────────────────────────────
-    write_result(rp, Dict(
+    clear = Dict(
         "petab_compile_status" => "compiling", "petab_compile_time" => "",
         "petab_solve_status"   => "skipped",   "petab_solve_time"   => "",
         "petab_objective"      => "",           "petab_iter"        => "",
         "petab_optimum_found"  => "",           "petab_has_events"  => "",
         "petab_error"          => "",
+        # always clear the convergence flags — they are recomputed in the SOLVE block below
+        "petab_gconverged"     => "",           "petab_gresidual"      => "",
+        "petab_fconverged"     => "",           "petab_xconverged"     => "",
+    )
+    # clear stale SGM outputs so a fresh invocation actually re-runs SGM (the gate below skips SGM if
+    # petab_sgm_status is already ok/error). KEEP_SGM preserves them for a flag-only re-pass.
+    KEEP_SGM || merge!(clear, Dict(
+        "petab_sgm_status"     => "",           "petab_sgm_solve_time" => "",
+        "petab_solve_times"    => "",           "petab_sgm_n"          => "",
     ))
+    write_result(rp, clear)
     @info "[$m] PEtab compiling (limit=$(COMPILE_LIMIT)s)..."
 
     # JIT warmup: pay the generic ForwardDiff/Optim JIT cost on a small model
@@ -191,6 +204,20 @@ function run_worker(m)
         res = with_hard_deadline(SOLVE_LIMIT + 600.0) do
             calibrate(PEprob, get_x(PEprob), Optim.IPNewton(); options=optim_opts())
         end
+        # Distinguish a TRUE first-order-stationary stop (gradient criterion met) from an
+        # objective-plateau/step stop with a nonzero gradient: Optim's `converged` is x||f||g,
+        # so most IPNewton "successes" actually terminate via f/x with |g| ≫ g_tol. Record the
+        # gradient criterion flag + final gradient residual from the underlying Optim result.
+        # Optim has no single status enum — only the per-criterion boolean flags. Capture all
+        # three (x/f/g) so the table can report WHICH criterion fired: g => first-order stationary;
+        # f => F_RELTOL objective plateau; x => X_ABSTOL zero-step. With f_reltol=x_abstol=0 the
+        # plateau stop is typically the zero-step (x) path. Also record the final gradient residual.
+        gconv = ""; gres = ""; fconv = ""; xconv = ""
+        try
+            o = res.original
+            gconv = string(Optim.g_converged(o)); gres = string(Optim.g_residual(o))
+            fconv = string(Optim.f_converged(o)); xconv = string(Optim.x_converged(o))
+        catch; end
         write_result(rp, Dict(
             "petab_solve_status"  => (res.converged === :Optimisation_failed || !isfinite(res.fmin)) ?
                                      "error" : "ok",
@@ -198,6 +225,10 @@ function run_worker(m)
             "petab_objective"     => res.fmin,
             "petab_iter"          => res.niterations,
             "petab_optimum_found" => string(res.converged === true),
+            "petab_gconverged"    => gconv,
+            "petab_gresidual"     => gres,
+            "petab_fconverged"    => fconv,
+            "petab_xconverged"    => xconv,
         ))
     catch e
         write_result(rp, Dict(

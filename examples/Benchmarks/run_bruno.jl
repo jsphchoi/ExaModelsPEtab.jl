@@ -230,10 +230,16 @@ function bench_petab(m)
     try
         t0 = time()
         res = with_hard_deadline(SOLVE_LIMIT + 600.0) do; calibrate(PEprob, get_x(PEprob), Optim.IPNewton(); options=optim_opts()); end
+        gconv = ""; gres = ""; fconv = ""; xconv = ""
+        try; o = res.original
+            gconv = string(Optim.g_converged(o)); gres = string(Optim.g_residual(o))
+            fconv = string(Optim.f_converged(o)); xconv = string(Optim.x_converged(o)); catch; end
         write_result(rp, Dict(
             "petab_solve_status"  => (res.converged === :Optimisation_failed || !isfinite(res.fmin)) ? "error" : "ok",
             "petab_solve_time"    => round(time() - t0; digits=2), "petab_objective" => res.fmin,
             "petab_iter"          => res.niterations, "petab_optimum_found" => string(res.converged === true),
+            "petab_gconverged"    => gconv, "petab_gresidual" => gres,
+            "petab_fconverged"    => fconv, "petab_xconverged" => xconv,
         ))
     catch e
         write_result(rp, Dict("petab_solve_status" => "error", "petab_error" => sprint(showerror, e)))
@@ -288,10 +294,15 @@ function main()
     mkpath(RESULTDIR)
     @info "run_bruno: target=$TARGET warmup=$WARMUP_MODEL backend=$BACKEND prefix=$PFX"
 
-    warmup_exa()
-    bench_exa(TARGET)
+    # BENCH_PETAB_ONLY=1 re-runs only the petab_ (PEtab) side, leaving exa results untouched.
+    petab_only = get(ENV, "BENCH_PETAB_ONLY", "0") == "1"
 
-    if IS_GPU      # PEtab is backend-independent — run it only on the GPU pass
+    if !petab_only
+        warmup_exa()
+        bench_exa(TARGET)
+    end
+
+    if IS_GPU || petab_only   # PEtab is backend-independent — run it only on the GPU pass (or petab-only)
         warmup_petab()
         bench_petab(TARGET)
     end
