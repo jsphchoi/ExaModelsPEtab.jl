@@ -5,7 +5,7 @@ using MadNLP
 using CUDA
 using Test
 
-# General mesh and solver settings (same as examples/Benchmarks/options.jl)
+# General mesh and solver settings
 const K           = 4
 const TOL         = 1e-6
 const ACCEPT_TOL  = 1e-4
@@ -25,7 +25,7 @@ const SOLVER = (;
     fixed_variable_treatment = MadNLP.RelaxBound,
 )
 
-# Choice of three Benchmark-Models which span most of the petab_examodel construction paths
+# Choice of three PEtab Benchmark-Models (test/Benchmark-Models-PEtab/) spanning most of the petab_examodel construction paths
 const MODELS = [
     "Blasi_CellSystems2016",    # steady-state (no-mesh) path, :log observable, affine noise
     "Schwen_PONE2014",          # collocation path, :log10 observable, sqrt noise, 19 conditions
@@ -40,7 +40,7 @@ const PETAB_OBJ = Dict(
 )
 
 # .yaml pathfinding and helper functions for checking test pass
-const MODELDIR = joinpath(pkgdir(ExaModelsPEtab), "examples", "Benchmark-Models")
+const MODELDIR = joinpath(pkgdir(ExaModelsPEtab), "test", "Benchmark-Models-PEtab")
 yaml_of(m) = (
     d = joinpath(MODELDIR, m);
     joinpath(d, first(filter(f -> endswith(lowercase(f), ".yaml"), readdir(d))))
