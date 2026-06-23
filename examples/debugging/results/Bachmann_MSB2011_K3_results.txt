@@ -1,9 +1,0 @@
-exa_K=3
-exa_compile_status=ok
-exa_compile_time=1128.51
-exa_error=solve skipped: restoration spiral, non-converged (obj wandered -419 to -190, lg_rg maxed). K=3 COMPILES+FITS GPU (2.3M vars, 23GB) -> K=6 OOM was memory-only
-exa_ncon=2344995
-exa_nvar=2345108
-exa_objective=
-exa_presolve_time=62.1
-exa_solve_status=timeout

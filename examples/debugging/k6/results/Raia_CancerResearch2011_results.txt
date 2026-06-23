@@ -1,3 +1,0 @@
-petab_compile_status=error
-petab_error=UndefVarError: `observableParameter1_observable_IL13_cell` not defined in `PEtab` Suggestion: check for spelling errors or missing imports.
-petab_solve_status=skipped
