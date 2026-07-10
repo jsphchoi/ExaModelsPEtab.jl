@@ -629,7 +629,7 @@ function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
             @assert ymeas > 0 "log10-transformed observable needs ymeas>0 (midx=$midx)"
             push!(itr_obj_log10, (midx, log10(ymeas), HALF_LOG2PI + log(ymeas) + log(log(10.0))))
         else
-            error("Unsupported observableTransformation '$tr' (midx=$midx)")
+            error("ExaModelsPEtab: unsupported observableTransformation ':$tr'.")
         end
     end
     if !isempty(itr_obj_lin)
@@ -658,7 +658,7 @@ end
 # parameterScaleNormal priors = its entire gap). Supported: parameterScaleNormal/Laplace (on the
 # estimation-scale decision variable p[pidx]), uniform, and laplace (linear value, by parameter
 # scale); normalization constants are included so the objective matches PEtab.nllh. Unsupported
-# types (e.g. linear-scale normal) warn and are omitted. Models without priors are byte-identical.
+# types (e.g. linear-scale normal) error out. Models without priors are byte-identical.
 function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     params_df = PEmodel.petab_tables[:parameters]
     (:objectivePriorType in propertynames(params_df)) || return c   # no priors in this model
@@ -685,15 +685,14 @@ function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
         elseif ptype === :parameterscalelaplace ; push!(pslap,  (idx, a, b))
         elseif ptype === :uniform               ; push!(unif,   (idx, log(b - a)))
         elseif ptype === :normal
-            @warn "objectivePriorType 'normal' (linear-scale Gaussian) not yet implemented for param $pid — prior OMITTED"
+            error("ExaModelsPEtab: unsupported objectivePriorType 'normal' (linear-scale Gaussian) for param $pid.")
         elseif ptype === :laplace
             sc = _norm_cell(row[:parameterScale], :lin)
             sc === :log10 ? push!(lap_10, (idx, a, b)) :
             sc === :log   ? push!(lap_e,  (idx, a, b)) :
                             push!(lap_li, (idx, a, b))   # :lin (and any non-log scale)
         else
-            @warn "objectivePriorType '$ptype' (parameter $pid) not supported — prior OMITTED; " *
-                  "objective will NOT match PEtab.nllh for this model"
+            error("ExaModelsPEtab: unsupported objectivePriorType '$ptype' for param $pid.")
         end
     end
     # Each @add_obj accumulates into the objective (capture the rebound core). abs is a registered

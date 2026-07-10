@@ -36,7 +36,7 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     # (only really matters if different conditions have different spans)
     B = sort(unique(vcat(t_start, filter(>(t_start), t_end), T_global)))
 
-    # Global mesh hueristic: within each (B)oundary, adopt the finest mesh
+    # Global mesh heuristic: within each (B)oundary, adopt the finest mesh
     # over the conditions which runs over this interval, while imposing the
     # smallest largest stepsize over every condition (min max h cap)
     t_nodes = Float64[]
@@ -65,7 +65,7 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
         sol[cid](t)
         for t in t_vec_mesh, cid in Symbol.(_get_cids(PEmodel))
     ]
-    # Reshpae vectorized solution to match ExaModels variable box z[v,i,k,cidx]
+    # Reshape vectorized solution to match ExaModels variable box z[v,i,k,cidx]
     z_init = permutedims(reshape(stack(sol_at_mesh), Nz, K+1, N, Nc), (1, 3, 2, 4))
 
     return z_init, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes

@@ -7,6 +7,12 @@ function _create_variables(
     )
     _assert_supported_events(PEmodel) # not supporting SBML <event> models
 
+    # Fixed-time piecewise(time) gates are supported but not yet validated to converge reliably
+    isempty(_get_gate_syms(PEprob)) || @warn(
+        "ExaModelsPEtab: model uses fixed-time piecewise(time) event gates; supported but not " *
+        "yet validated to converge reliably."
+    )
+
     # Create necessary variables (discretized state, unknown params) and obtain problem details (::PEInfo)
     c, Np = _create_p(c, PEprob)
     c, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes = _create_z(c, PEmodel, PEprob, K)

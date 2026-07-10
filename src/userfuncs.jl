@@ -63,7 +63,7 @@ function _build_petab_examodel(
     # Create cross-interval continuity, initial condition, auxiliary variable {cv,} constraints
     c = _create_continuity(c, PEmodel, PEprob, PEinfo)
 
-    # Create objective function (Gaussian negative log-liklihood) and auxiliary variable {y,sigma} constraints
+    # Create objective function (Gaussian negative log-likelihood) and auxiliary variable {y,sigma} constraints
     c, y0, sigma0 = _create_objective(c, PEmodel, PEprob, PEinfo)
 
     # Create ExaModel
@@ -84,8 +84,7 @@ function _build_petab_examodel_ss(
     )
     # Check inconsistent PEtab model info
     _check_x0SSpre(PEprob) && error(
-        "Pre-equilibration combined with steady-state (time = inf) measurements is not " *
-        "supported yet."
+        "ExaModelsPEtab: unsupported pre-equilibration with steady-state (time=Inf) measurements."
     )
 
     # Create ExaCore
@@ -97,7 +96,7 @@ function _build_petab_examodel_ss(
     # Create steady-state ODE RHS constraints, f(zss...) = 0
     c = _create_constraints_ss(c, PEmodel, PEprob, PEinfo)
 
-    # Create objective function (Gaussian negative log-liklihood) and auxiliary variable {y,sigma} constraints
+    # Create objective function (Gaussian negative log-likelihood) and auxiliary variable {y,sigma} constraints
     # (Evaluated at zss)
     c, y0, sigma0 = _create_objective_ss(c, PEmodel, PEprob, PEinfo)
 

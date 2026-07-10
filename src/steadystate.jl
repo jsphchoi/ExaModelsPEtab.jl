@@ -21,8 +21,7 @@ function _is_steady_state(PEmodel::PEtabModel)::Bool
     any_inf = any(isinf, times)
     any_inf || return false
     all(isinf, times) || error(
-        "Mixed finite-time and steady-state (time = inf) measurements are not supported yet " *
-        "(this model has both). Only pure steady-state models (all measurements inf) are handled."
+        "ExaModelsPEtab: unsupported mix of finite-time and steady-state (time=Inf) measurements."
     )
     return true
 end
@@ -426,8 +425,7 @@ function _conservation_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     # supported; would freeze it at the nominal value).
     u0s, ic_theta_dep = _initial_conditions_ss(PEmodel, PEprob, PEinfo)
     ic_theta_dep && error(
-        "Steady-state model has a conservation law whose conserved total is set by an initial " *
-        "condition that depends on estimated parameters; not supported yet."
+        "ExaModelsPEtab: unsupported parameter-dependent conserved total in steady-state conservation law."
     )
     b = zeros(Float64, r, Nc)
     for cidx in 1:Nc, k in 1:r

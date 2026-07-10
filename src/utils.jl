@@ -55,24 +55,21 @@ function _assert_normal_noise(PEmodel::PEtabModel)
     :noiseDistribution in propertynames(observables_df) || return nothing
     for i in 1:size(observables_df, 1)
         dist = _norm_cell(observables_df[i, :noiseDistribution], :normal)
-        dist === :normal || error("Unsupported noiseDistribution '$dist' for observable " *
-                                   "$(observables_df[i, :observableId]); only :normal is supported.")
+        dist === :normal || error("ExaModelsPEtab: unsupported noiseDistribution ':$dist' " *
+                                   "(observable '$(observables_df[i, :observableId])'); only :normal supported.")
     end
     return nothing
 end
 
-# GUARD: only support fixed-time discete events (variable 'x' changes to value 'y' at time 't')
-# CATCHES: continous or conditional events, e.g., Liu, Smith
+# GUARD: only support fixed-time discrete events (variable 'x' changes to value 'y' at time 't')
+# CATCHES: continuous or conditional events, e.g., Liu, Smith
 function _assert_supported_events(PEmodel::PEtabModel)
     sbml_path = get(PEmodel.paths, :SBML, nothing)
     (sbml_path === nothing || !isfile(sbml_path)) && return nothing
     nev = count(r"<event[ >]", read(sbml_path, String))
     nev == 0 && return nothing
-    error("ExaModelsPEtab does not support SBML <event> elements ($nev found in " *
-          "$(basename(sbml_path))). These encode state-triggered, state-jump, or parametric-time " *
-          "events that the collocation transcription cannot represent and would otherwise be " *
-          "SILENTLY IGNORED (wrong dynamics/objective). Fixed-time piecewise(time>T) gates ARE " *
-          "supported. Known affected benchmark models: Liu, Smith.")
+    error("ExaModelsPEtab: unsupported SBML <event> ($nev in $(basename(sbml_path))); " *
+          "only fixed-time piecewise(time) gates supported.")
 end
 
 # In-lines the physical (linear) parameter value of p[m] as an ExaModels expression

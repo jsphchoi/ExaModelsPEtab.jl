@@ -39,8 +39,8 @@ function _eval_dldtau(
     end
 end
 
-# Compute n Gauss-Legendre nodes on [-1, 1] using Newton's method
-# with Chebyshev initial guesses. Sufficient for moderate n (K ≤ ~50).
+# n Gauss-Legendre nodes on [-1, 1] using Newton's method with Chebyshev initial guess
+# CITE: FastGaussQuadrature.jl
 function _legendre_nodes(n::Int64)::Vector{Float64}
     n == 0 && return Float64[]
     n == 1 && return [0.0]
