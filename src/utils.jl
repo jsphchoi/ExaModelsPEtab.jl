@@ -9,7 +9,7 @@ end
 
 # Returns ::Vector{Float64} in the variable's own column-major index order of 
 # the start guess values of an ExaModels variable from an ExaCore
-# (basically ExaModels.get_starts but with ExaCore as input instead of ExaModel)
+# basically just ExaModels.get_starts with ExaCore as input instead of ExaModel
 _var_starts(c::ExaCore, v) = Array(view(c.x0, (v.offset + 1):(v.offset + v.length)))
 
 # (!!!) Returns ::Vector{Symbolics.Num} of state variables
@@ -168,7 +168,7 @@ function _assignment_substitutor(PEprob::PEtabODEProblem; remove_t::Bool)
 end
 
 # Returns (ids, lhs, rhs, is_flat) encoding the SBML assignment rules (MTK observed variable expression)
-# (basically the same as _assignment_substitutor but for the SBML variables)
+# _assignment_substitutor for the SBML variables
 function _rule_table(PEprob::PEtabODEProblem)
     sys    = PEprob.model_info.model.sys
     z_syms = _get_z_syms(PEprob)
@@ -214,8 +214,7 @@ function _get_dict_fixed_val(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     dict_all_val = Dict(PEprob.model_info.model.parametermap)
     defaults = Dict{Any,Any}(dict_all_val)
 
-    # Recursively substitute initialAssignment expressions until it is just
-    # a numeric value
+    # Recursively substitute initialAssignment expressions down to a numeric value
     for _ in 1:100
         all(Symbolics.value(v) isa Number for v in values(defaults)) && break
         for (k, v) in defaults
@@ -275,7 +274,7 @@ function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     ]
 
     # Handles u(t), u(t,p): if t appears, then we parse it as its own variable and give it its own
-    # input in the ODE RHS function so we can simply evaluate it at every collocation point
+    # input in the ODE RHS function so we can evaluate it at every collocation point
     all_free = foldl(union, Symbolics.get_variables.(f_exprs))
     t_basic  = nothing
     for v in all_free
@@ -431,7 +430,7 @@ function _get_gate_vals(
             )
         end
 
-        # initial gate value for steady-state models is simply the gate value at t=0
+        # initial gate value for steady-state models is the gate value at t=0
         gate_vals_ss[:, cidx] = g0
     end
 
@@ -439,7 +438,7 @@ function _get_gate_vals(
 end
 
 # Returns the steady-state gate values for the steady-state model path (no collocation mesh)
-# (essentially just a constant numeric value, extracted from PEtab ODEProblem at t=0)
+# (a constant numeric value extracted from the PEtab ODEProblem at t=0)
 function _get_gate_vals_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     gate_syms = _get_gate_syms(PEprob)
     Ng   = length(gate_syms)
@@ -502,7 +501,7 @@ function _get_dict_t_tidx(t_nodes::AbstractVector, t_meas)::Dict{Float64, Int64}
     for t_data in t_meas
         k = findfirst(==(t_data), t_nodes) # find at which index 'k' t_nodes[k] matches this t_data
         k === nothing && error(
-            "measurement time t=$t_data is not a mesh node — it should have been " *
+            "measurement time t=$t_data is not a mesh node. It should have been " *
             "forced as a solver tstop in _get_z_init. (t_nodes range $(first(t_nodes))..$(last(t_nodes)).)"
         )
         d[t_data] = k - 1 # store the time to index mapping in the Dict. shifted by 1 because k in 0:K

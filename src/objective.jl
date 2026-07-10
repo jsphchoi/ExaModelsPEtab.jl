@@ -15,15 +15,11 @@ function _create_objective(
         cv = c.cv
     end
 
-    # ---- Warm-start support -------------------------------------------------
-    # y/sigma are aux vars defined by z, p (and cv), which already carry good PEtab starts. Evaluate
-    # their formulas at the initial point so y/sigma get matching feasible starts via set_start!.
+    # Warm start: evaluate y/sigma formulas at the z,p,cv initial point for feasible set_start! values
     z0  = reshape(_var_starts(c, z), Nz, N, K + 1, Nc) # z0[v, i, j+1, cidx]
     θ0  = _var_starts(c, p)                            # decision var p := θ (estimation scale)
     p0  = [_p_phys_val(θ0, m, pscale) for m in 1:Np]   # PHYSICAL parameter starts (10^θ)
-    # cv has Ncc >= Nc columns (extra pre-equilibration columns for x0SSpre; see _get_cv_cids).
-    # Infer the column count with `:`; the objective only reads cv0[:, cidx] for cidx in 1:Nc (the
-    # simulation conditions, which occupy the first Nc columns).
+    # cv has Ncc >= Nc columns (extra x0SSpre pre-eq columns). Objective reads only the first Nc
     cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, Nc)
     y0     = zeros(Float64, Nm) # computed observable values at the initial guess
     sigma0 = zeros(Float64, Nm) # computed noise (std) values at the initial guess
@@ -33,10 +29,9 @@ function _create_objective(
     observables_df = PEtable[:observables] # :observableId, :observableName, :observableFormula, :noiseFormula, :observableTransformation, :noiseDistribution
 
     ###############################################
-    # Objective function (Gaussian NLL — see _add_nll_objective)
+    # Objective function (Gaussian negative log-likelihood)
     ###############################################
-    # NOTE: @add_obj/@add_con REBIND the core (core, obj = add_obj(core, ...)), so the new
-    # core returned by the helper MUST be captured — discarding it orphans the objective.
+    # @add_obj/@add_con rebind the core, so capture the returned core from each helper
     c = _add_nll_objective(c, PEmodel, PEinfo)
     c = _add_prior_objective(c, PEmodel, PEprob)   # MAP: add -log prior(θ) terms (matches PEtab.nllh)
 
@@ -53,16 +48,13 @@ function _create_objective(
         keys(Dict(dict_all_val)),
         union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
     )
-    # SBML-parametermap fixed values, PLUS PEtab-table-only fixed params (observable/noise scale/sd
-    # params absent from the SBML model). merge: parametermap-derived values win on any overlap.
+    # Merge SBML fixed values with table-only fixed params, keeping parametermap values on overlap
     dict_fixed_val = merge(
         _get_table_fixed_vals(PEmodel, PEprob),
         Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)),
     )
 
-    # Resolves SBML assignment rules (derived/algebraic variables, e.g. pY1173 = Σspecies/c1)
-    # that appear inside observable / noise formulas, to a fixpoint. No-op for models without
-    # assignment rules. Bare-symbol form to match the parsed (t-free) table formulas.
+    # Resolves SBML assignment rules in observable/noise formulas to a fixpoint (no-op if none)
     apply_rules = _assignment_substitutor(PEprob; remove_t = true)
 
     # Symbolics of variables that may appear in parsed table formulas
@@ -86,22 +78,18 @@ function _create_objective(
     has_obs_params_col   = :observableParameters in propertynames(measurements_df)
     has_noise_params_col = :noiseParameters      in propertynames(measurements_df)
 
-    # Deferred final-time (idx==N) arbitrary-function obs/noise constraints. The endpoint state (τ=1)
-    # is the L1 extrapolation Σ_j L1[j+1] z[v,N,j,cidx]; inlining that sum into a nonlinear function
-    # overflows the GPU kernel param-memory limit (Fiedler/Lucarelli), so we collect them here and
-    # re-emit over single aux endpoint vars zN below. Entry: (aux_var, compiled_func, rows::[(midx,cidx)]).
+    # Deferred idx==N obs/noise constraints, re-emitted over aux endpoint vars zN below (inlining the
+    # L1 endpoint sum into a nonlinear kernel overflows GPU param memory). (aux, func, [(midx,cidx)])
     pending_fin = Tuple{Any, Any, Vector{Tuple{Int,Int}}}[]
 
-    # --- Assignment-rule binding (observed variables, ov) -------------------------------------
-    # Large SBML assignment rules shared across formulas (e.g. SalazarCavazos's 72-species EGFRtot)
-    # blow up compile time if inlined into every formula. Instead, bind each occurring FLAT rule to
-    # an auxiliary variable ov[·] once per node; nested rules fall back to inlining (see _rule_table).
+    # Bind each FLAT assignment rule to an aux var ov[·] once per node instead of inlining a large
+    # rule into every formula, which inflates compile time. Nested rules fall back to inlining
     rule_ids, rule_lhs, rule_rhs, rule_is_flat = _rule_table(PEprob)
     n_rules = length(rule_ids)
-    # rules actually present (as leaf symbols) in a parsed, not-yet-inlined formula
+    # rules present (as leaf symbols) in a parsed, not-yet-inlined formula
     _used_rules(expr) = Int[r for r in 1:n_rules
                             if any(v -> isequal(v, rule_lhs[r]), Symbolics.get_variables(expr))]
-    # compiled rule RHS over [z; p; cv] (fixed constants frozen), memoized; usable on Floats too
+    # compiled rule RHS over [z; p; cv] with fixed constants frozen, memoized and usable on Floats
     rule_func_cache = Dict{Int, Any}()
     _rule_func(r) = get!(rule_func_cache, r) do
         Symbolics.build_function(
@@ -110,8 +98,7 @@ function _create_objective(
     end
     relevant_rules = Set{Int}()              # rule indices that get bound to ov
     ov_nodes       = Tuple{Int,Int}[]        # (idx, cidx) evaluation nodes needing ov
-    # Deferred obs/noise constraints that reference ov leaves. Each entry:
-    # (aux_var, func_over_[z;p;cv;leaves], used::Vector{Int}, rows::Vector{(midx,idx,cidx)}).
+    # Deferred obs/noise constraints referencing ov leaves: (aux, func, used, [(midx,idx,cidx)])
     pending_ov = Tuple{Any, Any, Vector{Int}, Vector{Tuple{Int,Int,Int}}}[]
 
     ###############################################
@@ -120,7 +107,7 @@ function _create_objective(
     # formula gets its own compiled ExaModels constraint.
     ###############################################
     itr_y_z    = Int[]                                       # midx values (row p holds -y[itr_y_z[p]])
-    itr_y_z!   = Tuple{Int, Int, Int, Int, Int, Float64}[]   # (pos, zidx, idx, cidx, j, L1) — pos indexes into itr_y_z
+    itr_y_z!   = Tuple{Int, Int, Int, Int, Int, Float64}[]   # (pos, zidx, idx, cidx, j, L1) where pos indexes into itr_y_z
     itr_y_z_ic = Tuple{Int, Int, Int}[]  # state observable at t=0 -> initial-condition node
 
     obs_y_groups = Dict{Tuple{String,String}, Vector{Int}}()
@@ -146,8 +133,7 @@ function _create_objective(
         parsed = Meta.parse(obs_expr_sub)
         obs_sym = parsed isa Symbol ? Symbolics.Num(Symbolics.variable(parsed)) :
                                       Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
-        # Detect SBML assignment rules in the RAW formula: if FLAT rules occur, bind them to ov aux
-        # variables (ov branch below); otherwise inline them by substitution (no-op when none occur).
+        # FLAT rules are bound to ov aux vars in the branch below, or inlined by substitution
         used = _used_rules(obs_sym)
         bound = !isempty(used) && all(r -> rule_is_flat[r], used)
         bound || (obs_sym = apply_rules(obs_sym))
@@ -175,9 +161,7 @@ function _create_objective(
                 end
             end
         elseif bound
-            # Bound branch: keep FLAT rule symbols as leaves and compile obs_func over
-            # [z; p; cv; rule_leaves]; each leaf is later fed its ov variable per node, so the kernel
-            # never re-expands the rule. Defer emission until ov vars exist.
+            # Compile obs_func over [z;p;cv;rule_leaves] with each leaf fed its ov var per node. Defer
             leaves     = [rule_lhs[r] for r in used]
             obs_efinal = Symbolics.substitute(obs_sym, dict_fixed_val)   # rule leaves survive
             obs_func   = Symbolics.build_function(
@@ -240,9 +224,7 @@ function _create_objective(
                     for (midx, idx, cidx) in itr_y_func
                 )
             end
-            # idx == N: final-time group. Defer (see pending_fin): feeding the inlined L1 (τ=1)
-            # endpoint sum into the nonlinear obs_func fuses into a kernel expression that
-            # overflows GPU param memory. Re-emitted below over single aux endpoint variables.
+            # idx==N: defer to pending_fin, re-emitted over aux endpoint vars zN below
             isempty(itr_y_func_N) || push!(pending_fin, (y, obs_func, itr_y_func_N))
         end
     end
@@ -294,8 +276,7 @@ function _create_objective(
         sigma_parsed_sym = sigma_parsed isa Symbol ?
             Symbolics.Num(Symbolics.variable(sigma_parsed)) :
             Symbolics.parse_expr_to_symbolic(sigma_parsed, @__MODULE__)
-        # Bound branch: if the noise formula contains FLAT assignment rules, bind them to ov aux
-        # variables (parallel to the observable bound branch) rather than inlining/expanding them.
+        # FLAT rules in the noise formula are bound to ov aux vars (parallels the observable branch)
         used_sig = _used_rules(sigma_parsed_sym)
         if !isempty(used_sig) && all(r -> rule_is_flat[r], used_sig)
             leaves   = [rule_lhs[r] for r in used_sig]
@@ -331,10 +312,8 @@ function _create_objective(
                 sigma0[midx] = p0[pidx] # warm start
             end
         else
-            # σ couples to states ONLY through the observable y (every PEtab benchmark noise form).
-            # Reduce σ to a function of the placeholder Y_sym + parameters (_reduce_sigma_to_obs); on
-            # success the constraint references y[midx] directly (sparser, σ never couples to z).
-            # Otherwise warn and fall back to a general state-dependent expression over (z, p, cv).
+            # Reduce σ to a function of Y_sym + params so the constraint references y[midx] directly
+            # (sparser). Fall back to a general (z,p,cv) expression if σ couples to states elsewhere
             obs_sym = get!(dict_obsid_obssym, obs_id) do
                 obs_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
                 op = Meta.parse(obs_raw)
@@ -343,8 +322,7 @@ function _create_objective(
                 Symbolics.substitute(apply_rules(s), dict_fixed_val)
             end
             sigma_reduced, reduced_ok = _reduce_sigma_to_obs(sigma_expr_final, obs_sym, Y_sym, z_syms)
-            # Conforming iff the reduction left no state AND only Y / parameters / cv remain
-            # (a stray symbol, e.g. an unreduced observableParameter, routes to the fallback).
+            # Conforming iff only Y / params / cv remain (a stray symbol routes to the fallback)
             allowed    = [Y_sym; p_syms; cv_syms]
             conforming = reduced_ok && all(
                 rv -> any(isequal(rv, a) for a in allowed),
@@ -419,7 +397,7 @@ function _create_objective(
                         for (midx, idx, cidx) in itr_sigma_func
                     )
                 end
-                # idx == N: final-time group; deferred like the observable (see pending_fin).
+                # idx == N: final-time group, deferred like the observable (see pending_fin)
                 isempty(itr_sigma_func_N) || push!(pending_fin, (sigma, sigma_func, itr_sigma_func_N))
             end
         end
@@ -429,11 +407,8 @@ function _create_objective(
     # Emit batched constraints for accumulated iterators
     ###############################################
     if !isempty(itr_y_z)
-        # y[midx] = Σ_{j=0}^{K} L_j(1) * z[zidx, i, j, cidx]
-        # NOTE: @add_con! indexes the base constraint by ROW POSITION (offset0 = o0 + key),
-        # NOT by the loop value. Base row p holds -y[itr_y_z[p]], so the augmentation must be
-        # keyed by that position p — keying by midx would mis-attach terms whenever itr_y_z
-        # is not the contiguous identity 1:Nm (e.g. multi-observable / multi-condition models).
+        # y[midx] = Σ_j L1[j+1] z[zidx,i,j,cidx]. @add_con! keys by ROW POSITION, so augment by pos
+        # not midx, since itr_y_z is not the contiguous identity for multi-obs/multi-cond models
         con_y_z = ExaModels.@add_con(c,
             -y[midx]
             for midx in itr_y_z
@@ -461,8 +436,7 @@ function _create_objective(
     end
 
     if !isempty(itr_sigma_p)
-        # sigma[midx] equals the PHYSICAL value of p[pidx]. pidx is a per-entry data
-        # index, so partition by scale and emit one fixed-form constraint per scale.
+        # sigma[midx] = physical value of p[pidx], partitioned by scale with one constraint per scale
         for sc in (:log10, :log, :lin)
             grp = [t for t in itr_sigma_p if pscale[t[2]] === sc]
             isempty(grp) && continue
@@ -479,11 +453,9 @@ function _create_objective(
     ###############################################
     # Final-time (τ=1, interval N) endpoint-state aux variables, zN
     ###############################################
-    # idx==N formulas need the state at the RIGHT endpoint of the last interval. The collocation
-    # nodes are interior (τ_K < 1), so that endpoint is the L1 extrapolation Σ_j L1[j+1] z[v,N,j,cidx];
-    # inlining that sum into a nonlinear function fuses a large kernel, so we bind ONE aux variable
-    # zN[v,col] to it (base + per-node augmentation) and feed that, like idx<N feeds z[v,idx+1,0,cidx].
-    # zN is all-Nz, created lazily for conditions with an idx==N group (pending_fin + ov rule nodes).
+    # idx==N needs the interval-N right endpoint (τ=1), the L1 sum Σ_j L1[j+1] z[v,N,j,cidx]. Bind
+    # one aux var zN[v,col] to it (avoids fusing a large nonlinear kernel), created lazily per
+    # condition with an idx==N group.
     needN  = sort(unique(vcat(
         [cidx for (_, _, rows) in pending_fin for (_, cidx) in rows],
         [cidx for (idx, cidx) in ov_nodes if idx == N],
@@ -516,11 +488,9 @@ function _create_objective(
     ###############################################
     # Observed-variable aux variables, ov (bound assignment rules)
     ###############################################
-    # Each FLAT rule in an obs/noise formula is bound to an aux var ov[relpos, nodeslot] =
-    # rule(state@node, p, cv), defined ONCE per (rule, node) and shared across formulas — so a large
-    # rule (e.g. EGFRtot = Σ72 species) is differentiated once as a small linear kernel, not inlined
-    # into every formula. Rectangular (rule × node) grid so the kernel feeds ov[literal, data] (like
-    # z); node feeding matches the formula (single node for idx<N, zN for idx==N).
+    # Bind each FLAT rule to ov[relpos,nodeslot] = rule(state@node,p,cv), one per (rule,node) and
+    # shared across formulas so a large rule is differentiated once instead of inlined everywhere.
+    # Rectangular rule×node grid. Node feeding matches the formula (single node idx<N, zN idx==N)
     if !isempty(pending_ov)
         rels     = sort(collect(relevant_rules))
         rel_pos  = Dict(r => i for (i, r) in enumerate(rels))
@@ -574,11 +544,9 @@ function _create_objective(
     return c, y0, sigma0
 end
 
-# Reduce a noise (σ) expression so its state-dependence enters ONLY through the observable. Every
-# PEtab benchmark noise form (c | θ | β·y | α+β·y | √(α²+(β·y)²)) is a function of the observable and
-# parameters, and the observable is affine in the states, so we solve O = Y for one observable-state
-# and substitute into σ; if σ depends on states only through O, every other state cancels. Robust to
-# Symbolics flattening β*(state*param). Returns (reduced_expr, ok); ok=true means no state remains.
+# Reduce a noise σ expression so its state-dependence enters only through the observable. Solve O=Y
+# for one observable-state (requires O affine in states) and substitute into σ. Returns
+# (reduced_expr, ok) where ok=true means no state remains
 function _reduce_sigma_to_obs(sigma_expr, obs_expr, Y_sym, z_syms)
     has_z(e) = any(zv -> any(isequal(v, zv) for v in Symbolics.get_variables(e)), z_syms)
     obs_states = [zv for zv in z_syms
@@ -597,14 +565,11 @@ function _reduce_sigma_to_obs(sigma_expr, obs_expr, Y_sym, z_syms)
     return (reduced, !has_z(reduced))
 end
 
-# Gaussian negative log-likelihood objective, matching PEtab.jl. Noise acts on the observable's
-# `observableTransformation` scale, so the residual is in transformed space with the change-of-
-# variables Jacobian:
+# Gaussian negative log-likelihood, matching PEtab.jl. Residual on the observableTransformation
+# scale, with the change-of-variables Jacobian in the trailing per-measurement constants:
 #   lin   : 0.5(y-ymeas)²/σ²               + log σ + 0.5log2π
 #   log   : 0.5(ln y - ln ymeas)²/σ²       + log σ + 0.5log2π + ln ymeas
 #   log10 : 0.5(log10 y - log10 ymeas)²/σ² + log σ + 0.5log2π + ln ymeas + ln(ln10)
-# y[midx]/sigma[midx] are the aux vars bound to states by the y/σ constraints; ymeas is data, so the
-# trailing terms are per-measurement constants. Shared by the time-course and steady-state paths.
 function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
     (; Nm) = PEinfo
     measurements_df = PEmodel.petab_tables[:measurements]
@@ -653,26 +618,21 @@ function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
     return c
 end
 
-# Parameter priors (MAP objective). PEtab's nllh adds a negative-log prior for every parameter with
-# an objectivePrior; omitting them leaves a constant objective offset vs PEtab (e.g. Schwen's 6
-# parameterScaleNormal priors = its entire gap). Supported: parameterScaleNormal/Laplace (on the
-# estimation-scale decision variable p[pidx]), uniform, and laplace (linear value, by parameter
-# scale); normalization constants are included so the objective matches PEtab.nllh. Unsupported
-# types (e.g. linear-scale normal) error out. Models without priors are byte-identical.
+# Parameter priors (MAP objective), matching PEtab.nllh with normalization constants. Supports
+# parameterScaleNormal and parameterScaleLaplace on the estimation-scale p[pidx], and laplace on
+# the physical value by scale. Uniform adds only a constant and is omitted. Unsupported types error out
 function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     params_df = PEmodel.petab_tables[:parameters]
     (:objectivePriorType in propertynames(params_df)) || return c   # no priors in this model
     p           = c.p
     HALF_LOG2PI = 0.5 * log(2π)
     dict_pidx   = _get_dict_pstr_pidx(PEprob)            # estimated-param name => p[pidx]
-    # parameterScale* priors act on the decision variable p[pidx] (estimation scale); normal/laplace/
-    # uniform priors act on the physical value (10^p / e^p for log10/log scale, p itself for lin).
+    # parameterScale* priors act on p[pidx] in estimation scale, and laplace acts on the physical value
     psnorm = Tuple{Int,Float64,Float64}[]    # parameterScaleNormal:  0.5((p-μ)/σ)² + logσ + ½log2π
     pslap  = Tuple{Int,Float64,Float64}[]    # parameterScaleLaplace: |p-μ|/b + log2b
     lap_li = Tuple{Int,Float64,Float64}[]    # laplace, lin-scale param:  |p-μ|/b + log2b
     lap_10 = Tuple{Int,Float64,Float64}[]    # laplace, log10-scale:      |10^p-μ|/b + log2b
     lap_e  = Tuple{Int,Float64,Float64}[]    # laplace, log-scale:        |e^p-μ|/b + log2b
-    unif   = Tuple{Int,Float64}[]            # uniform: constant log(b-a) (param stays in [a,b])
     for row in eachrow(params_df)
         ptype = _norm_cell(row[:objectivePriorType], Symbol(""))
         ptype === Symbol("") && continue                # blank => no prior
@@ -683,7 +643,7 @@ function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
         a   = parse(Float64, pp[1]); b = length(pp) >= 2 ? parse(Float64, pp[2]) : NaN
         if     ptype === :parameterscalenormal  ; push!(psnorm, (idx, a, b))
         elseif ptype === :parameterscalelaplace ; push!(pslap,  (idx, a, b))
-        elseif ptype === :uniform               ; push!(unif,   (idx, log(b - a)))
+        elseif ptype === :uniform               ; nothing   # constant offset with no effect on the optimum
         elseif ptype === :normal
             error("ExaModelsPEtab: unsupported objectivePriorType 'normal' (linear-scale Gaussian) for param $pid.")
         elseif ptype === :laplace
@@ -695,13 +655,12 @@ function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
             error("ExaModelsPEtab: unsupported objectivePriorType '$ptype' for param $pid.")
         end
     end
-    # Each @add_obj accumulates into the objective (capture the rebound core). abs is a registered
-    # ExaModels op (subgradient at the kink); the value is exact so the objective matches PEtab.nllh.
+
+    # Create objective function constraint
     isempty(psnorm) || ExaModels.@add_obj(c, 0.5*((p[i]-mu)/sg)^2 + log(sg) + HALF_LOG2PI for (i,mu,sg) in psnorm)
     isempty(pslap)  || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in pslap)
     isempty(lap_li) || ExaModels.@add_obj(c, abs(p[i]-mu)/b + log(2*b)               for (i,mu,b) in lap_li)
     isempty(lap_10) || ExaModels.@add_obj(c, abs(exp(log(10.0)*p[i])-mu)/b + log(2*b)     for (i,mu,b) in lap_10)
     isempty(lap_e)  || ExaModels.@add_obj(c, abs(exp(p[i])-mu)/b + log(2*b)          for (i,mu,b) in lap_e)
-    isempty(unif)   || ExaModels.@add_obj(c, cst + 0.0*p[i]                          for (i,cst) in unif)  # constant; 0·p keeps a var ref
     return c
 end
