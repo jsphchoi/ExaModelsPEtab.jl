@@ -18,6 +18,7 @@ module ExaModelsPEtab
 
     # Imports   
     import ExaModels: ExaCore, ExaModels
+    import ExaModelsCollocation as EMC  # collocation mesh, weights, and constraint helpers
     import PEtab: PEtabModel, PEtabODEProblem, PEtab    # TODO trim dependency: only import the PEtab .yaml file parser
     import ModelingToolkitBase as MTK 
     import Symbolics
@@ -26,7 +27,6 @@ module ExaModelsPEtab
     
     # Includes
     include("structs.jl")       # data structure for parameter estimation problem
-    include("constants.jl")     # get collocation equation constants
     include("utils.jl")         # build helper functions
     include("initialize.jl")    # get good initial conditions
     include("variables.jl")     # create decision variables

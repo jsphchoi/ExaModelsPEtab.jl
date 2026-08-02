@@ -22,83 +22,67 @@ function _create_lagrange(
         adaptive_mesh::Bool = false
     )
     # Unpack problem info
-    (; N, K, Np, Nc, Nz, Ncv, h, taus, pscale, gate_vals, t_nodes) = PEinfo
+    (; Np, Nc, Nz, Ncv, pscale, gate_vals) = PEinfo
+    N, K = c.N, c.K
 
     gate_syms = _get_gate_syms(PEprob)
     Ng = length(gate_syms)
 
     fs = _get_rhs_funcs(PEmodel, PEprob) # obtain ODE rhs equations
 
+    # Unpack variables (the core carries h[i], t[i,k], and the dlⱼdτ(τₖ) weights)
+    z = c.z; p = c.p
+    if Ncv >= 1
+        cv = c.cv
+    end
+
     if adaptive_mesh
         #############################################################################################
         # AMREE PATH: h / t_ij / gates as ExaModels parameters, indexed symbolically
         #############################################################################################
 
-        # Create mesh parameters, unpack variables
-        c, h_par = ExaModels.add_par(c, h; name = Val(:h_mesh))
-        t_init   = [t_nodes[i] + taus[k+1]*h[i] for i in 1:N, k in 1:K]
-        c, t_par = ExaModels.add_par(c, t_init; name = Val(:t_mesh))
+        # h / t_ij are the core's own parameter blocks; only the gates are ours to add
+        t_par = c.mesh.tpar
         g_par = nothing
         if Ng >= 1
             c, g_par = ExaModels.add_par(c, gate_vals; name = Val(:g_mesh))
         end
-        z = c.z; p = c.p
-        if Ncv >= 1
-            cv = c.cv
-        end
 
-        # Create collocation equations: -hi*f(...) = (...)
-        itr_coll = [(i,k,cidx) for i in 1:N, k in 1:K, cidx in 1:Nc]   # integer indices only
-        c_coll   = [
-            ExaModels.@add_con(c,
-                -h_par[i]*f(
+        # Create collocation equations: ∑dlⱼdτ(τₖ)*zᵢⱼ = hi*f(...), one call per rhs equation
+        for (vidx, f) in enumerate(fs)
+            itr_coll = [(vidx,cidx,i,k) for cidx in 1:Nc, i in 1:N, k in 1:K]  # integer indices only
+            EMC.@add_con_collocation(c, z,
+                f(
                     ntuple(v -> z[v,cidx,i,k], Nz)...,         # state vars
                     ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
                     ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
                     ntuple(g -> g_par[g,i,cidx], Ng)...,       # piecewise(time) gate values (θ)
                     t_par[i,k]                                 # time at collocation point (θ)
                 )
-                for (i,k,cidx) in itr_coll
+                for (vidx,cidx,i,k) in itr_coll
             )
-            for f in fs
-        ]
+        end
     else
         ####################################################################
         # CONSTANT MESH (NO AMREE)
         ####################################################################
-        # Unpack variables
-        z = c.z; p = c.p
-        if Ncv >= 1
-            cv = c.cv
-        end
 
-        # Create collocation equations: -hi*f(...) = (...)
-        itr_coll = [(i,k,cidx,h[i],t_nodes[i] + taus[k+1]*h[i], ntuple(g->gate_vals[g,i,cidx],Ng))
-                    for i in 1:N, k in 1:K, cidx in 1:Nc]
-        c_coll   = [
-            ExaModels.@add_con(c,
-                -hi*f(
+        # Create collocation equations: ∑dlⱼdτ(τₖ)*zᵢⱼ = hi*f(...), one call per rhs equation
+        t_mesh = c.mesh.t
+        for (vidx, f) in enumerate(fs)
+            itr_coll = [(vidx,cidx,ntuple(g->gate_vals[g,i,cidx],Ng),i,k,t_mesh[i,k])
+                        for cidx in 1:Nc, i in 1:N, k in 1:K]
+            EMC.@add_con_collocation(c, z,
+                f(
                     ntuple(v -> z[v,cidx,i,k], Nz)...,         # state vars
                     ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
                     ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
                     ntuple(g -> gv[g], Ng)...,                 # piecewise(time) gate values
                     t_ij                                       # time at collocation point
                 )
-                for (i,k,cidx,hi,t_ij,gv) in itr_coll
+                for (vidx,cidx,gv,i,k,t_ij) in itr_coll
             )
-            for f in fs
-        ]
-    end
-
-    # Constraint augmentation: (...) = ∑dlⱼdτ(τₖ)*zᵢⱼ  (mesh-independent; shared by both paths)
-    DLDTAU  = [_eval_dldtau(j,k,taus) for j in 0:K, k in 1:K]
-    itr_coll! = [(i,j,k,cidx,DLDTAU[j+1,k]) for i in 1:N, j in 0:K, k in 1:K, cidx in 1:Nc]
-    for v in eachindex(c_coll)
-        ExaModels.@add_con!(c,
-            c_coll[v],
-            (i,k,cidx) => z[v,cidx,i,j]*DLDTAU
-            for (i,j,k,cidx,DLDTAU) in itr_coll!
-        )
+        end
     end
 
     return c

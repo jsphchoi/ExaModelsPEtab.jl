@@ -5,6 +5,7 @@ authors = ["Joseph Choi <jsphchoi@mit.edu>"]
 
 [deps]
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+ExaModelsCollocation = "806a8761-d632-41d1-aec4-b1285f27c7c5"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 ModelingToolkitBase = "7771a370-6774-4173-bd38-47e70ca0b839"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
@@ -13,6 +14,7 @@ Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 
 [compat]
 ExaModels = "0.11"
+ExaModelsCollocation = "0.1"
 LinearAlgebra = "1"
 ModelingToolkitBase = "1"
 OrdinaryDiffEq = "6, 7"

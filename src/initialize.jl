@@ -1,8 +1,8 @@
 # Absolute tolerance for mesh-time comparisons (segment coverage and width caps).
 const _MESH_TOL = 1e-9
 
-# get initial guess for z and a lot of other things
-function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
+# get the interval mesh boundaries, and the nominal solution the initial guess interpolates
+function _get_mesh_nodes(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     # Get unique experimental measurement values
     PEtable = PEmodel.petab_tables
     t_meas = sort(unique(filter(t -> !iszero(t), PEtable[:measurements][!,:time])))
@@ -49,16 +49,18 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
         seg   = _subdivide_segment(sol_t[owner], a, b, h_cap)
         append!(t_nodes, isempty(t_nodes) ? seg : @view seg[2:end]) # drop the shared boundary `a`
     end
-    h = diff(t_nodes)
-    N = length(h) # number of intervals
-    taus = _taus(K) # get interpolation points
-    t_mesh = [t_nodes[i] + taus[j+1]*h[i] for i in 1:N, j in 0:K] # t_ij mesh; t_nodes[i]=exact left node (no cumsum drift)
+    return t_nodes, sol, t_meas
+end
+
+# get initial guess for z, interpolated onto the core's collocation mesh
+function _get_z_init(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, sol)
+    N, K = c.N, c.K
+    t_mesh = [j == 0 ? c.nodes[i] : c.mesh.t[i,j] for i in 1:N, j in 0:K] # t_ij mesh; nodes[i]=exact left node (no cumsum drift)
     t_vec_mesh = Array(reshape(t_mesh',N*(K+1))) # vectorize t_ij mesh
 
     # Get constants
     Nz = Int64(PEprob.model_info.nstates) # number of state variables
     Nc = sol.count # number of experimental conditions
-    L1 = [_eval_l(j,1.0,taus) for j in 0:K] # for interval continuity constraints later
 
     # Interpolate each condition's solution at every collocation point
     sol_at_mesh= [
@@ -68,7 +70,7 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     # Reshape vectorized solution to match ExaModels variable box z[v,cidx,i,k]
     z_init = permutedims(reshape(stack(sol_at_mesh), Nz, K+1, N, Nc), (1, 4, 3, 2))
 
-    return z_init, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes
+    return z_init, Nz, Nc
 end
 
 # Finds the largest interval width within a segment of time [a,b]

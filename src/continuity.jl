@@ -5,7 +5,7 @@ function _create_continuity(
         PEprob::PEtabODEProblem,
         PEinfo::PEInfo
     )
-    c = _create_interval_continuity(c, PEinfo)
+    c = _create_interval_continuity(c)
     c = _create_initial_conditions(c, PEmodel, PEprob, PEinfo)
     return c
 end
@@ -51,26 +51,11 @@ function _create_residual_ss(
 end
 
 # Create cross-interval continuity constraints
-function _create_interval_continuity(
-        c::ExaCore,
-        PEinfo::PEInfo
-    )
-    # Unpack problem info
-    (; Nz, N, Nc, L1, K) = PEinfo
+function _create_interval_continuity(c::ExaCore)
     z = c.z
 
-    # Create interval continuity equations
-    itr_cont1 = [(v,i,cidx) for v in 1:Nz, i in 1:N-1, cidx in 1:Nc]
-    con_interval = ExaModels.@add_con(c,
-        -z[v,cidx,i+1,0]
-        for (v,i,cidx) in itr_cont1
-    )
-    itr_cont1! = [(v,i,cidx,j,L1[j+1]) for v in 1:Nz, i in 1:N-1, cidx in 1:Nc, j in 0:K]
-    ExaModels.@add_con!(c,
-        con_interval,
-        (v,i,cidx) => L1j*z[v,cidx,i,j]
-        for (v,i,cidx,j,L1j) in itr_cont1!
-    )
+    # Create interval continuity equations: ∑ⱼlⱼ(1)*zᵢⱼ = zᵢ₊₁,₀ over every collocated slot
+    EMC.@add_con_continuity(c, z)
     return c
 end
 

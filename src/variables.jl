@@ -3,7 +3,8 @@ function _create_variables(
         c::ExaCore,
         PEmodel::PEtabModel,
         PEprob::PEtabODEProblem,
-        K::Int
+        sol,
+        t_meas::Vector
     )
     _assert_supported_events(PEmodel) # not supporting SBML <event> models
 
@@ -15,14 +16,14 @@ function _create_variables(
 
     # Create necessary variables (discretized state, unknown params) and obtain problem details (::PEInfo)
     c, Np = _create_p(c, PEprob)
-    c, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes = _create_z(c, PEmodel, PEprob, K)
+    c, Nz, Nc = _create_z(c, PEmodel, PEprob, sol)
 
     # Get ::PEInfo details
     Ncv = length(_get_cv_syms(PEmodel)) # number of condition-dependent variables
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
     pscale = _get_pscale(PEprob) # per-parameter estimation scale (:log10/:log/:lin), aligned 1:Np
-    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, h, taus, t_nodes) # get gate value profiles and steady-state values
-    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, N, K, t_meas, t_nodes, h, taus, L1, pscale, gate_vals, gate_vals_ss)
+    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, c.mesh.h, [0.0; c.weights.taus], c.nodes) # get gate value profiles and steady-state values
+    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, t_meas, pscale, gate_vals, gate_vals_ss)
 
     # OBJECTIVE FUNCTION: Create auxiliary variables for model observables, y
     c = _create_y(c, PEmodel, PEinfo)
@@ -65,16 +66,16 @@ end
 
 # Creates ExaModels decision variables for discretized states
 # z[1:Nz,1:Nc,1:N,0:K]
-function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
-    z_init, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes = _get_z_init(PEmodel, PEprob, K)
-    ExaModels.@add_var(c,
+function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, sol)
+    z_init, Nz, Nc = _get_z_init(c, PEmodel, PEprob, sol)
+    EMC.@add_var_collocation(c,
         z,
-        1:Nz, 1:Nc, 1:N, 0:K;
+        1:Nz, 1:Nc;
         start = z_init,
         lvar = -Inf,
         uvar = Inf
     )
-    return c, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes
+    return c, Nz, Nc
 end
 
 # Creates ExaModels decision variables for condition-dependent variables

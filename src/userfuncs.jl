@@ -51,11 +51,15 @@ function _build_petab_examodel(
         K::Int;
         adaptive_mesh::Bool = false
     )
-    # Create ExaCore
-    c = ExaModels.ExaCore(; backend, concrete = Val(true))
+    # Solve ODE at nominal p to place the interval mesh
+    t_nodes, sol, t_meas = _get_mesh_nodes(PEmodel, PEprob)
 
-    # Create decision variables {p,z,cv,y,sigma,zss} and mesh info
-    c, PEinfo = _create_variables(c, PEmodel, PEprob, K)
+    # Create CollocationExaCore (carries the mesh, collocation points, and weights)
+    c = EMC.CollocationExaCore(t_nodes, K;
+        roots = EMC.GaussLegendre(), backend = backend, adaptive = adaptive_mesh)
+
+    # Create decision variables {p,z,cv,y,sigma,zss} and problem info
+    c, PEinfo = _create_variables(c, PEmodel, PEprob, sol, t_meas)
     
     # Create collocation constraints
     c = _create_collocation(c, PEmodel, PEprob, PEinfo; adaptive_mesh = adaptive_mesh)

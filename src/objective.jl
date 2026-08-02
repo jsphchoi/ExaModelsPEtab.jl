@@ -6,7 +6,8 @@ function _create_objective(
         PEinfo::PEInfo
     )
     # Unpack problem info
-    (; Np, Ncv, Nz, Nc, Nm, N, K, t_meas, L1, pscale, t_nodes) = PEinfo
+    (; Np, Ncv, Nz, Nc, Nm, t_meas, pscale) = PEinfo
+    N, K, L1, t_nodes = c.N, c.K, c.weights.b, c.nodes # mesh/collocation data off the core
     z = c.z
     p = c.p
     y = c.y

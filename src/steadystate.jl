@@ -69,9 +69,8 @@ function _create_variables_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     gate_syms = _get_gate_syms(PEprob)
     gate_vals_ss = _get_gate_vals_ss(PEmodel, PEprob)
 
-    # Create PEinfo with empty fields for mesh info (N, K, t_meas, t_nodes, h, taus, L1)
-    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, 
-        0, 0, [Inf], Float64[], Float64[], Float64[], Float64[], 
+    # Create PEinfo (no mesh on the steady-state path; t_meas is the time=Inf sentinel)
+    PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, [Inf],
         pscale, zeros(Float64, length(gate_syms), 0, Nc), gate_vals_ss
     )
 
