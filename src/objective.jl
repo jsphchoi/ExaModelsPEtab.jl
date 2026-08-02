@@ -8,6 +8,9 @@ function _create_objective(
     # Unpack problem info
     (; Np, Ncv, Nz, Nc, Nm, t_meas, pscale) = PEinfo
     N, K, L1, t_nodes = c.N, c.K, c.weights.b, c.nodes # mesh/collocation data off the core
+    # Radau/Lobatto collocate τ=1, so an interval's right endpoint IS its k=K node: the lⱼ(1)
+    # sum and the zN aux variables it needs are only built for Legendre
+    tau1 = isapprox(c.weights.taus[end], 1.0; atol = 1e-12)
     z = c.z
     p = c.p
     y = c.y
@@ -24,6 +27,8 @@ function _create_objective(
     cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, Nc)
     y0     = zeros(Float64, Nm) # computed observable values at the initial guess
     sigma0 = zeros(Float64, Nm) # computed noise (std) values at the initial guess
+    # right endpoint (τ=1) of interval i at the initial guess
+    zend0(v, cidx, i) = tau1 ? z0[v, cidx, i, K+1] : sum(L1[j+1]*z0[v, cidx, i, j+1] for j in 0:K)
 
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
@@ -110,6 +115,7 @@ function _create_objective(
     itr_y_z    = Int[]                                       # midx values (row p holds -y[itr_y_z[p]])
     itr_y_z!   = Tuple{Int, Int, Int, Int, Int, Float64}[]   # (pos, zidx, idx, cidx, j, L1) where pos indexes into itr_y_z
     itr_y_z_ic = Tuple{Int, Int, Int}[]  # state observable at t=0 -> initial-condition node
+    itr_y_z_pt = Tuple{Int, Int, Int, Int}[] # (midx, zidx, idx, cidx) when τ=1 is a collocation point
 
     obs_y_groups = Dict{Tuple{String,String}, Vector{Int}}()
     for midx in 1:Nm
@@ -153,6 +159,10 @@ function _create_objective(
                     # (the L1 interval-interpolation has no interval 0 to extrapolate).
                     push!(itr_y_z_ic, (midx, zidx, cidx))
                     y0[midx] = z0[zidx, cidx, 1, 1]
+                elseif tau1
+                    # τ=1 is collocated: the endpoint of interval idx is its k=K node
+                    push!(itr_y_z_pt, (midx, zidx, idx, cidx))
+                    y0[midx] = z0[zidx, cidx, idx, K+1]
                 else
                     # y[midx] = Σ_j L1[j+1] * z[zidx, cidx, idx, j] (τ=1 endpoint of interval idx)
                     push!(itr_y_z, midx)
@@ -173,7 +183,7 @@ function _create_objective(
                 cidx = dict_cid_cidx[string(row[:simulationConditionId])]
                 idx  = dict_t_tidx[Float64(row[:time])]
                 # node state at the initial guess (single node for idx<N, L1 endpoint for idx==N)
-                zatt0 = idx == N ? ntuple(v -> sum(L1[jj+1]*z0[v, cidx, N, jj+1] for jj in 0:K), Nz) :
+                zatt0 = idx == N ? ntuple(v -> zend0(v, cidx, N), Nz) :
                                    ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
                 rvals = ntuple(k -> _rule_func(used[k])(zatt0..., p0..., cv0[:, cidx]...), length(used))
                 y0[midx] = obs_func(zatt0..., p0..., cv0[:, cidx]..., rvals...)
@@ -202,7 +212,7 @@ function _create_objective(
                 # warm start: evaluate obs_func at the initial guess, mirroring the constraint
                 if idx == N
                     push!(itr_y_func_N, (midx, cidx))
-                    zatt = ntuple(v -> sum(L1[jj+1] * z0[v, cidx, N, jj+1] for jj in 0:K), Nz)
+                    zatt = ntuple(v -> zend0(v, cidx, N), Nz)
                 else
                     push!(itr_y_func, (midx, idx, cidx))
                     zatt = ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
@@ -289,7 +299,7 @@ function _create_objective(
                 row  = measurements_df[midx, :]
                 cidx = dict_cid_cidx[string(row[:simulationConditionId])]
                 idx  = dict_t_tidx[Float64(row[:time])]
-                zatt0 = idx == N ? ntuple(v -> sum(L1[jj+1]*z0[v, cidx, N, jj+1] for jj in 0:K), Nz) :
+                zatt0 = idx == N ? ntuple(v -> zend0(v, cidx, N), Nz) :
                                    ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
                 rvals = ntuple(k -> _rule_func(used_sig[k])(zatt0..., p0..., cv0[:, cidx]...), length(used_sig))
                 sigma0[midx] = sigma_func(zatt0..., p0..., cv0[:, cidx]..., rvals...)
@@ -375,7 +385,7 @@ function _create_objective(
                     # warm start: evaluate sigma_func at the initial guess, mirroring the constraint
                     if idx == N
                         push!(itr_sigma_func_N, (midx, cidx))
-                        zatt = ntuple(v -> sum(L1[jj+1] * z0[v, cidx, N, jj+1] for jj in 0:K), Nz)
+                        zatt = ntuple(v -> zend0(v, cidx, N), Nz)
                     else
                         push!(itr_sigma_func, (midx, idx, cidx))
                         zatt = ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
@@ -421,6 +431,14 @@ function _create_objective(
         )
     end
 
+    if !isempty(itr_y_z_pt)
+        # τ=1 collocated: read the endpoint node straight off z, no lⱼ(1) sum
+        ExaModels.@add_con(c,
+            y[midx] - z[zidx,cidx,idx,K]
+            for (midx, zidx, idx, cidx) in itr_y_z_pt
+        )
+    end
+
     if !isempty(itr_y_z_ic)
         # t=0 state observables: y[midx] = z[zidx, cidx, 1, 0] (initial-condition node)
         ExaModels.@add_con(c,
@@ -463,27 +481,40 @@ function _create_objective(
     )))
     col_of = Dict(cidx => col for (col, cidx) in enumerate(needN))
     zN0    = Matrix{Float64}(undef, Nz, length(needN))
-    if !isempty(needN)
-        zN0 = [sum(L1[j+1]*z0[v, needN[col], N, j+1] for j in 0:K) for v in 1:Nz, col in 1:length(needN)]
+    if !isempty(needN) && !tau1
+        zN0 = [zend0(v, needN[col], N) for v in 1:Nz, col in 1:length(needN)]
         ExaModels.@add_var(c, zN, 1:Nz, 1:length(needN); start = zN0, lvar = -Inf, uvar = Inf)
         # zN[v,col] - Σ_j L1[j+1] z[v,needN[col],N,j] = 0  (base row + per-node augmentation)
         itr_zN  = [(v, col) for v in 1:Nz, col in 1:length(needN)]
         con_zN  = ExaModels.@add_con(c, zN[v,col] for (v,col) in itr_zN)
         itr_zN! = [(v, col, needN[col], j, L1[j+1]) for v in 1:Nz, col in 1:length(needN), j in 0:K]
         ExaModels.@add_con!(c, con_zN, (v,col) => -L1j*z[v,cidx,N,j] for (v,col,cidx,j,L1j) in itr_zN!)
+    elseif !isempty(needN)
+        zN0 = [zend0(v, needN[col], N) for v in 1:Nz, col in 1:length(needN)]
     end
 
-    # Re-emit the deferred final-time (non-rule) constraints, now over single zN variables.
+    # Re-emit the deferred final-time (non-rule) constraints, over the τ=1 node or the zN aux var
     for (aux, func, rows) in pending_fin
         rows_c = [(midx, col_of[cidx], cidx) for (midx, cidx) in rows]
-        ExaModels.@add_con(c,
-            aux[midx] - func(
-                ntuple(v -> zN[v,col], Nz)...,
-                ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                ntuple(m -> cv[m,cidx], Ncv)...
+        if tau1
+            ExaModels.@add_con(c,
+                aux[midx] - func(
+                    ntuple(v -> z[v,cidx,N,K], Nz)...,
+                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                    ntuple(m -> cv[m,cidx], Ncv)...
+                )
+                for (midx, col, cidx) in rows_c
             )
-            for (midx, col, cidx) in rows_c
-        )
+        else
+            ExaModels.@add_con(c,
+                aux[midx] - func(
+                    ntuple(v -> zN[v,col], Nz)...,
+                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                    ntuple(m -> cv[m,cidx], Ncv)...
+                )
+                for (midx, col, cidx) in rows_c
+            )
+        end
     end
 
     ###############################################
@@ -518,9 +549,13 @@ function _create_objective(
             isempty(lt) || ExaModels.@add_con(c,
                 ov[ii,s] - rf(ntuple(v->z[v,cidx,idx+1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
                 for (ii,s,idx,cidx) in lt)
-            isempty(eN) || ExaModels.@add_con(c,
-                ov[ii,s] - rf(ntuple(v->zN[v,col],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
-                for (ii,s,col,cidx) in eN)
+            isempty(eN) || (tau1 ?
+                ExaModels.@add_con(c,
+                    ov[ii,s] - rf(ntuple(v->z[v,cidx,N,K],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
+                    for (ii,s,col,cidx) in eN) :
+                ExaModels.@add_con(c,
+                    ov[ii,s] - rf(ntuple(v->zN[v,col],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
+                    for (ii,s,col,cidx) in eN))
         end
 
         # Re-emit the deferred bound obs/noise constraints over single nodes + ov leaves.
@@ -534,11 +569,17 @@ function _create_objective(
                     ntuple(v->z[v,cidx,idx+1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
                     ntuple(k->ov[upos[k], s], length(upos))...)
                 for (midx,s,idx,cidx) in lt)
-            isempty(eN) || ExaModels.@add_con(c,
-                aux[midx] - func(
-                    ntuple(v->zN[v,col],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
-                    ntuple(k->ov[upos[k], s], length(upos))...)
-                for (midx,s,col,cidx) in eN)
+            isempty(eN) || (tau1 ?
+                ExaModels.@add_con(c,
+                    aux[midx] - func(
+                        ntuple(v->z[v,cidx,N,K],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
+                        ntuple(k->ov[upos[k], s], length(upos))...)
+                    for (midx,s,col,cidx) in eN) :
+                ExaModels.@add_con(c,
+                    aux[midx] - func(
+                        ntuple(v->zN[v,col],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
+                        ntuple(k->ov[upos[k], s], length(upos))...)
+                    for (midx,s,col,cidx) in eN))
         end
     end
 

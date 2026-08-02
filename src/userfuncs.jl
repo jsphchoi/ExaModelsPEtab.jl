@@ -1,5 +1,5 @@
 """
-    petab_examodel(filename::String; backend = nothing, K = 4, adaptive_mesh = false)
+    petab_examodel(filename::String; backend = nothing, K = 4, adaptive_mesh = false, roots = GaussRadau())
 
 Builds an `ExaModels.ExaModel` from a PEtab YAML file at `filename`.
 
@@ -7,6 +7,8 @@ kwargs:
 - `backend` array backend: `nothing` for CPU or `CUDA.CUDABackend()` for GPU
 - `K::Int` degree of Lagrange interpolating basis polynomial
 - `adaptive_mesh::Bool` set to `true` to enable adaptive mesh refinement
+- `roots` collocation family, `GaussRadau()`, `GaussLegendre()`, or `GaussLobatto()`
+- `basis` state representation, `StateForm()` or `DerivativeForm()`
 
 # Example
 ```julia
@@ -29,8 +31,18 @@ function petab_examodel(
         filename::String;
         backend = nothing,
         K::Int = 4,
-        adaptive_mesh::Bool = false
+        adaptive_mesh::Bool = false,
+        roots = EMC.GaussRadau(),
+        basis = EMC.StateForm()
     )
+    # The objective reads interval right endpoints. Radau/Lobatto collocate tau=1 so the
+    # endpoint is a node; Legendre needs the lⱼ(1) sum, which only StateForm's weights carry
+    roots isa EMC.GaussLegendre && basis isa EMC.DerivativeForm && error(
+        "ExaModelsPEtab: GaussLegendre with DerivativeForm is unsupported; no collocation " *
+        "point sits at tau = 1 and DerivativeForm's weights are ∫lⱼ, not lⱼ(1), so the " *
+        "measurement endpoints cannot be formed. Use GaussRadau() or StateForm()."
+    )
+
     # Parse PEtab YAML file using PEtab.jl
     PEmodel = PEtab.PEtabModel(filename)    # TODO trim dependencies
     PEprob = PEtab.PEtabODEProblem(PEmodel) # TODO trim dependencies
@@ -39,7 +51,8 @@ function petab_examodel(
     if _is_steady_state(PEmodel)
         return _build_petab_examodel_ss(PEmodel, PEprob, backend)
     else
-        return _build_petab_examodel(PEmodel, PEprob, backend, K; adaptive_mesh = adaptive_mesh)
+        return _build_petab_examodel(PEmodel, PEprob, backend, K;
+            adaptive_mesh = adaptive_mesh, roots = roots, basis = basis)
     end
 end
 
@@ -49,14 +62,16 @@ function _build_petab_examodel(
         PEprob::PEtabODEProblem,
         backend,
         K::Int;
-        adaptive_mesh::Bool = false
+        adaptive_mesh::Bool = false,
+        roots = EMC.GaussRadau(),
+        basis = EMC.StateForm()
     )
     # Solve ODE at nominal p to place the interval mesh
     t_nodes, sol, t_meas = _get_mesh_nodes(PEmodel, PEprob)
 
     # Create CollocationExaCore (carries the mesh, collocation points, and weights)
     c = EMC.CollocationExaCore(t_nodes, K;
-        roots = EMC.GaussLegendre(), backend = backend, adaptive = adaptive_mesh)
+        roots = roots, basis = basis, backend = backend, adaptive = adaptive_mesh)
 
     # Create decision variables {p,z,cv,y,sigma,zss} and problem info
     c, PEinfo = _create_variables(c, PEmodel, PEprob, sol, t_meas)
