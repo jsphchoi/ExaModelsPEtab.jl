@@ -13,7 +13,7 @@ end
 _var_starts(c::ExaCore, v) = Array(view(c.x0, (v.offset + 1):(v.offset + v.length)))
 
 # (!!!) Returns ::Vector{Symbolics.Num} of state variables
-# z[1:Nz,i,k,cidx]
+# z[1:Nz,cidx,i,k]
 function _get_z_syms(PEprob::PEtabODEProblem)::Vector{Symbolics.Num}
     sys = PEprob.model_info.model.sys
     return MTK.unknowns(sys)
@@ -245,7 +245,7 @@ function _get_gate_syms(PEprob::PEtabODEProblem)::Vector{Symbolics.Num}
     ]
 end
 
-# Returns a vector (indexed by v=1:Nz) for each ODE RHS equation, f[v]([z[:,i,k,cidx]; p; cv[:,cidx]; gates; t]...)
+# Returns a vector (indexed by v=1:Nz) for each ODE RHS equation, f[v]([z[:,cidx,i,k]; p; cv[:,cidx]; gates; t]...)
 function _get_rhs_funcs(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     sys = PEprob.model_info.model.sys
 

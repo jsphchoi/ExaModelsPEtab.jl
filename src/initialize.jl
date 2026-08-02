@@ -65,8 +65,8 @@ function _get_z_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
         sol[cid](t)
         for t in t_vec_mesh, cid in Symbol.(_get_cids(PEmodel))
     ]
-    # Reshape vectorized solution to match ExaModels variable box z[v,i,k,cidx]
-    z_init = permutedims(reshape(stack(sol_at_mesh), Nz, K+1, N, Nc), (1, 3, 2, 4))
+    # Reshape vectorized solution to match ExaModels variable box z[v,cidx,i,k]
+    z_init = permutedims(reshape(stack(sol_at_mesh), Nz, K+1, N, Nc), (1, 4, 3, 2))
 
     return z_init, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes
 end

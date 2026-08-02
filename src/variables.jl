@@ -64,12 +64,12 @@ function _create_p(c::ExaCore, PEprob::PEtabODEProblem)
 end
 
 # Creates ExaModels decision variables for discretized states
-# z[1:Nz,1:N,0:K,1:Nc]
+# z[1:Nz,1:Nc,1:N,0:K]
 function _create_z(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem, K::Int)
     z_init, Nz, N, K, Nc, t_meas, h, taus, L1, t_nodes = _get_z_init(PEmodel, PEprob, K)
     ExaModels.@add_var(c,
         z,
-        1:Nz, 1:N, 0:K, 1:Nc;
+        1:Nz, 1:Nc, 1:N, 0:K;
         start = z_init,
         lvar = -Inf,
         uvar = Inf

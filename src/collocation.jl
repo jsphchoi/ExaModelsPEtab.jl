@@ -52,7 +52,7 @@ function _create_lagrange(
         c_coll   = [
             ExaModels.@add_con(c,
                 -h_par[i]*f(
-                    ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
+                    ntuple(v -> z[v,cidx,i,k], Nz)...,         # state vars
                     ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
                     ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
                     ntuple(g -> g_par[g,i,cidx], Ng)...,       # piecewise(time) gate values (θ)
@@ -78,7 +78,7 @@ function _create_lagrange(
         c_coll   = [
             ExaModels.@add_con(c,
                 -hi*f(
-                    ntuple(v -> z[v,i,k,cidx], Nz)...,         # state vars
+                    ntuple(v -> z[v,cidx,i,k], Nz)...,         # state vars
                     ntuple(m -> _p_phys(p,m,pscale), Np)...,   # physical params (10^θ)
                     ntuple(m -> cv[m,cidx], Ncv)...,           # condition-dep. vars
                     ntuple(g -> gv[g], Ng)...,                 # piecewise(time) gate values
@@ -96,7 +96,7 @@ function _create_lagrange(
     for v in eachindex(c_coll)
         ExaModels.@add_con!(c,
             c_coll[v],
-            (i,k,cidx) => z[v,i,j,cidx]*DLDTAU
+            (i,k,cidx) => z[v,cidx,i,j]*DLDTAU
             for (i,j,k,cidx,DLDTAU) in itr_coll!
         )
     end

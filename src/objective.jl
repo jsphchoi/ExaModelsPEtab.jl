@@ -16,7 +16,7 @@ function _create_objective(
     end
 
     # Warm start: evaluate y/sigma formulas at the z,p,cv initial point for feasible set_start! values
-    z0  = reshape(_var_starts(c, z), Nz, N, K + 1, Nc) # z0[v, i, j+1, cidx]
+    z0  = reshape(_var_starts(c, z), Nz, Nc, N, K + 1) # z0[v, cidx, i, j+1]
     θ0  = _var_starts(c, p)                            # decision var p := θ (estimation scale)
     p0  = [_p_phys_val(θ0, m, pscale) for m in 1:Np]   # PHYSICAL parameter starts (10^θ)
     # cv has Ncc >= Nc columns (extra x0SSpre pre-eq columns). Objective reads only the first Nc
@@ -148,16 +148,16 @@ function _create_objective(
                 cidx = dict_cid_cidx[cid]
                 idx  = dict_t_tidx[time]
                 if idx == 0
-                    # t = 0: state is the initial-condition node z[zidx,1,0,cidx] directly
+                    # t = 0: state is the initial-condition node z[zidx,cidx,1,0] directly
                     # (the L1 interval-interpolation has no interval 0 to extrapolate).
                     push!(itr_y_z_ic, (midx, zidx, cidx))
-                    y0[midx] = z0[zidx, 1, 1, cidx]
+                    y0[midx] = z0[zidx, cidx, 1, 1]
                 else
-                    # y[midx] = Σ_j L1[j+1] * z[zidx, idx, j, cidx] (τ=1 endpoint of interval idx)
+                    # y[midx] = Σ_j L1[j+1] * z[zidx, cidx, idx, j] (τ=1 endpoint of interval idx)
                     push!(itr_y_z, midx)
                     pos = length(itr_y_z)   # this midx's row position in con_y_z
                     append!(itr_y_z!, [(pos, zidx, idx, cidx, j, L1[j+1]) for j in 0:K])
-                    y0[midx] = sum(L1[j+1] * z0[zidx, idx, j+1, cidx] for j in 0:K)
+                    y0[midx] = sum(L1[j+1] * z0[zidx, cidx, idx, j+1] for j in 0:K)
                 end
             end
         elseif bound
@@ -172,8 +172,8 @@ function _create_objective(
                 cidx = dict_cid_cidx[string(row[:simulationConditionId])]
                 idx  = dict_t_tidx[Float64(row[:time])]
                 # node state at the initial guess (single node for idx<N, L1 endpoint for idx==N)
-                zatt0 = idx == N ? ntuple(v -> sum(L1[jj+1]*z0[v, N, jj+1, cidx] for jj in 0:K), Nz) :
-                                   ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+                zatt0 = idx == N ? ntuple(v -> sum(L1[jj+1]*z0[v, cidx, N, jj+1] for jj in 0:K), Nz) :
+                                   ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
                 rvals = ntuple(k -> _rule_func(used[k])(zatt0..., p0..., cv0[:, cidx]...), length(used))
                 y0[midx] = obs_func(zatt0..., p0..., cv0[:, cidx]..., rvals...)
                 push!(rows, (midx, idx, cidx)); push!(ov_nodes, (idx, cidx))
@@ -190,7 +190,7 @@ function _create_objective(
                 expression = Val{false}
             )
 
-            itr_y_func   = Tuple{Int, Int, Int}[]  # idx < N : state = z[·,idx+1,0,·] (one node)
+            itr_y_func   = Tuple{Int, Int, Int}[]  # idx < N : state = z[·,·,idx+1,0] (one node)
             itr_y_func_N = Tuple{Int, Int}[]       # idx = N : state = L1 endpoint of interval N
             for midx in group_midxs
                 row  = measurements_df[midx, :]
@@ -201,10 +201,10 @@ function _create_objective(
                 # warm start: evaluate obs_func at the initial guess, mirroring the constraint
                 if idx == N
                     push!(itr_y_func_N, (midx, cidx))
-                    zatt = ntuple(v -> sum(L1[jj+1] * z0[v, N, jj+1, cidx] for jj in 0:K), Nz)
+                    zatt = ntuple(v -> sum(L1[jj+1] * z0[v, cidx, N, jj+1] for jj in 0:K), Nz)
                 else
                     push!(itr_y_func, (midx, idx, cidx))
-                    zatt = ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+                    zatt = ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
                 end
                 y0[midx] = obs_func(
                     zatt...,
@@ -217,7 +217,7 @@ function _create_objective(
             if !isempty(itr_y_func)
                 ExaModels.@add_con(c,
                     y[midx] - obs_func(
-                        ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
+                        ntuple(v -> z[v,cidx,idx+1,0], Nz)...,
                         ntuple(m -> _p_phys(p,m,pscale), Np)...,
                         ntuple(m -> cv[m,cidx], Ncv)...
                     )
@@ -288,8 +288,8 @@ function _create_objective(
                 row  = measurements_df[midx, :]
                 cidx = dict_cid_cidx[string(row[:simulationConditionId])]
                 idx  = dict_t_tidx[Float64(row[:time])]
-                zatt0 = idx == N ? ntuple(v -> sum(L1[jj+1]*z0[v, N, jj+1, cidx] for jj in 0:K), Nz) :
-                                   ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+                zatt0 = idx == N ? ntuple(v -> sum(L1[jj+1]*z0[v, cidx, N, jj+1] for jj in 0:K), Nz) :
+                                   ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
                 rvals = ntuple(k -> _rule_func(used_sig[k])(zatt0..., p0..., cv0[:, cidx]...), length(used_sig))
                 sigma0[midx] = sigma_func(zatt0..., p0..., cv0[:, cidx]..., rvals...)
                 push!(rows, (midx, idx, cidx)); push!(ov_nodes, (idx, cidx))
@@ -374,10 +374,10 @@ function _create_objective(
                     # warm start: evaluate sigma_func at the initial guess, mirroring the constraint
                     if idx == N
                         push!(itr_sigma_func_N, (midx, cidx))
-                        zatt = ntuple(v -> sum(L1[jj+1] * z0[v, N, jj+1, cidx] for jj in 0:K), Nz)
+                        zatt = ntuple(v -> sum(L1[jj+1] * z0[v, cidx, N, jj+1] for jj in 0:K), Nz)
                     else
                         push!(itr_sigma_func, (midx, idx, cidx))
-                        zatt = ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+                        zatt = ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
                     end
                     sigma0[midx] = sigma_func(
                         zatt...,
@@ -390,7 +390,7 @@ function _create_objective(
                 if !isempty(itr_sigma_func)
                     ExaModels.@add_con(c,
                         sigma[midx] - sigma_func(
-                            ntuple(v -> z[v,idx+1,0,cidx], Nz)...,
+                            ntuple(v -> z[v,cidx,idx+1,0], Nz)...,
                             ntuple(m -> _p_phys(p,m,pscale), Np)...,
                             ntuple(m -> cv[m,cidx], Ncv)...
                         )
@@ -407,7 +407,7 @@ function _create_objective(
     # Emit batched constraints for accumulated iterators
     ###############################################
     if !isempty(itr_y_z)
-        # y[midx] = Σ_j L1[j+1] z[zidx,i,j,cidx]. @add_con! keys by ROW POSITION, so augment by pos
+        # y[midx] = Σ_j L1[j+1] z[zidx,cidx,i,j]. @add_con! keys by ROW POSITION, so augment by pos
         # not midx, since itr_y_z is not the contiguous identity for multi-obs/multi-cond models
         con_y_z = ExaModels.@add_con(c,
             -y[midx]
@@ -415,15 +415,15 @@ function _create_objective(
         )
         ExaModels.@add_con!(c,
             con_y_z,
-            pos => L1j*z[v,i,j,cidx]
+            pos => L1j*z[v,cidx,i,j]
             for (pos, v, i, cidx, j, L1j) in itr_y_z!
         )
     end
 
     if !isempty(itr_y_z_ic)
-        # t=0 state observables: y[midx] = z[zidx, 1, 0, cidx] (initial-condition node)
+        # t=0 state observables: y[midx] = z[zidx, cidx, 1, 0] (initial-condition node)
         ExaModels.@add_con(c,
-            y[midx] - z[zidx,1,0,cidx]
+            y[midx] - z[zidx,cidx,1,0]
             for (midx, zidx, cidx) in itr_y_z_ic
         )
     end
@@ -453,7 +453,7 @@ function _create_objective(
     ###############################################
     # Final-time (τ=1, interval N) endpoint-state aux variables, zN
     ###############################################
-    # idx==N needs the interval-N right endpoint (τ=1), the L1 sum Σ_j L1[j+1] z[v,N,j,cidx]. Bind
+    # idx==N needs the interval-N right endpoint (τ=1), the L1 sum Σ_j L1[j+1] z[v,cidx,N,j]. Bind
     # one aux var zN[v,col] to it (avoids fusing a large nonlinear kernel), created lazily per
     # condition with an idx==N group.
     needN  = sort(unique(vcat(
@@ -463,13 +463,13 @@ function _create_objective(
     col_of = Dict(cidx => col for (col, cidx) in enumerate(needN))
     zN0    = Matrix{Float64}(undef, Nz, length(needN))
     if !isempty(needN)
-        zN0 = [sum(L1[j+1]*z0[v, N, j+1, needN[col]] for j in 0:K) for v in 1:Nz, col in 1:length(needN)]
+        zN0 = [sum(L1[j+1]*z0[v, needN[col], N, j+1] for j in 0:K) for v in 1:Nz, col in 1:length(needN)]
         ExaModels.@add_var(c, zN, 1:Nz, 1:length(needN); start = zN0, lvar = -Inf, uvar = Inf)
-        # zN[v,col] - Σ_j L1[j+1] z[v,N,j,needN[col]] = 0  (base row + per-node augmentation)
+        # zN[v,col] - Σ_j L1[j+1] z[v,needN[col],N,j] = 0  (base row + per-node augmentation)
         itr_zN  = [(v, col) for v in 1:Nz, col in 1:length(needN)]
         con_zN  = ExaModels.@add_con(c, zN[v,col] for (v,col) in itr_zN)
         itr_zN! = [(v, col, needN[col], j, L1[j+1]) for v in 1:Nz, col in 1:length(needN), j in 0:K]
-        ExaModels.@add_con!(c, con_zN, (v,col) => -L1j*z[v,N,j,cidx] for (v,col,cidx,j,L1j) in itr_zN!)
+        ExaModels.@add_con!(c, con_zN, (v,col) => -L1j*z[v,cidx,N,j] for (v,col,cidx,j,L1j) in itr_zN!)
     end
 
     # Re-emit the deferred final-time (non-rule) constraints, now over single zN variables.
@@ -502,7 +502,7 @@ function _create_objective(
         ov0 = Matrix{Float64}(undef, nrel, nnode)
         for (s, (idx, cidx)) in enumerate(nodes)
             zatt0 = idx == N ? ntuple(v -> zN0[v, col_of[cidx]], Nz) :
-                               ntuple(v -> z0[v, idx+1, 1, cidx], Nz)
+                               ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
             for (i, r) in enumerate(rels)
                 ov0[i, s] = _rule_func(r)(zatt0..., p0..., cv0[:, cidx]...)
             end
@@ -515,7 +515,7 @@ function _create_objective(
             lt = [(i, node_slot[(idx,cidx)], idx, cidx) for (idx,cidx) in nodes if idx < N]
             eN = [(i, node_slot[(idx,cidx)], col_of[cidx], cidx) for (idx,cidx) in nodes if idx == N]
             isempty(lt) || ExaModels.@add_con(c,
-                ov[ii,s] - rf(ntuple(v->z[v,idx+1,0,cidx],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
+                ov[ii,s] - rf(ntuple(v->z[v,cidx,idx+1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
                 for (ii,s,idx,cidx) in lt)
             isempty(eN) || ExaModels.@add_con(c,
                 ov[ii,s] - rf(ntuple(v->zN[v,col],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
@@ -530,7 +530,7 @@ function _create_objective(
             eN = [(midx, node_slot[(idx,cidx)], col_of[cidx], cidx) for (midx,idx,cidx) in rows if idx == N]
             isempty(lt) || ExaModels.@add_con(c,
                 aux[midx] - func(
-                    ntuple(v->z[v,idx+1,0,cidx],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
+                    ntuple(v->z[v,cidx,idx+1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
                     ntuple(k->ov[upos[k], s], length(upos))...)
                 for (midx,s,idx,cidx) in lt)
             isempty(eN) || ExaModels.@add_con(c,

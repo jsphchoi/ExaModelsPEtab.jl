@@ -62,13 +62,13 @@ function _create_interval_continuity(
     # Create interval continuity equations
     itr_cont1 = [(v,i,cidx) for v in 1:Nz, i in 1:N-1, cidx in 1:Nc]
     con_interval = ExaModels.@add_con(c,
-        -z[v,i+1,0,cidx]
+        -z[v,cidx,i+1,0]
         for (v,i,cidx) in itr_cont1
     )
     itr_cont1! = [(v,i,cidx,j,L1[j+1]) for v in 1:Nz, i in 1:N-1, cidx in 1:Nc, j in 0:K]
     ExaModels.@add_con!(c,
         con_interval,
-        (v,i,cidx) => L1j*z[v,i,j,cidx]
+        (v,i,cidx) => L1j*z[v,cidx,i,j]
         for (v,i,cidx,j,L1j) in itr_cont1!
     )
     return c
@@ -103,8 +103,8 @@ function _create_initial_conditions(
         # zss is indexed by simulation condition cidx (zss[:, cidx]).
         itr_ss1 = [(v,cidx) for v in 1:Nz, cidx in 1:Nc]
         ExaModels.@add_con(c,
-            # z[:,1,0,cidx] = zss[:,cidx]
-            z[v,1,0,cidx] - zss[v,cidx]
+            # z[:,cidx,1,0] = zss[:,cidx]
+            z[v,cidx,1,0] - zss[v,cidx]
             for (v,cidx) in itr_ss1
         )
 
@@ -177,7 +177,7 @@ function _create_initial_conditions(
         if !isempty(itr_z0_fix)
             # Initial condition is a fixed numeric value
             ExaModels.@add_con(c,
-                z[v,1,0,cidx] - val
+                z[v,cidx,1,0] - val
                 for (v, cidx, val) in itr_z0_fix
             )
         end
@@ -187,18 +187,18 @@ function _create_initial_conditions(
                 grp = [t for t in itr_z0_p if pscale[t[3]] === sc]
                 isempty(grp) && continue
                 if sc === :log10
-                    ExaModels.@add_con(c, z[v,1,0,cidx] - exp(log(10.0)*p[pidx]) for (v,cidx,pidx) in grp)
+                    ExaModels.@add_con(c, z[v,cidx,1,0] - exp(log(10.0)*p[pidx]) for (v,cidx,pidx) in grp)
                 elseif sc === :log
-                    ExaModels.@add_con(c, z[v,1,0,cidx] - exp(p[pidx])           for (v,cidx,pidx) in grp)
+                    ExaModels.@add_con(c, z[v,cidx,1,0] - exp(p[pidx])           for (v,cidx,pidx) in grp)
                 else
-                    ExaModels.@add_con(c, z[v,1,0,cidx] - p[pidx]                for (v,cidx,pidx) in grp)
+                    ExaModels.@add_con(c, z[v,cidx,1,0] - p[pidx]                for (v,cidx,pidx) in grp)
                 end
             end
         end
         if !isempty(itr_z0_cv)
             # Initial condition is a condition-dependent variable, cv
             ExaModels.@add_con(c,
-                z[v,1,0,cidx] - cv[cvidx,cidx]
+                z[v,cidx,1,0] - cv[cvidx,cidx]
                 for (v, cidx, cvidx) in itr_z0_cv
             )
         end
@@ -206,7 +206,7 @@ function _create_initial_conditions(
             # Initial condition is some arbitrary function, f(p,cv)
             for (v, z0_func) in itr_z0_func
                 ExaModels.@add_con(c,
-                    z[v,1,0,cidx] - z0_func(
+                    z[v,cidx,1,0] - z0_func(
                         ntuple(m -> _p_phys(p,m,pscale), Np)...,
                         ntuple(m -> cv[m,cidx], Ncv)...
                     )
