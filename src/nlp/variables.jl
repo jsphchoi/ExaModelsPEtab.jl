@@ -22,7 +22,7 @@ function _create_variables(
     Ncv = length(_get_cv_syms(PEmodel)) # number of condition-dependent variables
     Nm = length(eachrow(PEmodel.petab_tables[:measurements])) # number of data measurements
     pscale = _get_pscale(PEprob) # per-parameter estimation scale (:log10/:log/:lin), aligned 1:Np
-    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, c.mesh.h, [0.0; c.weights.taus], c.nodes) # get gate value profiles and steady-state values
+    gate_vals, gate_vals_ss = _get_gate_vals(PEmodel, PEprob, c) # get gate value profiles and steady-state values
     PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, t_meas, pscale, gate_vals, gate_vals_ss)
 
     # OBJECTIVE FUNCTION: Create auxiliary variables for model observables, y
@@ -52,7 +52,7 @@ function _create_p(c::ExaCore, PEprob::PEtabODEProblem)
     # p[1:Np] := θ, the actual decision variable for ExaModels.
     θ_LB   = Array(lower_bounds)        # estimation scale
     θ_UB   = Array(upper_bounds)        # estimation scale
-    θ_init = Array(PEtab.get_x(PEprob)) # estimation-scale nominal (the ODE-solve point)
+    θ_init = Array(get_x(PEprob)) # estimation-scale nominal (the ODE-solve point)
     @assert all(θ_LB .<= θ_init .<= θ_UB) "Nominal θ values fall outside estimation-scale bounds."
     ExaModels.@add_var(c,
         p,
@@ -154,9 +154,13 @@ end
 # sigma[1:Nm]
 function _create_sigma(c::ExaCore, PEinfo::PEInfo)
     (; Nm) = PEinfo
+    # sigma is a standard deviation and the objective takes log(sigma), so it needs a floor
+    # clear of MadNLP's bound_relax_factor (1e-8 by default), which relaxes a tighter one
+    # straight through zero and makes log throw
     ExaModels.@add_var(c,
         sigma,
-        1:Nm # set_start! added later
+        1:Nm; # set_start! added later
+        lvar = 1e-6
     )
     return c
 end

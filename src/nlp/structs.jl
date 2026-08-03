@@ -1,5 +1,4 @@
 # Parameter Estimation Info (problem details for formulating the ExaModels build)
-# Mesh/collocation data (N, K, nodes, h, taus, L1) lives on the CollocationExaCore instead
 struct PEInfo{T <: Number}
     # Basic counts
     Np::Int     # number of parameters
@@ -18,12 +17,3 @@ struct PEInfo{T <: Number}
     gate_vals::Array{Float64,3}         # Ng×N×Nc gate value on each (interval i, condition cidx)
     gate_vals_ss::Array{Float64,2}      # Ng×Nc gate value for the steady-state residual per condition
 end
-
-# Create PEInfo with:
-# PEinfo = PEInfo(Np, Nz, Nc, Ncv, Nm, t_meas, pscale, gate_vals, gate_vals_ss)
-
-# Unpack PEInfo with:
-# (; Np, Nz, Nc, Ncv, Nm, t_meas, pscale, gate_vals, gate_vals_ss) = PEinfo
-
-# Unpack mesh/collocation data off the CollocationExaCore with:
-# c.N, c.K, c.nodes, c.mesh.h, c.mesh.t, c.weights.taus, c.weights.b

@@ -3,23 +3,21 @@ function _create_collocation(
         c::ExaCore,
         PEmodel::PEtabModel,
         PEprob::PEtabODEProblem,
-        PEinfo::PEInfo;
-        adaptive_mesh::Bool = false
+        PEinfo::PEInfo
     )
-    c = _create_lagrange(c, PEmodel, PEprob, PEinfo; adaptive_mesh = adaptive_mesh)
+    c = _create_lagrange(c, PEmodel, PEprob, PEinfo)
     c = _create_cv_constraints(c, PEmodel, PEprob, PEinfo)
     return c
 end
 
 # Create lagrange collocation equations
-# Set adaptive_mesh = true to make h[i] and t[i,j] into ExaModels parameters instead of
+# A core built with adaptive = true has h[i] and t[i,j] as ExaModels parameters instead of
 # constants (for AMREE implementation later on). Prolongs compile time
 function _create_lagrange(
         c::ExaCore,
         PEmodel::PEtabModel,
         PEprob::PEtabODEProblem,
-        PEinfo::PEInfo;
-        adaptive_mesh::Bool = false
+        PEinfo::PEInfo
     )
     # Unpack problem info
     (; Np, Nc, Nz, Ncv, pscale, gate_vals) = PEinfo
@@ -36,7 +34,7 @@ function _create_lagrange(
         cv = c.cv
     end
 
-    if adaptive_mesh
+    if c.adaptive
         #############################################################################################
         # AMREE PATH: h / t_ij / gates as ExaModels parameters, indexed symbolically
         #############################################################################################
@@ -50,7 +48,7 @@ function _create_lagrange(
 
         # Create collocation equations: ∑dlⱼdτ(τₖ)*zᵢⱼ = hi*f(...), one call per rhs equation
         for (vidx, f) in enumerate(fs)
-            itr_coll = [(vidx,cidx,i,k) for cidx in 1:Nc, i in 1:N, k in 1:K]  # integer indices only
+            itr_coll = [(vidx,cidx,i,k) for cidx in 1:Nc, i in 1:N, k in 1:K]
             EMC.@add_con_collocation(c, z,
                 f(
                     ntuple(v -> z[v,cidx,i,k], Nz)...,         # state vars

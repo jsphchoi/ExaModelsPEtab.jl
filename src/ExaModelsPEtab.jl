@@ -6,38 +6,50 @@ using simultaneous method for dynamic optimization (orthogonal collocation), bui
 [ExaModels](https://github.com/exanauts/ExaModels.jl) `ExaModel`.
 
 # Usage
-[`petab_examodel`](@ref) builds the `ExaModel` from a PEtab problem YAML.
+[`examodel_petab`](@ref) builds the `ExaModel` from a PEtab problem YAML
 
 ```julia
 using ExaModelsPEtab, MadNLP
-m = petab_examodel("path/to/problem.yaml")
-madnlp(m)
+model = examodel_petab("path/to/problem.yaml")
+res = madnlp(model)
 ```
 """
 module ExaModelsPEtab
 
-    # Imports   
-    import ExaModels: ExaCore, ExaModels
-    import ExaModelsCollocation as EMC  # collocation mesh, weights, and constraint helpers
-    import PEtab: PEtabModel, PEtabODEProblem, PEtab    # TODO trim dependency: only import the PEtab .yaml file parser
-    import ModelingToolkitBase as MTK 
-    import Symbolics
-    import OrdinaryDiffEq as ODE        # used to solve ODE using stiff solver at nominal p to obtain mesh and good initial guess
-    import LinearAlgebra                # used to detect and eliminate conservation law redundant DOF in steady-state model
-    
-    # Includes
-    include("structs.jl")       # data structure for parameter estimation problem
-    include("utils.jl")         # build helper functions
-    include("initialize.jl")    # get good initial conditions
-    include("variables.jl")     # create decision variables
-    include("collocation.jl")   # create collocation equality constraints
-    include("continuity.jl")    # create continuity equality constraints
-    include("objective.jl")     # create objective function
-    include("steadystate.jl")   # steady-state (time = inf) model path
+import ExaModels: ExaCore, ExaModels
 
-    # Exports
-    include("userfuncs.jl")     # user-end functions
-    export petab_examodel
-    # TODO add plot(filename, result) or something similar using specified data visualization file in the future
+# for creating collocation constraints
+import ExaModelsCollocation as EMC
+
+# for parsing PEtab file -> symbolic model
+import PEtab: PEtabModel, PEtabODEProblem, get_x, get_odeproblem
+
+# for building callback functions from symbolic model
+import ModelingToolkitBase as MTK 
+import Symbolics
+
+# for initial solve & steady-state model analysis
+import OrdinaryDiffEq as ODE
+import LinearAlgebra
+    
+for file in [
+        "structs",
+        "utils",
+        "initialize",
+        "variables",
+        "collocation",
+        "continuity",
+        "objective",
+        "steadystate",
+    ]
+    include("nlp/$file.jl")
+end
+
+include("exports.jl")
+export examodel_petab
+
+# ExaModelsPEtabPlotsExt.jl
+include("plotres.jl")
+export plotsol
 
 end

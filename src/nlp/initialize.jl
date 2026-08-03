@@ -1,6 +1,20 @@
 # Absolute tolerance for mesh-time comparisons (segment coverage and width caps).
 const _MESH_TOL = 1e-9
 
+# Floor on the interval count: no interval may exceed (full horizon)/_NMIN, so sparsely
+# measured models still get a mesh fine enough to integrate on.
+const _NMIN = 50
+
+# sort|unique over times that only differ by roundoff. Two nodes a few ulp apart make a
+# degenerate interval that no gate value can describe, so they must collapse to one
+function _unique_tol(ts)
+    out = Float64[]
+    for t in sort(collect(Float64, ts))
+        (isempty(out) || t - out[end] > _MESH_TOL * max(1.0, abs(t))) && push!(out, t)
+    end
+    return out
+end
+
 # get the interval mesh boundaries, and the nominal solution the initial guess interpolates
 function _get_mesh_nodes(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     # Get unique experimental measurement values
@@ -14,7 +28,7 @@ function _get_mesh_nodes(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     t_stops  = sort(unique(vcat(t_meas, t_events)))
 
     # Solve all experimental conditions at nominal values (tstops = measurements ∪ events ⇒ nodes)
-    p_nominal = PEtab.get_x(PEprob)
+    p_nominal = get_x(PEprob)
     sol = _solve_conds(p_nominal, PEmodel, PEprob, t_stops)
 
     # Construct the mesh
@@ -39,17 +53,18 @@ function _get_mesh_nodes(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     # Global mesh heuristic: within each (B)oundary, adopt the finest mesh
     # over the conditions which runs over this interval, while imposing the
     # smallest largest stepsize over every condition (min max h cap)
+    h_max = (T_global - t_start) / _NMIN                            # global cap ⇒ at least _NMIN intervals
     t_nodes = Float64[]
     for k in 1:length(B)-1
         a, b = B[k], B[k+1]
         covering = [cidx for cidx in eachindex(cids) if t_end[cidx] >= b - _MESH_TOL]
         isempty(covering) && (covering = [argmax(t_end)])           # tail beyond all data: longest cond
-        h_cap = minimum(_seg_maxwidth(sol_t[cidx], a, b) for cidx in covering)
+        h_cap = min(h_max, minimum(_seg_maxwidth(sol_t[cidx], a, b) for cidx in covering))
         owner = _pick_owner(covering, t_end, sol_t, a, b)
         seg   = _subdivide_segment(sol_t[owner], a, b, h_cap)
         append!(t_nodes, isempty(t_nodes) ? seg : @view seg[2:end]) # drop the shared boundary `a`
     end
-    return t_nodes, sol, t_meas
+    return _unique_tol(t_nodes), sol, t_meas
 end
 
 # get initial guess for z, interpolated onto the core's collocation mesh
@@ -117,7 +132,7 @@ function _solve_conds(p_nominal, PEmodel::PEtabModel, PEprob::PEtabODEProblem, t
             pos === nothing && continue # condition not simulated (pre-eq only)
             cond_arg = preeq_ids[pos] => sim_ids[pos]
         end
-        odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
+        odesys, callbacks = get_odeproblem(p_nominal, PEprob; condition = cond_arg)
 
         # Integrate every condition over the entire mesh span so we can obtain z_init for the whole mesh
         t_end = isempty(tstops) ? odesys.tspan[2] : max(maximum(tstops), odesys.tspan[2])
@@ -143,13 +158,13 @@ function _get_zss_init(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEI
     cids      = Symbol.(_get_cids(PEmodel))
     sim_ids   = si.conditionids[:simulation]
     preeq_ids = si.conditionids[:pre_equilibration]
-    p_nominal = PEtab.get_x(PEprob)
+    p_nominal = get_x(PEprob)
 
     zss_inits = zeros(Nz, Nc)
     for (cidx, cid) in enumerate(cids)
         pos = findfirst(==(cid), sim_ids)
         pos === nothing && continue   # condition not simulated (pre-eq only)
-        oprob, _ = PEtab.get_odeproblem(p_nominal, PEprob;
+        oprob, _ = get_odeproblem(p_nominal, PEprob;
                                         condition = preeq_ids[pos] => sim_ids[pos])
         zss_inits[:, cidx] = oprob.u0[1:Nz]
     end

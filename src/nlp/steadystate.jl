@@ -30,7 +30,7 @@ end
 # by solving the ODE to steady-state (t=1e8, as PEtab does) and taking final states
 function _get_zss_init_sim(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nz, Nc) = PEinfo
-    p_nominal = PEtab.get_x(PEprob)
+    p_nominal = get_x(PEprob)
     cids      = Symbol.(_get_cids(PEmodel))
     solver    = PEprob.probinfo.solver.solver
     abstol    = PEprob.probinfo.solver.abstol
@@ -39,7 +39,7 @@ function _get_zss_init_sim(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo:
     # One forward solve per condition to t=1e8; the terminal state is the steady state
     zss0 = zeros(Float64, Nz, Nc)
     for (cidx, cid) in enumerate(cids)
-        odesys, callbacks = PEtab.get_odeproblem(p_nominal, PEprob; condition = cid)
+        odesys, callbacks = get_odeproblem(p_nominal, PEprob; condition = cid)
         odesys = ODE.remake(odesys; tspan = (odesys.tspan[1], 1.0e8))
         sol = ODE.solve(
             odesys, solver;
@@ -168,17 +168,8 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     # Per group: parse the observable formula and add y[midx] = obs(zss[:,cidx]) (single state ⇒ direct)
     for ((obs_id, obs_params_str), group_midxs) in obs_y_groups
         obs_expr_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
-        obs_expr_sub = obs_expr_raw
-        if !isempty(obs_params_str)
-            parts         = strip.(split(obs_params_str, ";"))
-            replace_pairs = ["observableParameter$(n)_$(obs_id)" => parts[n] for n in eachindex(parts)]
-            obs_expr_sub  = replace(obs_expr_sub, replace_pairs...)
-        end
-
-        parsed  = Meta.parse(obs_expr_sub)
-        obs_sym = parsed isa Symbol ? Symbolics.Num(Symbolics.variable(parsed)) :
-                                      Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
-        obs_sym = apply_rules(obs_sym)
+        obs_expr_sub = _sub_placeholders(obs_expr_raw, obs_params_str, "observable", obs_id)
+        obs_sym      = apply_rules(_to_symbolic(obs_expr_sub))
 
         zidx = findfirst(x -> isequal(x, obs_sym), z_syms)  # observable is a single state?
         if zidx !== nothing
@@ -244,12 +235,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
     # sigma is \in {numeric value, p[pidx], f(observable y), f(z...)}
     for ((obs_id, noise_params_str), group_midxs) in obs_sigma_groups
         sigma_expr_raw = string(dict_obsid_obsrow[obs_id][:noiseFormula])
-        sigma_expr_sub = sigma_expr_raw
-        if !isempty(noise_params_str)
-            parts         = strip.(split(noise_params_str, ";"))
-            replace_pairs = ["noiseParameter$(n)_$(obs_id)" => parts[n] for n in eachindex(parts)]
-            sigma_expr_sub = replace(sigma_expr_raw, replace_pairs...)
-        end
+        sigma_expr_sub = _sub_placeholders(sigma_expr_raw, noise_params_str, "noise", obs_id)
 
         # sigma is a numeric value
         sigma_val = tryparse(Float64, strip(sigma_expr_sub))
@@ -261,11 +247,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
             continue
         end
 
-        sigma_parsed     = Meta.parse(sigma_expr_sub)
-        sigma_parsed_sym = sigma_parsed isa Symbol ?
-            Symbolics.Num(Symbolics.variable(sigma_parsed)) :
-            Symbolics.parse_expr_to_symbolic(sigma_parsed, @__MODULE__)
-        sigma_parsed_sym = apply_rules(sigma_parsed_sym)
+        sigma_parsed_sym = apply_rules(_to_symbolic(sigma_expr_sub))
         sigma_expr_final = Symbolics.substitute(sigma_parsed_sym, dict_fixed_val)
 
         sigma_free   = Symbolics.get_variables(sigma_expr_final)
@@ -282,10 +264,7 @@ function _create_objective_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
             # sigma can only be a function of the observable y, so it is indirectly state-dependent
             obs_sym = get!(dict_obsid_obssym, obs_id) do
                 obs_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
-                op = Meta.parse(obs_raw)
-                s  = op isa Symbol ? Symbolics.Num(Symbolics.variable(op)) :
-                                     Symbolics.parse_expr_to_symbolic(op, @__MODULE__)
-                Symbolics.substitute(apply_rules(s), dict_fixed_val)
+                Symbolics.substitute(apply_rules(_to_symbolic(obs_raw)), dict_fixed_val)
             end
             sigma_reduced, reduced_ok = _reduce_sigma_to_obs(sigma_expr_final, obs_sym, Y_sym, z_syms)
             allowed    = [Y_sym; p_syms; cv_syms]
@@ -377,7 +356,7 @@ function _conservation_ss(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProbl
     (; Nz, Nc, Np, Ncv, pscale, gate_vals_ss) = PEinfo
     zss0 = reshape(_var_starts(c, c.zss), Nz, Nc)
     cv0  = Ncv >= 1 ? reshape(_var_starts(c, c.cv), Ncv, :) : zeros(Float64, 0, Nc)
-    θ    = PEtab.get_x(PEprob)
+    θ    = get_x(PEprob)
     p0   = [_p_phys_val(θ, m, pscale) for m in 1:Np]
 
     # Derive initial guess for the ss variables
@@ -426,18 +405,18 @@ end
 function _initial_conditions_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem, PEinfo::PEInfo)
     (; Nz, Nc) = PEinfo
     cids = Symbol.(_get_cids(PEmodel))
-    θ    = PEtab.get_x(PEprob)
+    θ    = get_x(PEprob)
     # Baseline u0 per condition at nominal theta
     u0s  = zeros(Float64, Nz, Nc)
     for (cidx, cid) in enumerate(cids)
-        oprob, _ = PEtab.get_odeproblem(θ, PEprob; condition = cid)
+        oprob, _ = get_odeproblem(θ, PEprob; condition = cid)
         u0s[:, cidx] = oprob.u0[1:Nz]
     end
     # Check for theta dependence of initial condition
     θ2 = θ .+ 0.1
     ic_theta_dep = false
     for (cidx, cid) in enumerate(cids)
-        oprob, _ = PEtab.get_odeproblem(θ2, PEprob; condition = cid)
+        oprob, _ = get_odeproblem(θ2, PEprob; condition = cid)
         if maximum(abs, oprob.u0[1:Nz] .- view(u0s, :, cidx)) > 1.0e-8 * (1.0 + maximum(abs, view(u0s, :, cidx)))
             ic_theta_dep = true
             break

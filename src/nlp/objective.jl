@@ -1,4 +1,27 @@
 # (*) Main function for creating ExaModels objective function (*)
+#
+# Runs in phases, in this order, because each one feeds the next:
+#   1. the Gaussian nll objective and any parameter priors  (_add_nll_objective/_add_prior_objective)
+#   2. observable (y) formulas   -> direct constraints, or a deferred row if the formula needs an
+#                                   aux var that does not exist yet
+#   3. noise (sigma) formulas    -> same, and may reuse y0 from phase 2
+#   4. the batched iterators phases 2-3 accumulated
+#   5. ov, the bound assignment-rule aux vars, then the pending_ov rows that needed them
+#
+# Phases 2 and 3 are the same dispatch over a parsed table formula, specialized per side:
+#
+#   formula is...            | y                        | sigma
+#   -------------------------|--------------------------|---------------------------
+#   a numeric literal        | -                        | itr_sigma_fix
+#   a single state z         | itr_y_z / _ic            | -
+#   a single parameter p     | -                        | itr_sigma_p
+#   only FLAT rule leaves    | pending_ov               | pending_ov
+#   reducible to σ(y,p,cv)   | -                        | direct constraint on y[midx]
+#   anything else            | itr_y_func(+_ic)         | itr_sigma_func(+_ic)
+#
+# A measurement lands on one of two node kinds, which is what the idx branching keys off:
+# idx == 0 is the initial-condition node z[·,·,1,0], and idx >= 1 is interval idx's τ=1 right
+# endpoint, which Radau/Lobatto collocate as its k=K node.
 function _create_objective(
         c::ExaCore,
         PEmodel::PEtabModel,
@@ -7,10 +30,7 @@ function _create_objective(
     )
     # Unpack problem info
     (; Np, Ncv, Nz, Nc, Nm, t_meas, pscale) = PEinfo
-    N, K, L1, t_nodes = c.N, c.K, c.weights.b, c.nodes # mesh/collocation data off the core
-    # Radau/Lobatto collocate τ=1, so an interval's right endpoint IS its k=K node: the lⱼ(1)
-    # sum and the zN aux variables it needs are only built for Legendre
-    tau1 = isapprox(c.weights.taus[end], 1.0; atol = 1e-12)
+    N, K, t_nodes = c.N, c.K, c.nodes # mesh/collocation data off the core
     z = c.z
     p = c.p
     y = c.y
@@ -27,8 +47,6 @@ function _create_objective(
     cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, Nc)
     y0     = zeros(Float64, Nm) # computed observable values at the initial guess
     sigma0 = zeros(Float64, Nm) # computed noise (std) values at the initial guess
-    # right endpoint (τ=1) of interval i at the initial guess
-    zend0(v, cidx, i) = tau1 ? z0[v, cidx, i, K+1] : sum(L1[j+1]*z0[v, cidx, i, j+1] for j in 0:K)
 
     PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
     measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
@@ -47,6 +65,14 @@ function _create_objective(
     # Parsed table values => ExaModels variable index mappings
     dict_cid_cidx = _get_dict_cid_cidx(PEmodel)
     dict_t_tidx   = _get_dict_t_tidx(t_nodes, t_meas)
+
+    # (condition index, mesh interval index) a measurement row maps to
+    node_of(row) = (dict_cid_cidx[string(row[:simulationConditionId])],
+                    dict_t_tidx[Float64(row[:time])])
+    # state at a measurement node at the initial guess: the initial-condition node, or the τ=1
+    # right endpoint of interval idx
+    zatt0_at(cidx, idx) = idx == 0 ? ntuple(v -> z0[v, cidx, 1, 1], Nz) :
+                                     ntuple(v -> z0[v, cidx, idx, K+1], Nz)
 
     # Substitute in fixed constant values
     dict_all_val = Dict(PEprob.model_info.model.parametermap)
@@ -84,10 +110,6 @@ function _create_objective(
     has_obs_params_col   = :observableParameters in propertynames(measurements_df)
     has_noise_params_col = :noiseParameters      in propertynames(measurements_df)
 
-    # Deferred idx==N obs/noise constraints, re-emitted over aux endpoint vars zN below (inlining the
-    # L1 endpoint sum into a nonlinear kernel overflows GPU param memory). (aux, func, [(midx,cidx)])
-    pending_fin = Tuple{Any, Any, Vector{Tuple{Int,Int}}}[]
-
     # Bind each FLAT assignment rule to an aux var ov[·] once per node instead of inlining a large
     # rule into every formula, which inflates compile time. Nested rules fall back to inlining
     rule_ids, rule_lhs, rule_rhs, rule_is_flat = _rule_table(PEprob)
@@ -112,10 +134,8 @@ function _create_objective(
     # Group measurements by (obsId, observableParameters) so that each unique
     # formula gets its own compiled ExaModels constraint.
     ###############################################
-    itr_y_z    = Int[]                                       # midx values (row p holds -y[itr_y_z[p]])
-    itr_y_z!   = Tuple{Int, Int, Int, Int, Int, Float64}[]   # (pos, zidx, idx, cidx, j, L1) where pos indexes into itr_y_z
+    itr_y_z    = Tuple{Int, Int, Int, Int}[] # (midx, zidx, idx, cidx) -> interval idx's k=K node
     itr_y_z_ic = Tuple{Int, Int, Int}[]  # state observable at t=0 -> initial-condition node
-    itr_y_z_pt = Tuple{Int, Int, Int, Int}[] # (midx, zidx, idx, cidx) when τ=1 is a collocation point
 
     obs_y_groups = Dict{Tuple{String,String}, Vector{Int}}()
     for midx in 1:Nm
@@ -128,18 +148,8 @@ function _create_objective(
     for ((obs_id, obs_params_str), group_midxs) in obs_y_groups
         obs_expr_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
 
-        # Substitute observableParameter${n}_${obs_id} placeholders with the
-        # n-th semicolon-delimited entry from this group's observableParameters.
-        obs_expr_sub = obs_expr_raw
-        if !isempty(obs_params_str)
-            parts        = strip.(split(obs_params_str, ";"))
-            replace_pairs = ["observableParameter$(n)_$(obs_id)" => parts[n] for n in eachindex(parts)]
-            obs_expr_sub = replace(obs_expr_sub, replace_pairs...)
-        end
-
-        parsed = Meta.parse(obs_expr_sub)
-        obs_sym = parsed isa Symbol ? Symbolics.Num(Symbolics.variable(parsed)) :
-                                      Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
+        obs_expr_sub = _sub_placeholders(obs_expr_raw, obs_params_str, "observable", obs_id)
+        obs_sym      = _to_symbolic(obs_expr_sub)
         # FLAT rules are bound to ov aux vars in the branch below, or inlined by substitution
         used = _used_rules(obs_sym)
         bound = !isempty(used) && all(r -> rule_is_flat[r], used)
@@ -149,26 +159,14 @@ function _create_objective(
         if zidx !== nothing
             # Observable is a single state variable: y[midx] = state at the measurement time.
             for midx in group_midxs
-                row  = measurements_df[midx, :]
-                cid  = string(row[:simulationConditionId])
-                time = Float64(row[:time])
-                cidx = dict_cid_cidx[cid]
-                idx  = dict_t_tidx[time]
+                cidx, idx = node_of(measurements_df[midx, :])
                 if idx == 0
                     # t = 0: state is the initial-condition node z[zidx,cidx,1,0] directly
-                    # (the L1 interval-interpolation has no interval 0 to extrapolate).
                     push!(itr_y_z_ic, (midx, zidx, cidx))
                     y0[midx] = z0[zidx, cidx, 1, 1]
-                elseif tau1
-                    # τ=1 is collocated: the endpoint of interval idx is its k=K node
-                    push!(itr_y_z_pt, (midx, zidx, idx, cidx))
-                    y0[midx] = z0[zidx, cidx, idx, K+1]
                 else
-                    # y[midx] = Σ_j L1[j+1] * z[zidx, cidx, idx, j] (τ=1 endpoint of interval idx)
-                    push!(itr_y_z, midx)
-                    pos = length(itr_y_z)   # this midx's row position in con_y_z
-                    append!(itr_y_z!, [(pos, zidx, idx, cidx, j, L1[j+1]) for j in 0:K])
-                    y0[midx] = sum(L1[j+1] * z0[zidx, cidx, idx, j+1] for j in 0:K)
+                    push!(itr_y_z, (midx, zidx, idx, cidx))
+                    y0[midx] = z0[zidx, cidx, idx, K+1]
                 end
             end
         elseif bound
@@ -179,12 +177,8 @@ function _create_objective(
                 obs_efinal, [z_syms; p_syms; cv_syms; leaves]..., expression = Val{false})
             rows = Tuple{Int, Int, Int}[]
             for midx in group_midxs
-                row  = measurements_df[midx, :]
-                cidx = dict_cid_cidx[string(row[:simulationConditionId])]
-                idx  = dict_t_tidx[Float64(row[:time])]
-                # node state at the initial guess (single node for idx<N, L1 endpoint for idx==N)
-                zatt0 = idx == N ? ntuple(v -> zend0(v, cidx, N), Nz) :
-                                   ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
+                cidx, idx = node_of(measurements_df[midx, :])
+                zatt0 = zatt0_at(cidx, idx)   # node state at the initial guess
                 rvals = ntuple(k -> _rule_func(used[k])(zatt0..., p0..., cv0[:, cidx]...), length(used))
                 y0[midx] = obs_func(zatt0..., p0..., cv0[:, cidx]..., rvals...)
                 push!(rows, (midx, idx, cidx)); push!(ov_nodes, (idx, cidx))
@@ -201,22 +195,13 @@ function _create_objective(
                 expression = Val{false}
             )
 
-            itr_y_func   = Tuple{Int, Int, Int}[]  # idx < N : state = z[·,·,idx+1,0] (one node)
-            itr_y_func_N = Tuple{Int, Int}[]       # idx = N : state = L1 endpoint of interval N
+            itr_y_func    = Tuple{Int, Int, Int}[]  # idx >= 1 : state = z[·,·,idx,K]
+            itr_y_func_ic = Tuple{Int, Int}[]       # idx = 0  : state = z[·,·,1,0]
             for midx in group_midxs
-                row  = measurements_df[midx, :]
-                cid  = string(row[:simulationConditionId])
-                time = Float64(row[:time])
-                cidx = dict_cid_cidx[cid]
-                idx  = dict_t_tidx[time]
+                cidx, idx = node_of(measurements_df[midx, :])
                 # warm start: evaluate obs_func at the initial guess, mirroring the constraint
-                if idx == N
-                    push!(itr_y_func_N, (midx, cidx))
-                    zatt = ntuple(v -> zend0(v, cidx, N), Nz)
-                else
-                    push!(itr_y_func, (midx, idx, cidx))
-                    zatt = ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
-                end
+                idx == 0 ? push!(itr_y_func_ic, (midx, cidx)) : push!(itr_y_func, (midx, idx, cidx))
+                zatt = zatt0_at(cidx, idx)
                 y0[midx] = obs_func(
                     zatt...,
                     ntuple(m -> p0[m], Np)...,
@@ -224,19 +209,26 @@ function _create_objective(
                 )
             end
 
-            # idx < N: single-node kernel (state = node 0 of the next interval, by continuity)
             if !isempty(itr_y_func)
                 ExaModels.@add_con(c,
                     y[midx] - obs_func(
-                        ntuple(v -> z[v,cidx,idx+1,0], Nz)...,
+                        ntuple(v -> z[v,cidx,idx,K], Nz)...,
                         ntuple(m -> _p_phys(p,m,pscale), Np)...,
                         ntuple(m -> cv[m,cidx], Ncv)...
                     )
                     for (midx, idx, cidx) in itr_y_func
                 )
             end
-            # idx==N: defer to pending_fin, re-emitted over aux endpoint vars zN below
-            isempty(itr_y_func_N) || push!(pending_fin, (y, obs_func, itr_y_func_N))
+            if !isempty(itr_y_func_ic)
+                ExaModels.@add_con(c,
+                    y[midx] - obs_func(
+                        ntuple(v -> z[v,cidx,1,0], Nz)...,
+                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                        ntuple(m -> cv[m,cidx], Ncv)...
+                    )
+                    for (midx, cidx) in itr_y_func_ic
+                )
+            end
         end
     end
 
@@ -264,13 +256,7 @@ function _create_objective(
     for ((obs_id, noise_params_str), group_midxs) in obs_sigma_groups
         sigma_expr_raw = string(dict_obsid_obsrow[obs_id][:noiseFormula])
 
-        # Substitute noiseParameter${n}_${obs_id} placeholders.
-        sigma_expr_sub = sigma_expr_raw
-        if !isempty(noise_params_str)
-            parts        = strip.(split(noise_params_str, ";"))
-            replace_pairs = ["noiseParameter$(n)_$(obs_id)" => parts[n] for n in eachindex(parts)]
-            sigma_expr_sub = replace(sigma_expr_raw, replace_pairs...)
-        end
+        sigma_expr_sub = _sub_placeholders(sigma_expr_raw, noise_params_str, "noise", obs_id)
 
         # Case A: substituted formula is a numeric literal
         sigma_val = tryparse(Float64, strip(sigma_expr_sub))
@@ -283,10 +269,7 @@ function _create_objective(
         end
 
         # Parse as symbolic expression
-        sigma_parsed     = Meta.parse(sigma_expr_sub)
-        sigma_parsed_sym = sigma_parsed isa Symbol ?
-            Symbolics.Num(Symbolics.variable(sigma_parsed)) :
-            Symbolics.parse_expr_to_symbolic(sigma_parsed, @__MODULE__)
+        sigma_parsed_sym = _to_symbolic(sigma_expr_sub)
         # FLAT rules in the noise formula are bound to ov aux vars (parallels the observable branch)
         used_sig = _used_rules(sigma_parsed_sym)
         if !isempty(used_sig) && all(r -> rule_is_flat[r], used_sig)
@@ -296,11 +279,8 @@ function _create_objective(
                 sig_efin, [z_syms; p_syms; cv_syms; leaves]..., expression = Val{false})
             rows = Tuple{Int, Int, Int}[]
             for midx in group_midxs
-                row  = measurements_df[midx, :]
-                cidx = dict_cid_cidx[string(row[:simulationConditionId])]
-                idx  = dict_t_tidx[Float64(row[:time])]
-                zatt0 = idx == N ? ntuple(v -> zend0(v, cidx, N), Nz) :
-                                   ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
+                cidx, idx = node_of(measurements_df[midx, :])
+                zatt0 = zatt0_at(cidx, idx)
                 rvals = ntuple(k -> _rule_func(used_sig[k])(zatt0..., p0..., cv0[:, cidx]...), length(used_sig))
                 sigma0[midx] = sigma_func(zatt0..., p0..., cv0[:, cidx]..., rvals...)
                 push!(rows, (midx, idx, cidx)); push!(ov_nodes, (idx, cidx))
@@ -327,10 +307,7 @@ function _create_objective(
             # (sparser). Fall back to a general (z,p,cv) expression if σ couples to states elsewhere
             obs_sym = get!(dict_obsid_obssym, obs_id) do
                 obs_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
-                op = Meta.parse(obs_raw)
-                s  = op isa Symbol ? Symbolics.Num(Symbolics.variable(op)) :
-                                     Symbolics.parse_expr_to_symbolic(op, @__MODULE__)
-                Symbolics.substitute(apply_rules(s), dict_fixed_val)
+                Symbolics.substitute(apply_rules(_to_symbolic(obs_raw)), dict_fixed_val)
             end
             sigma_reduced, reduced_ok = _reduce_sigma_to_obs(sigma_expr_final, obs_sym, Y_sym, z_syms)
             # Conforming iff only Y / params / cv remain (a stray symbol routes to the fallback)
@@ -374,22 +351,13 @@ function _create_objective(
                     expression = Val{false}
                 )
 
-                itr_sigma_func   = Tuple{Int, Int, Int}[]  # idx < N : one node
-                itr_sigma_func_N = Tuple{Int, Int}[]       # idx = N : L1 endpoint of interval N
+                itr_sigma_func    = Tuple{Int, Int, Int}[]  # idx >= 1 : state = z[·,·,idx,K]
+                itr_sigma_func_ic = Tuple{Int, Int}[]       # idx = 0  : state = z[·,·,1,0]
                 for midx in group_midxs
-                    row  = measurements_df[midx, :]
-                    cid  = string(row[:simulationConditionId])
-                    time = Float64(row[:time])
-                    cidx = dict_cid_cidx[cid]
-                    idx  = dict_t_tidx[time]
+                    cidx, idx = node_of(measurements_df[midx, :])
                     # warm start: evaluate sigma_func at the initial guess, mirroring the constraint
-                    if idx == N
-                        push!(itr_sigma_func_N, (midx, cidx))
-                        zatt = ntuple(v -> zend0(v, cidx, N), Nz)
-                    else
-                        push!(itr_sigma_func, (midx, idx, cidx))
-                        zatt = ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
-                    end
+                    idx == 0 ? push!(itr_sigma_func_ic, (midx, cidx)) : push!(itr_sigma_func, (midx, idx, cidx))
+                    zatt = zatt0_at(cidx, idx)
                     sigma0[midx] = sigma_func(
                         zatt...,
                         ntuple(m -> p0[m], Np)...,
@@ -397,19 +365,26 @@ function _create_objective(
                     )
                 end
 
-                # idx < N: single-node kernel
                 if !isempty(itr_sigma_func)
                     ExaModels.@add_con(c,
                         sigma[midx] - sigma_func(
-                            ntuple(v -> z[v,cidx,idx+1,0], Nz)...,
+                            ntuple(v -> z[v,cidx,idx,K], Nz)...,
                             ntuple(m -> _p_phys(p,m,pscale), Np)...,
                             ntuple(m -> cv[m,cidx], Ncv)...
                         )
                         for (midx, idx, cidx) in itr_sigma_func
                     )
                 end
-                # idx == N: final-time group, deferred like the observable (see pending_fin)
-                isempty(itr_sigma_func_N) || push!(pending_fin, (sigma, sigma_func, itr_sigma_func_N))
+                if !isempty(itr_sigma_func_ic)
+                    ExaModels.@add_con(c,
+                        sigma[midx] - sigma_func(
+                            ntuple(v -> z[v,cidx,1,0], Nz)...,
+                            ntuple(m -> _p_phys(p,m,pscale), Np)...,
+                            ntuple(m -> cv[m,cidx], Ncv)...
+                        )
+                        for (midx, cidx) in itr_sigma_func_ic
+                    )
+                end
             end
         end
     end
@@ -418,24 +393,10 @@ function _create_objective(
     # Emit batched constraints for accumulated iterators
     ###############################################
     if !isempty(itr_y_z)
-        # y[midx] = Σ_j L1[j+1] z[zidx,cidx,i,j]. @add_con! keys by ROW POSITION, so augment by pos
-        # not midx, since itr_y_z is not the contiguous identity for multi-obs/multi-cond models
-        con_y_z = ExaModels.@add_con(c,
-            -y[midx]
-            for midx in itr_y_z
-        )
-        ExaModels.@add_con!(c,
-            con_y_z,
-            pos => L1j*z[v,cidx,i,j]
-            for (pos, v, i, cidx, j, L1j) in itr_y_z!
-        )
-    end
-
-    if !isempty(itr_y_z_pt)
-        # τ=1 collocated: read the endpoint node straight off z, no lⱼ(1) sum
+        # τ=1 endpoint of interval idx, read straight off z as its k=K node
         ExaModels.@add_con(c,
             y[midx] - z[zidx,cidx,idx,K]
-            for (midx, zidx, idx, cidx) in itr_y_z_pt
+            for (midx, zidx, idx, cidx) in itr_y_z
         )
     end
 
@@ -470,59 +431,11 @@ function _create_objective(
     end
 
     ###############################################
-    # Final-time (τ=1, interval N) endpoint-state aux variables, zN
-    ###############################################
-    # idx==N needs the interval-N right endpoint (τ=1), the L1 sum Σ_j L1[j+1] z[v,cidx,N,j]. Bind
-    # one aux var zN[v,col] to it (avoids fusing a large nonlinear kernel), created lazily per
-    # condition with an idx==N group.
-    needN  = sort(unique(vcat(
-        [cidx for (_, _, rows) in pending_fin for (_, cidx) in rows],
-        [cidx for (idx, cidx) in ov_nodes if idx == N],
-    )))
-    col_of = Dict(cidx => col for (col, cidx) in enumerate(needN))
-    zN0    = Matrix{Float64}(undef, Nz, length(needN))
-    if !isempty(needN) && !tau1
-        zN0 = [zend0(v, needN[col], N) for v in 1:Nz, col in 1:length(needN)]
-        ExaModels.@add_var(c, zN, 1:Nz, 1:length(needN); start = zN0, lvar = -Inf, uvar = Inf)
-        # zN[v,col] - Σ_j L1[j+1] z[v,needN[col],N,j] = 0  (base row + per-node augmentation)
-        itr_zN  = [(v, col) for v in 1:Nz, col in 1:length(needN)]
-        con_zN  = ExaModels.@add_con(c, zN[v,col] for (v,col) in itr_zN)
-        itr_zN! = [(v, col, needN[col], j, L1[j+1]) for v in 1:Nz, col in 1:length(needN), j in 0:K]
-        ExaModels.@add_con!(c, con_zN, (v,col) => -L1j*z[v,cidx,N,j] for (v,col,cidx,j,L1j) in itr_zN!)
-    elseif !isempty(needN)
-        zN0 = [zend0(v, needN[col], N) for v in 1:Nz, col in 1:length(needN)]
-    end
-
-    # Re-emit the deferred final-time (non-rule) constraints, over the τ=1 node or the zN aux var
-    for (aux, func, rows) in pending_fin
-        rows_c = [(midx, col_of[cidx], cidx) for (midx, cidx) in rows]
-        if tau1
-            ExaModels.@add_con(c,
-                aux[midx] - func(
-                    ntuple(v -> z[v,cidx,N,K], Nz)...,
-                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                    ntuple(m -> cv[m,cidx], Ncv)...
-                )
-                for (midx, col, cidx) in rows_c
-            )
-        else
-            ExaModels.@add_con(c,
-                aux[midx] - func(
-                    ntuple(v -> zN[v,col], Nz)...,
-                    ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                    ntuple(m -> cv[m,cidx], Ncv)...
-                )
-                for (midx, col, cidx) in rows_c
-            )
-        end
-    end
-
-    ###############################################
     # Observed-variable aux variables, ov (bound assignment rules)
     ###############################################
     # Bind each FLAT rule to ov[relpos,nodeslot] = rule(state@node,p,cv), one per (rule,node) and
     # shared across formulas so a large rule is differentiated once instead of inlined everywhere.
-    # Rectangular rule×node grid. Node feeding matches the formula (single node idx<N, zN idx==N)
+    # Rectangular rule×node grid. Node feeding matches the formula's own node accessor
     if !isempty(pending_ov)
         rels     = sort(collect(relevant_rules))
         rel_pos  = Dict(r => i for (i, r) in enumerate(rels))
@@ -533,8 +446,7 @@ function _create_objective(
         # warm start ov0[i,s] = rule_func[rels[i]](state@node at the initial guess)
         ov0 = Matrix{Float64}(undef, nrel, nnode)
         for (s, (idx, cidx)) in enumerate(nodes)
-            zatt0 = idx == N ? ntuple(v -> zN0[v, col_of[cidx]], Nz) :
-                               ntuple(v -> z0[v, cidx, idx+1, 1], Nz)
+            zatt0 = zatt0_at(cidx, idx)
             for (i, r) in enumerate(rels)
                 ov0[i, s] = _rule_func(r)(zatt0..., p0..., cv0[:, cidx]...)
             end
@@ -544,46 +456,51 @@ function _create_objective(
         # ov defining constraints: ov[i,s] - rule_r(state@node) = 0, grouped by (rule, node-class)
         for (i, r) in enumerate(rels)
             rf = _rule_func(r)
-            lt = [(i, node_slot[(idx,cidx)], idx, cidx) for (idx,cidx) in nodes if idx < N]
-            eN = [(i, node_slot[(idx,cidx)], col_of[cidx], cidx) for (idx,cidx) in nodes if idx == N]
-            isempty(lt) || ExaModels.@add_con(c,
-                ov[ii,s] - rf(ntuple(v->z[v,cidx,idx+1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
-                for (ii,s,idx,cidx) in lt)
-            isempty(eN) || (tau1 ?
-                ExaModels.@add_con(c,
-                    ov[ii,s] - rf(ntuple(v->z[v,cidx,N,K],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
-                    for (ii,s,col,cidx) in eN) :
-                ExaModels.@add_con(c,
-                    ov[ii,s] - rf(ntuple(v->zN[v,col],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
-                    for (ii,s,col,cidx) in eN))
+            en = [(i, node_slot[(idx,cidx)], idx, cidx) for (idx,cidx) in nodes if idx >= 1]
+            ic = [(i, node_slot[(idx,cidx)], cidx) for (idx,cidx) in nodes if idx == 0]
+            isempty(en) || ExaModels.@add_con(c,
+                ov[ii,s] - rf(ntuple(v->z[v,cidx,idx,K],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
+                for (ii,s,idx,cidx) in en)
+            isempty(ic) || ExaModels.@add_con(c,
+                ov[ii,s] - rf(ntuple(v->z[v,cidx,1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
+                for (ii,s,cidx) in ic)
         end
 
         # Re-emit the deferred bound obs/noise constraints over single nodes + ov leaves.
         # aux[midx] - func(node_z..., p_phys..., cv..., ov[relpos(used[k]), nodeslot]...) = 0
         for (aux, func, used, rows) in pending_ov
             upos = [rel_pos[r] for r in used]   # captured literal rule positions
-            lt = [(midx, node_slot[(idx,cidx)], idx, cidx) for (midx,idx,cidx) in rows if idx < N]
-            eN = [(midx, node_slot[(idx,cidx)], col_of[cidx], cidx) for (midx,idx,cidx) in rows if idx == N]
-            isempty(lt) || ExaModels.@add_con(c,
+            en = [(midx, node_slot[(idx,cidx)], idx, cidx) for (midx,idx,cidx) in rows if idx >= 1]
+            ic = [(midx, node_slot[(idx,cidx)], cidx) for (midx,idx,cidx) in rows if idx == 0]
+            isempty(en) || ExaModels.@add_con(c,
                 aux[midx] - func(
-                    ntuple(v->z[v,cidx,idx+1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
+                    ntuple(v->z[v,cidx,idx,K],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
                     ntuple(k->ov[upos[k], s], length(upos))...)
-                for (midx,s,idx,cidx) in lt)
-            isempty(eN) || (tau1 ?
-                ExaModels.@add_con(c,
-                    aux[midx] - func(
-                        ntuple(v->z[v,cidx,N,K],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
-                        ntuple(k->ov[upos[k], s], length(upos))...)
-                    for (midx,s,col,cidx) in eN) :
-                ExaModels.@add_con(c,
-                    aux[midx] - func(
-                        ntuple(v->zN[v,col],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
-                        ntuple(k->ov[upos[k], s], length(upos))...)
-                    for (midx,s,col,cidx) in eN))
+                for (midx,s,idx,cidx) in en)
+            isempty(ic) || ExaModels.@add_con(c,
+                aux[midx] - func(
+                    ntuple(v->z[v,cidx,1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
+                    ntuple(k->ov[upos[k], s], length(upos))...)
+                for (midx,s,cidx) in ic)
         end
     end
 
     return c, y0, sigma0
+end
+
+# Fill the observableParameter${n}_${obs_id} / noiseParameter${n}_${obs_id} placeholders with the
+# n-th semicolon-delimited entry from this group's observableParameters/noiseParameters cell
+function _sub_placeholders(raw::AbstractString, params_str::AbstractString, kind::String, obs_id::String)
+    isempty(params_str) && return String(raw)
+    parts = strip.(split(params_str, ";"))
+    return replace(String(raw), ["$(kind)Parameter$(n)_$(obs_id)" => parts[n] for n in eachindex(parts)]...)
+end
+
+# Parse a placeholder-substituted PEtab table formula into a Symbolics expression
+function _to_symbolic(str::AbstractString)
+    parsed = Meta.parse(str)
+    return parsed isa Symbol ? Symbolics.Num(Symbolics.variable(parsed)) :
+                               Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
 end
 
 # Reduce a noise σ expression so its state-dependence enters only through the observable. Solve O=Y

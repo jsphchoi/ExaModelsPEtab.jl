@@ -25,7 +25,7 @@ const SOLVER = (;
     fixed_variable_treatment = MadNLP.RelaxBound,
 )
 
-# Choice of three PEtab Benchmark-Models (test/Benchmark-Models-PEtab/) spanning most of the petab_examodel construction paths
+# Choice of three PEtab Benchmark-Models (test/Benchmark-Models-PEtab/) spanning most of the examodel_petab construction paths
 const MODELS = [
     "Blasi_CellSystems2016",    # steady-state (no-mesh) path, :log observable, affine noise
     "Schwen_PONE2014",          # collocation path, :log10 observable, sqrt noise, 19 conditions
@@ -67,7 +67,7 @@ end
         nllh_nominal = PEprob.nllh(PEtab.get_x(PEprob))
 
         # Evaluate the ExaModels objective function at the nominal p
-        model   = petab_examodel(yaml; backend = nothing, K = K)
+        model   = examodel_petab(yaml; backend = nothing, K = K)
         x0      = model.meta.x0
         exa_obj = ExaModels.obj(model, x0)
 
@@ -90,7 +90,7 @@ end
         import MadNLPGPU, CUDSS
         @testset "GPU: $m" for m in MODELS
             PEprob = PEtab.PEtabODEProblem(PEtab.PEtabModel(yaml_of(m)))
-            model  = petab_examodel(yaml_of(m); backend = CUDA.CUDABackend(), K = K)
+            model  = examodel_petab(yaml_of(m); backend = CUDA.CUDABackend(), K = K)
             res    = MadNLP.madnlp(model; SOLVER..., linear_solver = MadNLPGPU.CUDSSSolver)
             @test solved(res.status) # confirm ExaModels + MadNLP solved
             @test isfinite(res.objective) # confirm result is sensical

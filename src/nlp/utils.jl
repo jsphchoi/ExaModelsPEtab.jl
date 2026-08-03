@@ -313,7 +313,7 @@ function _get_event_times(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{
     has_preeq = si.has_pre_equilibration
     sim_ids   = si.conditionids[:simulation]
     preeq_ids = si.conditionids[:pre_equilibration]
-    p_nominal = PEtab.get_x(PEprob)
+    p_nominal = get_x(PEprob)
     solver    = PEprob.probinfo.solver.solver
     abstol    = PEprob.probinfo.solver.abstol
     reltol    = PEprob.probinfo.solver.reltol
@@ -331,12 +331,20 @@ function _get_event_times(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{
         end
 
         # create and initialize the ODEproblem to obtain gate value profile
-        oprob, cbs = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
+        oprob, cbs = get_odeproblem(p_nominal, PEprob; condition = cond_arg)
         integ = ODE.init(oprob, solver; callback = cbs, abstol = abstol, reltol = reltol)
         cur   = read_gates(integ)
-        t_end  = oprob.tspan[2]
+        t0, t_end = oprob.tspan
 
-        # sweep the solution profile to identify at which times the gate values change
+        # SBMLImporter's callback initialize registers preset switch times as integrator
+        # tstops. Take them: piecewise thresholds are parameter-dependent (Giordano's
+        # initialTimeManual), so a sweep never lands on a time it does not already know
+        for t in getfield(integ.opts.tstops, :valtree)
+            t0 < t < t_end && push!(t_events, Float64(t))
+        end
+
+        # ...and sweep as well, for the gates whose callback fires on a condition rather
+        # than a preset time (Weber's t=24), which never reaches the tstops heap
         while integ.t < t_end
             tprev = integ.t
             ODE.step!(integ)
@@ -348,7 +356,7 @@ function _get_event_times(PEmodel::PEtabModel, PEprob::PEtabODEProblem)::Vector{
             end
         end
     end
-    return sort(unique(t_events))
+    return _unique_tol(t_events)
 end
 
 # Returns the gate values for every time interval and every condition gate_vals[g=1:Ng,i,cidx] 
@@ -356,16 +364,14 @@ end
 function _get_gate_vals(
         PEmodel::PEtabModel,
         PEprob::PEtabODEProblem,
-        h::Vector{Float64},
-        taus::Vector{Float64},
-        t_nodes::Vector{Float64}
+        c::ExaCore
     )
     # Get problem info
     gate_syms = _get_gate_syms(PEprob)  # symbolic gate variables
     Ng   = length(gate_syms)            # Number of gate variables
     cids = Symbol.(_get_cids(PEmodel))  # simulation conditionIds
     Nc   = length(cids)                 # number of simulation conditions
-    N    = length(h)                    # number of intervals
+    N    = c.N                          # number of intervals
     gate_vals    = zeros(Float64, Ng, N, Nc)    
     gate_vals_ss = zeros(Float64, Ng, Nc)
     Ng == 0 && return gate_vals, gate_vals_ss # If there are no gate variables, return nothing
@@ -375,15 +381,20 @@ function _get_gate_vals(
     has_preeq = si.has_pre_equilibration
     sim_ids   = si.conditionids[:simulation]
     preeq_ids = si.conditionids[:pre_equilibration]
-    p_nominal = PEtab.get_x(PEprob)
+    p_nominal = get_x(PEprob)
     solver    = PEprob.probinfo.solver.solver
     abstol    = PEprob.probinfo.solver.abstol
     reltol    = PEprob.probinfo.solver.reltol
 
-    # Keep track of useful time points
-    bnds       = t_nodes[2:end]                                 # mesh nodes (interval right-side endpoints)
-    t_interior = [t_nodes[i] + taus[2] * h[i] for i in 1:N]     # strictly inside interval i (past left node)
-    tstops     = sort(unique(vcat(t_interior, bnds)))           # stop at every interior sample and node
+    # gate_vals[:,i,:] is only ever read at interval i's collocation points, so sample it there.
+    # tau=1 is dropped: that is the right node, where the NEXT interval's event has already
+    # fired (tau=0 is the left node, whose event does belong to interval i)
+    taus   = c.weights.taus
+    kint   = [k for k in eachindex(taus) if taus[k] < 1 - _MESH_TOL]
+    probe  = isempty(kint) ?                                    # K=1 Radau collocates tau=1 alone
+             reshape([c.nodes[i] + 0.5 * c.mesh.h[i] for i in 1:N], N, 1) :
+             c.mesh.t[:, kint]
+    tstops = sort(unique(vec(probe)))                           # stop at every sample
 
     gate_raw = [Symbolics.value(g) for g in gate_syms]          # unwrap Num for the .ps[] indexing interface
     read_gates(integ) = Float64[Float64(integ.ps[g]) for g in gate_raw]
@@ -399,35 +410,29 @@ function _get_gate_vals(
         end
 
         # create and initialize the ODEproblem to obtain gate value profile
-        oprob, cbs = PEtab.get_odeproblem(p_nominal, PEprob; condition = cond_arg)
-        t_end  = max(maximum(bnds), oprob.tspan[2]) # the last time point in integration
+        oprob, cbs = get_odeproblem(p_nominal, PEprob; condition = cond_arg)
+        t_end  = max(c.nodes[end], oprob.tspan[2]) # the last time point in integration
         oprob = ODE.remake(oprob; tspan = (oprob.tspan[1], t_end))
         integ = ODE.init(oprob, solver; callback = cbs, tstops = tstops, abstol = abstol, reltol = reltol)
 
-        g0        = read_gates(integ) # gate at the (post-init) initial condition, t=0
-        cur       = copy(g0)
-        change_ts = Float64[]
+        g0 = read_gates(integ) # gate at the (post-init) initial condition, t=0
         for i in 1:N
-            # sweep the solution profile over every interval to see how the gate_vals change
-            tq = t_interior[i]
-            while integ.t < tq
-                tprev = integ.t
-                ODE.step!(integ)
-                (isfinite(integ.t) && integ.t > tprev) || break   # integrator stalled/failed
-                new = read_gates(integ)
-                if new != cur
-                    push!(change_ts, integ.t)
-                    cur = new
+            # sweep interval i's own sample points; a gate that moves between them switched
+            # strictly inside the interval, where no node placement can represent it
+            for (n, tq) in enumerate(view(probe, i, :))
+                while integ.t < tq
+                    tprev = integ.t
+                    ODE.step!(integ)
+                    (isfinite(integ.t) && integ.t > tprev) || break   # integrator stalled/failed
+                end
+                gk = read_gates(integ)
+                if n == 1
+                    gate_vals[:, i, cidx] = gk
+                elseif gk != gate_vals[:, i, cidx]
+                    error("Condition '$cid' has a fixed-time event strictly inside interval " *
+                          "i=$i (t = $(c.nodes[i]) to $(c.nodes[i+1])), not on a mesh node.")
                 end
             end
-            gate_vals[:, i, cidx] = cur
-        end
-
-        # Make sure every t_event hits an interval node in the mesh
-        for tc in change_ts
-            any(==(tc), t_nodes) || error(
-                "Condition '$cid' has a fixed-time event at t=$tc not on a collocation mesh node."
-            )
         end
 
         # initial gate value for steady-state models is the gate value at t=0
@@ -446,7 +451,7 @@ function _get_gate_vals_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     Nc   = length(cids)
     out  = zeros(Float64, Ng, Nc)
     Ng == 0 && return out
-    p_nominal = PEtab.get_x(PEprob)
+    p_nominal = get_x(PEprob)
     solver    = PEprob.probinfo.solver.solver
     abstol    = PEprob.probinfo.solver.abstol
     reltol    = PEprob.probinfo.solver.reltol
@@ -454,7 +459,7 @@ function _get_gate_vals_ss(PEmodel::PEtabModel, PEprob::PEtabODEProblem)
     # for every simulation condition...
     for (cidx, cid) in enumerate(cids)
         # extract the gate values at the initial step
-        oprob, cbs = PEtab.get_odeproblem(p_nominal, PEprob; condition = cid)
+        oprob, cbs = get_odeproblem(p_nominal, PEprob; condition = cid)
         integ = ODE.init(oprob, solver; callback = cbs, abstol = abstol, reltol = reltol)
         out[:, cidx] = Float64[Float64(integ.ps[g]) for g in gate_raw]
     end
