@@ -1,4 +1,4 @@
-# (*) Main function for creating ExaModels objective function (*)
+# Unified observable/noise constraints and Gaussian NLL objective
 #
 # Runs in phases, in this order, because each one feeds the next:
 #   1. the Gaussian nll objective and any parameter priors  (_add_nll_objective/_add_prior_objective)
@@ -13,25 +13,78 @@
 #   formula is...            | y                        | sigma
 #   -------------------------|--------------------------|---------------------------
 #   a numeric literal        | -                        | itr_sigma_fix
-#   a single state z         | itr_y_z / _ic            | -
+#   a single state z         | itr_y1                   | -
 #   a single parameter p     | -                        | itr_sigma_p
 #   only FLAT rule leaves    | pending_ov               | pending_ov
 #   reducible to σ(y,p,cv)   | -                        | direct constraint on y[midx]
-#   anything else            | itr_y_func(+_ic)         | itr_sigma_func(+_ic)
+#   anything else            | general fn per class     | general fn per class
 #
-# A measurement lands on one of two node kinds, which is what the idx branching keys off:
-# idx == 0 is the initial-condition node z[·,·,1,0], and idx >= 1 is interval idx's τ=1 right
-# endpoint, which Radau/Lobatto collocate as its k=K node.
-function _create_objective(
-        c::ExaCore,
-        PEmodel::PEtabModel,
-        PEprob::PEtabODEProblem,
-        PEinfo::PEInfo
-    )
-    # Unpack problem info
-    (; Np, Ncv, Nz, Nc, Nm, t_meas, pscale) = PEinfo
-    N, K, t_nodes = c.N, c.K, c.nodes # mesh/collocation data off the core
+# The node a measurement lands on is abstracted by a NodeCtx: the collocation context has an
+# initial-condition class z[·,·,1,0] and an interval-endpoint class z[·,·,idx,K] (the τ=1 right
+# endpoint Radau collocates), the steady-state context has the single class zss[·,cidx].
+# Node-dependent constraints are emitted through the context's traced accessors, so both
+# pipelines share this one implementation.
+
+# One node kind: membership test plus traced state accessors at fixed row positions
+#   zref  rows: (lhs index, col, s, node...)   node fields from position 4
+#   z1ref rows: (midx, zidx, node...)          node fields from position 3
+struct NodeClass{M, Z, Z1}
+    member::M
+    zref::Z
+    z1ref::Z1
+end
+
+# The node abstraction of one pipeline: measurement -> node, warm-start states at a node,
+# cv column of a node, and the node classes
+struct NodeCtx{N, A, C}
+    node_of::N
+    z0at::A
+    col_of::C
+    classes::Vector{NodeClass}
+end
+
+# Collocation node context: idx == 0 is the initial-condition node, idx >= 1 the interval
+# idx τ=1 right endpoint
+function _collocation_ctx(c::ExaCore, spec::PEtabSpec, mesh::PEtabMesh, z0arr)
+    (; Nz) = spec
+    K = c.K
     z = c.z
+    endpoint = NodeClass(
+        n -> n[2] >= 1,
+        r -> ntuple(v -> z[v, r[4], r[5], K], Nz),
+        r -> z[r[2], r[3], r[4], K],
+    )
+    ic = NodeClass(
+        n -> n[2] == 0,
+        r -> ntuple(v -> z[v, r[4], 1, 0], Nz),
+        r -> z[r[2], r[3], 1, 0],
+    )
+    return NodeCtx(
+        midx -> (spec.meas_cidx[midx], mesh.meas_iidx[midx]),
+        n -> n[2] == 0 ? ntuple(v -> z0arr[v, n[1], 1, 1], Nz) :
+                         ntuple(v -> z0arr[v, n[1], n[2], K + 1], Nz),
+        n -> spec.simcv[n[1]],
+        NodeClass[endpoint, ic],
+    )
+end
+
+# Emit lhs(row) - fn(states@node, p_phys, cv[:, col], ov leaves) over rows of one class
+function _emit_node_rows(c::ExaCore, class::NodeClass, spec::PEtabSpec, p, cv, lhs, fn, rows;
+                         ov = nothing, upos::Vector{Int} = Int[])
+    isempty(rows) && return c
+    (; Np, Ncv, pscale) = spec
+    nleaf = length(upos)
+    g = r -> lhs(r) - fn(class.zref(r)...,
+                         ntuple(m -> _p_phys(p, m, pscale), Np)...,
+                         ntuple(m -> cv[m, r[2]], Ncv)...,
+                         ntuple(k -> ov[upos[k], r[3]], nleaf)...)
+    c, _ = ExaModels.add_con(c, Base.Generator(g, rows))
+    return c
+end
+
+# (*) Main function for creating ExaModels objective function (*)
+function _create_objective(c::ExaCore, spec::PEtabSpec, tables::PEtabTables, ctx::NodeCtx)
+    (; Np, Ncv, Nz, Nm, pscale) = spec
     p = c.p
     y = c.y
     sigma = c.sigma
@@ -39,81 +92,50 @@ function _create_objective(
         cv = c.cv
     end
 
-    # Warm start: evaluate y/sigma formulas at the z,p,cv initial point for feasible set_start! values
-    z0  = reshape(_var_starts(c, z), Nz, Nc, N, K + 1) # z0[v, cidx, i, j+1]
-    θ0  = _var_starts(c, p)                            # decision var p := θ (estimation scale)
-    p0  = [_p_phys_val(θ0, m, pscale) for m in 1:Np]   # PHYSICAL parameter starts (10^θ)
-    # cv has Ncc >= Nc columns (extra x0SSpre pre-eq columns). Objective reads only the first Nc
-    cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, Nc)
+    # Warm start: evaluate y/sigma formulas at the p,cv initial point for feasible set_start!
+    # values, with node states through ctx.z0at
+    theta0 = _var_starts(c, p)                            # decision var p (estimation scale)
+    p0  = [_p_phys_val(theta0, m, pscale) for m in 1:Np]  # PHYSICAL parameter starts
+    cv0 = Ncv >= 1 ? reshape(_var_starts(c, cv), Ncv, :) : zeros(Float64, 0, spec.Ncc)
     y0     = zeros(Float64, Nm) # computed observable values at the initial guess
     sigma0 = zeros(Float64, Nm) # computed noise (std) values at the initial guess
 
-    PEtable = PEmodel.petab_tables # :measurements, :observables, :parameters, :conditions
-    measurements_df = PEtable[:measurements] # :observableId, :preequilibrationConditionId, :simulationConditionId, :measurement, :time, :observableParameters, :noiseParameters, :datasetId
-    observables_df = PEtable[:observables] # :observableId, :observableName, :observableFormula, :noiseFormula, :observableTransformation, :noiseDistribution
+    measurements = tables.measurements
+    observables = tables.observables
 
     ###############################################
     # Objective function (Gaussian negative log-likelihood)
     ###############################################
     # @add_obj/@add_con rebind the core, so capture the returned core from each helper
-    c = _add_nll_objective(c, PEmodel, PEinfo)
-    c = _add_prior_objective(c, PEmodel, PEprob)   # MAP: add -log prior(θ) terms (matches PEtab.nllh)
+    c = _add_nll_objective(c, spec, tables)
+    c = _add_prior_objective(c, spec, tables)   # MAP: add -log prior(θ) terms (matches PEtab.nllh)
 
     ###############################################
     # Auxiliary variable constraints for y, sigma
     ###############################################
-    # Parsed table values => ExaModels variable index mappings
-    dict_cid_cidx = _get_dict_cid_cidx(PEmodel)
-    dict_t_tidx   = _get_dict_t_tidx(t_nodes, t_meas)
+    mark = expr -> _mark_used_p!(spec.used_p, spec.pidx_of, expr)
+    apply_rules = spec.subst_bare
+    z_syms  = spec.z_syms_bare
+    p_syms  = spec.p_syms
+    cv_syms = spec.cv_syms
+    fixed_vals = spec.fixed_vals
 
-    # (condition index, mesh interval index) a measurement row maps to
-    node_of(row) = (dict_cid_cidx[string(row[:simulationConditionId])],
-                    dict_t_tidx[Float64(row[:time])])
-    # state at a measurement node at the initial guess: the initial-condition node, or the τ=1
-    # right endpoint of interval idx
-    zatt0_at(cidx, idx) = idx == 0 ? ntuple(v -> z0[v, cidx, 1, 1], Nz) :
-                                     ntuple(v -> z0[v, cidx, idx, K+1], Nz)
-
-    # Substitute in fixed constant values
-    dict_all_val = Dict(PEprob.model_info.model.parametermap)
-    fixed_syms = setdiff(
-        keys(Dict(dict_all_val)),
-        union(_get_p_syms(PEprob), _get_cv_syms(PEmodel))
-    )
-    # Merge SBML fixed values with table-only fixed params, keeping parametermap values on overlap
-    dict_fixed_val = merge(
-        _get_table_fixed_vals(PEmodel, PEprob),
-        Dict(sym => val for (sym,val) in dict_all_val if (sym in fixed_syms)),
+    # Fast lookup: observableId => (observableFormula, noiseFormula)
+    dict_obsid_formulas = Dict(
+        String(observables.observableId[i]) =>
+            (obs = String(observables.observableFormula[i]),
+             noise = String(observables.noiseFormula[i]))
+        for i in 1:_nrows(observables)
     )
 
-    # Resolves SBML assignment rules in observable/noise formulas to a fixpoint (no-op if none)
-    apply_rules = _assignment_substitutor(PEprob; remove_t = true)
-
-    # Symbolics of variables that may appear in parsed table formulas
-    z_syms = [
-        Symbolics.Num(Symbolics.variable(Symbol(split(string(z_sym), "(")[1])))
-        for z_sym in _get_z_syms(PEprob)
-    ]
-    p_syms  = _get_p_syms(PEprob)
-    cv_syms = _get_cv_syms(PEmodel)
-
-    # Fast lookup: observableId => row in observables_df
-    dict_obsid_obsrow = Dict(
-        string(observables_df[i, :observableId]) => observables_df[i, :]
-        for i in 1:size(observables_df, 1)
-    )
-
-    # Helper: normalize a raw table cell to String (handle missing/nothing)
-    _safe_str(v) = (ismissing(v) || isnothing(v)) ? "" : strip(string(v))
-
-    # Some PEtab models omit these columns entirely when no row uses them
-    has_obs_params_col   = :observableParameters in propertynames(measurements_df)
-    has_noise_params_col = :noiseParameters      in propertynames(measurements_df)
+    obs_params_col   = _getcol(measurements, :observableParameters)
+    noise_params_col = _getcol(measurements, :noiseParameters)
 
     # Bind each FLAT assignment rule to an aux var ov[·] once per node instead of inlining a large
     # rule into every formula, which inflates compile time. Nested rules fall back to inlining
-    rule_ids, rule_lhs, rule_rhs, rule_is_flat = _rule_table(PEprob)
-    n_rules = length(rule_ids)
+    (; ids, lhs, rhs, is_flat) = spec.rules
+    rule_lhs, rule_rhs, rule_is_flat = lhs, rhs, is_flat
+    n_rules = length(ids)
     # rules present (as leaf symbols) in a parsed, not-yet-inlined formula
     _used_rules(expr) = Int[r for r in 1:n_rules
                             if any(v -> isequal(v, rule_lhs[r]), Symbolics.get_variables(expr))]
@@ -121,32 +143,30 @@ function _create_objective(
     rule_func_cache = Dict{Int, Any}()
     _rule_func(r) = get!(rule_func_cache, r) do
         Symbolics.build_function(
-            Symbolics.substitute(rule_rhs[r], dict_fixed_val),
+            Symbolics.substitute(rule_rhs[r], fixed_vals),
             [z_syms; p_syms; cv_syms]..., expression = Val{false})
     end
-    relevant_rules = Set{Int}()              # rule indices that get bound to ov
-    ov_nodes       = Tuple{Int,Int}[]        # (idx, cidx) evaluation nodes needing ov
-    # Deferred obs/noise constraints referencing ov leaves: (aux, func, used, [(midx,idx,cidx)])
-    pending_ov = Tuple{Any, Any, Vector{Int}, Vector{Tuple{Int,Int,Int}}}[]
+    relevant_rules = Set{Int}()          # rule indices that get bound to ov
+    ov_nodes       = Tuple[]             # evaluation nodes needing ov
+    # Deferred obs/noise constraints referencing ov leaves: (aux, func, used, [(midx, node)])
+    pending_ov = Tuple{Any, Any, Vector{Int}, Vector{Tuple{Int, Tuple}}}[]
 
     ###############################################
     # Observable formula (y) constraints
     # Group measurements by (obsId, observableParameters) so that each unique
     # formula gets its own compiled ExaModels constraint.
     ###############################################
-    itr_y_z    = Tuple{Int, Int, Int, Int}[] # (midx, zidx, idx, cidx) -> interval idx's k=K node
-    itr_y_z_ic = Tuple{Int, Int, Int}[]  # state observable at t=0 -> initial-condition node
+    itr_y1 = Tuple{Int, Int, Tuple}[]   # (midx, zidx, node): observable is a single state
 
-    obs_y_groups = Dict{Tuple{String,String}, Vector{Int}}()
+    obs_y_groups = Dict{Tuple{String, String}, Vector{Int}}()
     for midx in 1:Nm
-        row     = measurements_df[midx, :]
-        obs_id  = string(row[:observableId])
-        obs_key = has_obs_params_col ? _safe_str(row[:observableParameters]) : ""
+        obs_id  = String(measurements.observableId[midx])
+        obs_key = String(strip(obs_params_col[midx]))
         push!(get!(obs_y_groups, (obs_id, obs_key), Int[]), midx)
     end
 
     for ((obs_id, obs_params_str), group_midxs) in obs_y_groups
-        obs_expr_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
+        obs_expr_raw = dict_obsid_formulas[obs_id].obs
 
         obs_expr_sub = _sub_placeholders(obs_expr_raw, obs_params_str, "observable", obs_id)
         obs_sym      = _to_symbolic(obs_expr_sub)
@@ -154,80 +174,59 @@ function _create_objective(
         used = _used_rules(obs_sym)
         bound = !isempty(used) && all(r -> rule_is_flat[r], used)
         bound || (obs_sym = apply_rules(obs_sym))
+        mark(obs_sym)
+        for r in used
+            mark(rule_rhs[r])
+        end
 
         zidx = bound ? nothing : findfirst(x -> isequal(x, obs_sym), z_syms)  # single state?
         if zidx !== nothing
             # Observable is a single state variable: y[midx] = state at the measurement time.
             for midx in group_midxs
-                cidx, idx = node_of(measurements_df[midx, :])
-                if idx == 0
-                    # t = 0: state is the initial-condition node z[zidx,cidx,1,0] directly
-                    push!(itr_y_z_ic, (midx, zidx, cidx))
-                    y0[midx] = z0[zidx, cidx, 1, 1]
-                else
-                    push!(itr_y_z, (midx, zidx, idx, cidx))
-                    y0[midx] = z0[zidx, cidx, idx, K+1]
-                end
+                node = ctx.node_of(midx)
+                push!(itr_y1, (midx, zidx, node))
+                y0[midx] = ctx.z0at(node)[zidx]
             end
         elseif bound
             # Compile obs_func over [z;p;cv;rule_leaves] with each leaf fed its ov var per node. Defer
             leaves     = [rule_lhs[r] for r in used]
-            obs_efinal = Symbolics.substitute(obs_sym, dict_fixed_val)   # rule leaves survive
+            obs_efinal = Symbolics.substitute(obs_sym, fixed_vals)   # rule leaves survive
             obs_func   = Symbolics.build_function(
                 obs_efinal, [z_syms; p_syms; cv_syms; leaves]..., expression = Val{false})
-            rows = Tuple{Int, Int, Int}[]
+            rows = Tuple{Int, Tuple}[]
             for midx in group_midxs
-                cidx, idx = node_of(measurements_df[midx, :])
-                zatt0 = zatt0_at(cidx, idx)   # node state at the initial guess
-                rvals = ntuple(k -> _rule_func(used[k])(zatt0..., p0..., cv0[:, cidx]...), length(used))
-                y0[midx] = obs_func(zatt0..., p0..., cv0[:, cidx]..., rvals...)
-                push!(rows, (midx, idx, cidx)); push!(ov_nodes, (idx, cidx))
+                node  = ctx.node_of(midx)
+                col   = ctx.col_of(node)
+                zatt0 = ctx.z0at(node)   # node state at the initial guess
+                rvals = ntuple(k -> _rule_func(used[k])(zatt0..., p0..., cv0[:, col]...), length(used))
+                y0[midx] = obs_func(zatt0..., p0..., cv0[:, col]..., rvals...)
+                push!(rows, (midx, node)); push!(ov_nodes, node)
             end
             for r in used; push!(relevant_rules, r); end
             push!(pending_ov, (y, obs_func, used, rows))
         else
             # Observable is an arbitrary expression (assignment rules already resolved):
             # compile obs_func for this group.
-            obs_expr_final = Symbolics.substitute(obs_sym, dict_fixed_val)
+            obs_expr_final = Symbolics.substitute(obs_sym, fixed_vals)
             obs_func = Symbolics.build_function(
                 obs_expr_final,
                 [z_syms; p_syms; cv_syms]...,
                 expression = Val{false}
             )
 
-            itr_y_func    = Tuple{Int, Int, Int}[]  # idx >= 1 : state = z[·,·,idx,K]
-            itr_y_func_ic = Tuple{Int, Int}[]       # idx = 0  : state = z[·,·,1,0]
             for midx in group_midxs
-                cidx, idx = node_of(measurements_df[midx, :])
+                node  = ctx.node_of(midx)
+                col   = ctx.col_of(node)
                 # warm start: evaluate obs_func at the initial guess, mirroring the constraint
-                idx == 0 ? push!(itr_y_func_ic, (midx, cidx)) : push!(itr_y_func, (midx, idx, cidx))
-                zatt = zatt0_at(cidx, idx)
-                y0[midx] = obs_func(
-                    zatt...,
-                    ntuple(m -> p0[m], Np)...,
-                    ntuple(m -> cv0[m, cidx], Ncv)...
-                )
+                y0[midx] = obs_func(ctx.z0at(node)...,
+                                    ntuple(m -> p0[m], Np)...,
+                                    ntuple(m -> cv0[m, col], Ncv)...)
             end
-
-            if !isempty(itr_y_func)
-                ExaModels.@add_con(c,
-                    y[midx] - obs_func(
-                        ntuple(v -> z[v,cidx,idx,K], Nz)...,
-                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                        ntuple(m -> cv[m,cidx], Ncv)...
-                    )
-                    for (midx, idx, cidx) in itr_y_func
-                )
-            end
-            if !isempty(itr_y_func_ic)
-                ExaModels.@add_con(c,
-                    y[midx] - obs_func(
-                        ntuple(v -> z[v,cidx,1,0], Nz)...,
-                        ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                        ntuple(m -> cv[m,cidx], Ncv)...
-                    )
-                    for (midx, cidx) in itr_y_func_ic
-                )
+            for class in ctx.classes
+                rows = [(midx, ctx.col_of(ctx.node_of(midx)), 0, ctx.node_of(midx)...)
+                        for midx in group_midxs if class.member(ctx.node_of(midx))]
+                c = _emit_node_rows(c, class, spec, p, Ncv >= 1 ? c.cv : nothing,
+                                    r -> y[r[1]], obs_func, rows)
             end
         end
     end
@@ -240,11 +239,10 @@ function _create_objective(
     itr_sigma_fix = Tuple{Int, Float64}[]  # sigma = numeric literal
     itr_sigma_p   = Tuple{Int, Int}[]      # sigma = p[pidx]
 
-    obs_sigma_groups = Dict{Tuple{String,String}, Vector{Int}}()
+    obs_sigma_groups = Dict{Tuple{String, String}, Vector{Int}}()
     for midx in 1:Nm
-        row        = measurements_df[midx, :]
-        obs_id     = string(row[:observableId])
-        noise_key  = has_noise_params_col ? _safe_str(row[:noiseParameters]) : ""
+        obs_id    = String(measurements.observableId[midx])
+        noise_key = String(strip(noise_params_col[midx]))
         push!(get!(obs_sigma_groups, (obs_id, noise_key), Int[]), midx)
     end
 
@@ -254,7 +252,7 @@ function _create_objective(
     dict_obsid_obssym = Dict{String, Any}()
 
     for ((obs_id, noise_params_str), group_midxs) in obs_sigma_groups
-        sigma_expr_raw = string(dict_obsid_obsrow[obs_id][:noiseFormula])
+        sigma_expr_raw = dict_obsid_formulas[obs_id].noise
 
         sigma_expr_sub = _sub_placeholders(sigma_expr_raw, noise_params_str, "noise", obs_id)
 
@@ -273,24 +271,30 @@ function _create_objective(
         # FLAT rules in the noise formula are bound to ov aux vars (parallels the observable branch)
         used_sig = _used_rules(sigma_parsed_sym)
         if !isempty(used_sig) && all(r -> rule_is_flat[r], used_sig)
+            mark(sigma_parsed_sym)
+            for r in used_sig
+                mark(rule_rhs[r])
+            end
             leaves   = [rule_lhs[r] for r in used_sig]
-            sig_efin = Symbolics.substitute(sigma_parsed_sym, dict_fixed_val)   # rule leaves survive
+            sig_efin = Symbolics.substitute(sigma_parsed_sym, fixed_vals)   # rule leaves survive
             sigma_func = Symbolics.build_function(
                 sig_efin, [z_syms; p_syms; cv_syms; leaves]..., expression = Val{false})
-            rows = Tuple{Int, Int, Int}[]
+            rows = Tuple{Int, Tuple}[]
             for midx in group_midxs
-                cidx, idx = node_of(measurements_df[midx, :])
-                zatt0 = zatt0_at(cidx, idx)
-                rvals = ntuple(k -> _rule_func(used_sig[k])(zatt0..., p0..., cv0[:, cidx]...), length(used_sig))
-                sigma0[midx] = sigma_func(zatt0..., p0..., cv0[:, cidx]..., rvals...)
-                push!(rows, (midx, idx, cidx)); push!(ov_nodes, (idx, cidx))
+                node  = ctx.node_of(midx)
+                col   = ctx.col_of(node)
+                zatt0 = ctx.z0at(node)
+                rvals = ntuple(k -> _rule_func(used_sig[k])(zatt0..., p0..., cv0[:, col]...), length(used_sig))
+                sigma0[midx] = sigma_func(zatt0..., p0..., cv0[:, col]..., rvals...)
+                push!(rows, (midx, node)); push!(ov_nodes, node)
             end
             for r in used_sig; push!(relevant_rules, r); end
             push!(pending_ov, (sigma, sigma_func, used_sig, rows))
             continue
         end
         sigma_parsed_sym = apply_rules(sigma_parsed_sym)   # resolve SBML assignment rules
-        sigma_expr_final = Symbolics.substitute(sigma_parsed_sym, dict_fixed_val)
+        mark(sigma_parsed_sym)
+        sigma_expr_final = Symbolics.substitute(sigma_parsed_sym, fixed_vals)
 
         sigma_free   = Symbolics.get_variables(sigma_expr_final)
         sigma_p_vars = filter(v -> any(isequal(v, pv) for pv in p_syms), sigma_free)
@@ -306,8 +310,8 @@ function _create_objective(
             # Reduce σ to a function of Y_sym + params so the constraint references y[midx] directly
             # (sparser). Fall back to a general (z,p,cv) expression if σ couples to states elsewhere
             obs_sym = get!(dict_obsid_obssym, obs_id) do
-                obs_raw = string(dict_obsid_obsrow[obs_id][:observableFormula])
-                Symbolics.substitute(apply_rules(_to_symbolic(obs_raw)), dict_fixed_val)
+                obs_raw = dict_obsid_formulas[obs_id].obs
+                Symbolics.substitute(apply_rules(_to_symbolic(obs_raw)), fixed_vals)
             end
             sigma_reduced, reduced_ok = _reduce_sigma_to_obs(sigma_expr_final, obs_sym, Y_sym, z_syms)
             # Conforming iff only Y / params / cv remain (a stray symbol routes to the fallback)
@@ -324,20 +328,20 @@ function _create_objective(
                     [Y_sym; p_syms; cv_syms]...,
                     expression = Val{false}
                 )
-                itr_sigma_obs = Tuple{Int, Int}[]  # (midx, cidx)
+                itr_sigma_obs = Tuple{Int, Int}[]  # (midx, col)
                 for midx in group_midxs
-                    cidx = dict_cid_cidx[string(measurements_df[midx, :simulationConditionId])]
-                    push!(itr_sigma_obs, (midx, cidx))
+                    col = ctx.col_of(ctx.node_of(midx))
+                    push!(itr_sigma_obs, (midx, col))
                     # warm start: σ at the initial guess, reusing the already-computed y0[midx]
-                    sigma0[midx] = sigma_fun(y0[midx], p0..., cv0[:, cidx]...)
+                    sigma0[midx] = sigma_fun(y0[midx], p0..., cv0[:, col]...)
                 end
                 ExaModels.@add_con(c,
                     sigma[midx] - sigma_fun(
                         y[midx],
                         ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                        ntuple(m -> cv[m,cidx], Ncv)...
+                        ntuple(m -> cv[m,col], Ncv)...
                     )
-                    for (midx, cidx) in itr_sigma_obs
+                    for (midx, col) in itr_sigma_obs
                 )
             else
                 @warn "Noise model for observable '$obs_id' references model states " *
@@ -351,39 +355,19 @@ function _create_objective(
                     expression = Val{false}
                 )
 
-                itr_sigma_func    = Tuple{Int, Int, Int}[]  # idx >= 1 : state = z[·,·,idx,K]
-                itr_sigma_func_ic = Tuple{Int, Int}[]       # idx = 0  : state = z[·,·,1,0]
                 for midx in group_midxs
-                    cidx, idx = node_of(measurements_df[midx, :])
+                    node = ctx.node_of(midx)
+                    col  = ctx.col_of(node)
                     # warm start: evaluate sigma_func at the initial guess, mirroring the constraint
-                    idx == 0 ? push!(itr_sigma_func_ic, (midx, cidx)) : push!(itr_sigma_func, (midx, idx, cidx))
-                    zatt = zatt0_at(cidx, idx)
-                    sigma0[midx] = sigma_func(
-                        zatt...,
-                        ntuple(m -> p0[m], Np)...,
-                        ntuple(m -> cv0[m, cidx], Ncv)...
-                    )
+                    sigma0[midx] = sigma_func(ctx.z0at(node)...,
+                                              ntuple(m -> p0[m], Np)...,
+                                              ntuple(m -> cv0[m, col], Ncv)...)
                 end
-
-                if !isempty(itr_sigma_func)
-                    ExaModels.@add_con(c,
-                        sigma[midx] - sigma_func(
-                            ntuple(v -> z[v,cidx,idx,K], Nz)...,
-                            ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                            ntuple(m -> cv[m,cidx], Ncv)...
-                        )
-                        for (midx, idx, cidx) in itr_sigma_func
-                    )
-                end
-                if !isempty(itr_sigma_func_ic)
-                    ExaModels.@add_con(c,
-                        sigma[midx] - sigma_func(
-                            ntuple(v -> z[v,cidx,1,0], Nz)...,
-                            ntuple(m -> _p_phys(p,m,pscale), Np)...,
-                            ntuple(m -> cv[m,cidx], Ncv)...
-                        )
-                        for (midx, cidx) in itr_sigma_func_ic
-                    )
+                for class in ctx.classes
+                    rows = [(midx, ctx.col_of(ctx.node_of(midx)), 0, ctx.node_of(midx)...)
+                            for midx in group_midxs if class.member(ctx.node_of(midx))]
+                    c = _emit_node_rows(c, class, spec, p, Ncv >= 1 ? c.cv : nothing,
+                                        r -> sigma[r[1]], sigma_func, rows)
                 end
             end
         end
@@ -392,20 +376,12 @@ function _create_objective(
     ###############################################
     # Emit batched constraints for accumulated iterators
     ###############################################
-    if !isempty(itr_y_z)
-        # τ=1 endpoint of interval idx, read straight off z as its k=K node
-        ExaModels.@add_con(c,
-            y[midx] - z[zidx,cidx,idx,K]
-            for (midx, zidx, idx, cidx) in itr_y_z
-        )
-    end
-
-    if !isempty(itr_y_z_ic)
-        # t=0 state observables: y[midx] = z[zidx, cidx, 1, 0] (initial-condition node)
-        ExaModels.@add_con(c,
-            y[midx] - z[zidx,cidx,1,0]
-            for (midx, zidx, cidx) in itr_y_z_ic
-        )
+    for class in ctx.classes
+        # y[midx] = the single observed state at the measurement node
+        rows = [(midx, zidx, node...) for (midx, zidx, node) in itr_y1 if class.member(node)]
+        isempty(rows) && continue
+        g = r -> y[r[1]] - class.z1ref(r)
+        c, _ = ExaModels.add_con(c, Base.Generator(g, rows))
     end
 
     if !isempty(itr_sigma_fix)
@@ -416,18 +392,11 @@ function _create_objective(
     end
 
     if !isempty(itr_sigma_p)
-        # sigma[midx] = physical value of p[pidx], partitioned by scale with one constraint per scale
-        for sc in (:log10, :log, :lin)
-            grp = [t for t in itr_sigma_p if pscale[t[2]] === sc]
-            isempty(grp) && continue
-            if sc === :log10
-                ExaModels.@add_con(c, sigma[midx] - exp(log(10.0)*p[pidx]) for (midx,pidx) in grp)
-            elseif sc === :log
-                ExaModels.@add_con(c, sigma[midx] - exp(p[pidx])           for (midx,pidx) in grp)
-            else
-                ExaModels.@add_con(c, sigma[midx] - p[pidx]                for (midx,pidx) in grp)
-            end
+        # sigma[midx] = physical value of p[pidx], partitioned by scale
+        for (_, pidx) in itr_sigma_p
+            spec.used_p[pidx] = true
         end
+        c = _add_scaled_cons(c, p, itr_sigma_p, pscale, r -> sigma[r[1]]; pat = 2)
     end
 
     ###############################################
@@ -435,53 +404,47 @@ function _create_objective(
     ###############################################
     # Bind each FLAT rule to ov[relpos,nodeslot] = rule(state@node,p,cv), one per (rule,node) and
     # shared across formulas so a large rule is differentiated once instead of inlined everywhere.
-    # Rectangular rule×node grid. Node feeding matches the formula's own node accessor
+    # Rectangular rule×node grid. Node feeding matches the node class's own accessor
     if !isempty(pending_ov)
         rels     = sort(collect(relevant_rules))
         rel_pos  = Dict(r => i for (i, r) in enumerate(rels))
-        nodes    = sort(unique(ov_nodes))                 # distinct (idx, cidx)
+        nodes    = sort(unique(ov_nodes))                 # distinct nodes
         node_slot = Dict(nd => s for (s, nd) in enumerate(nodes))
         nrel = length(rels); nnode = length(nodes)
 
         # warm start ov0[i,s] = rule_func[rels[i]](state@node at the initial guess)
         ov0 = Matrix{Float64}(undef, nrel, nnode)
-        for (s, (idx, cidx)) in enumerate(nodes)
-            zatt0 = zatt0_at(cidx, idx)
+        for (s, node) in enumerate(nodes)
+            zatt0 = ctx.z0at(node)
+            col   = ctx.col_of(node)
             for (i, r) in enumerate(rels)
-                ov0[i, s] = _rule_func(r)(zatt0..., p0..., cv0[:, cidx]...)
+                ov0[i, s] = _rule_func(r)(zatt0..., p0..., cv0[:, col]...)
             end
         end
         ExaModels.@add_var(c, ov, 1:nrel, 1:nnode; start = ov0, lvar = -Inf, uvar = Inf)
+        ov = c.ov
 
-        # ov defining constraints: ov[i,s] - rule_r(state@node) = 0, grouped by (rule, node-class)
+        # ov defining constraints: ov[i,s] - rule_r(state@node) = 0, grouped by (rule, node class)
         for (i, r) in enumerate(rels)
             rf = _rule_func(r)
-            en = [(i, node_slot[(idx,cidx)], idx, cidx) for (idx,cidx) in nodes if idx >= 1]
-            ic = [(i, node_slot[(idx,cidx)], cidx) for (idx,cidx) in nodes if idx == 0]
-            isempty(en) || ExaModels.@add_con(c,
-                ov[ii,s] - rf(ntuple(v->z[v,cidx,idx,K],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
-                for (ii,s,idx,cidx) in en)
-            isempty(ic) || ExaModels.@add_con(c,
-                ov[ii,s] - rf(ntuple(v->z[v,cidx,1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...)
-                for (ii,s,cidx) in ic)
+            for class in ctx.classes
+                rows = [(i, ctx.col_of(nd), node_slot[nd], nd...)
+                        for nd in nodes if class.member(nd)]
+                c = _emit_node_rows(c, class, spec, p, Ncv >= 1 ? c.cv : nothing,
+                                    r -> ov[r[1], r[3]], rf, rows)
+            end
         end
 
         # Re-emit the deferred bound obs/noise constraints over single nodes + ov leaves.
         # aux[midx] - func(node_z..., p_phys..., cv..., ov[relpos(used[k]), nodeslot]...) = 0
-        for (aux, func, used, rows) in pending_ov
+        for (aux, func, used, mrows) in pending_ov
             upos = [rel_pos[r] for r in used]   # captured literal rule positions
-            en = [(midx, node_slot[(idx,cidx)], idx, cidx) for (midx,idx,cidx) in rows if idx >= 1]
-            ic = [(midx, node_slot[(idx,cidx)], cidx) for (midx,idx,cidx) in rows if idx == 0]
-            isempty(en) || ExaModels.@add_con(c,
-                aux[midx] - func(
-                    ntuple(v->z[v,cidx,idx,K],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
-                    ntuple(k->ov[upos[k], s], length(upos))...)
-                for (midx,s,idx,cidx) in en)
-            isempty(ic) || ExaModels.@add_con(c,
-                aux[midx] - func(
-                    ntuple(v->z[v,cidx,1,0],Nz)..., ntuple(m->_p_phys(p,m,pscale),Np)..., ntuple(m->cv[m,cidx],Ncv)...,
-                    ntuple(k->ov[upos[k], s], length(upos))...)
-                for (midx,s,cidx) in ic)
+            for class in ctx.classes
+                rows = [(midx, ctx.col_of(nd), node_slot[nd], nd...)
+                        for (midx, nd) in mrows if class.member(nd)]
+                c = _emit_node_rows(c, class, spec, p, Ncv >= 1 ? c.cv : nothing,
+                                    r -> aux[r[1]], func, rows; ov = ov, upos = upos)
+            end
         end
     end
 
@@ -494,13 +457,6 @@ function _sub_placeholders(raw::AbstractString, params_str::AbstractString, kind
     isempty(params_str) && return String(raw)
     parts = strip.(split(params_str, ";"))
     return replace(String(raw), ["$(kind)Parameter$(n)_$(obs_id)" => parts[n] for n in eachindex(parts)]...)
-end
-
-# Parse a placeholder-substituted PEtab table formula into a Symbolics expression
-function _to_symbolic(str::AbstractString)
-    parsed = Meta.parse(str)
-    return parsed isa Symbol ? Symbolics.Num(Symbolics.variable(parsed)) :
-                               Symbolics.parse_expr_to_symbolic(parsed, @__MODULE__)
 end
 
 # Reduce a noise σ expression so its state-dependence enters only through the observable. Solve O=Y
@@ -529,21 +485,17 @@ end
 #   lin   : 0.5(y-ymeas)²/σ²               + log σ + 0.5log2π
 #   log   : 0.5(ln y - ln ymeas)²/σ²       + log σ + 0.5log2π + ln ymeas
 #   log10 : 0.5(log10 y - log10 ymeas)²/σ² + log σ + 0.5log2π + ln ymeas + ln(ln10)
-function _add_nll_objective(c::ExaCore, PEmodel::PEtabModel, PEinfo::PEInfo)
-    (; Nm) = PEinfo
-    measurements_df = PEmodel.petab_tables[:measurements]
+function _add_nll_objective(c::ExaCore, spec::PEtabSpec, tables::PEtabTables)
     y = c.y
     sigma = c.sigma
 
-    _assert_normal_noise(PEmodel)
-    transforms = _get_meas_transforms(PEmodel)
     HALF_LOG2PI = 0.5 * log(2π)
     itr_obj_lin   = Tuple{Int, Float64, Float64}[]  # (midx, ymeas,     const)
     itr_obj_log   = Tuple{Int, Float64, Float64}[]  # (midx, ln(ymeas), const)
     itr_obj_log10 = Tuple{Int, Float64, Float64}[]  # (midx, log10(ymeas), const)
-    for midx in 1:Nm
-        ymeas = Float64(measurements_df[midx, :measurement])
-        tr    = transforms[midx]
+    for midx in 1:spec.Nm
+        ymeas = _cellfloat(tables.measurements.measurement[midx], "measurements row $midx")
+        tr    = spec.meas_transform[midx]
         if tr === :lin
             push!(itr_obj_lin, (midx, ymeas, HALF_LOG2PI))
         elseif tr === :log
@@ -580,25 +532,28 @@ end
 # Parameter priors (MAP objective), matching PEtab.nllh with normalization constants. Supports
 # parameterScaleNormal and parameterScaleLaplace on the estimation-scale p[pidx], and laplace on
 # the physical value by scale. Uniform adds only a constant and is omitted. Unsupported types error out
-function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEProblem)
-    params_df = PEmodel.petab_tables[:parameters]
-    (:objectivePriorType in propertynames(params_df)) || return c   # no priors in this model
+function _add_prior_objective(c::ExaCore, spec::PEtabSpec, tables::PEtabTables)
+    params = tables.parameters
+    prior_col = _getcol(params, :objectivePriorType)
+    all(isempty ∘ strip, prior_col) && return c   # no priors in this model
     p           = c.p
     HALF_LOG2PI = 0.5 * log(2π)
-    dict_pidx   = _get_dict_pstr_pidx(PEprob)            # estimated-param name => p[pidx]
+    prior_params_col = _getcol(params, :objectivePriorParameters)
+    scale_col        = _getcol(params, :parameterScale, "lin")
     # parameterScale* priors act on p[pidx] in estimation scale, and laplace acts on the physical value
     psnorm = Tuple{Int,Float64,Float64}[]    # parameterScaleNormal:  0.5((p-μ)/σ)² + logσ + ½log2π
     pslap  = Tuple{Int,Float64,Float64}[]    # parameterScaleLaplace: |p-μ|/b + log2b
     lap_li = Tuple{Int,Float64,Float64}[]    # laplace, lin-scale param:  |p-μ|/b + log2b
     lap_10 = Tuple{Int,Float64,Float64}[]    # laplace, log10-scale:      |10^p-μ|/b + log2b
     lap_e  = Tuple{Int,Float64,Float64}[]    # laplace, log-scale:        |e^p-μ|/b + log2b
-    for row in eachrow(params_df)
-        ptype = _norm_cell(row[:objectivePriorType], Symbol(""))
+    for i in 1:_nrows(params)
+        ptype = _norm_cell(prior_col[i], Symbol(""))
         ptype === Symbol("") && continue                # blank => no prior
-        pid = string(row[:parameterId])
-        haskey(dict_pidx, pid) || continue              # only estimated params are decision vars
-        idx = dict_pidx[pid]
-        pp  = strip.(split(string(row[:objectivePriorParameters]), ";"))
+        pid = String(params.parameterId[i])
+        haskey(spec.pidx_of, pid) || continue           # only estimated params are decision vars
+        idx = spec.pidx_of[pid]
+        spec.used_p[idx] = true
+        pp  = strip.(split(prior_params_col[i], ";"))
         a   = parse(Float64, pp[1]); b = length(pp) >= 2 ? parse(Float64, pp[2]) : NaN
         if     ptype === :parameterscalenormal  ; push!(psnorm, (idx, a, b))
         elseif ptype === :parameterscalelaplace ; push!(pslap,  (idx, a, b))
@@ -606,7 +561,7 @@ function _add_prior_objective(c::ExaCore, PEmodel::PEtabModel, PEprob::PEtabODEP
         elseif ptype === :normal
             error("ExaModelsPEtab: unsupported objectivePriorType 'normal' (linear-scale Gaussian) for param $pid.")
         elseif ptype === :laplace
-            sc = _norm_cell(row[:parameterScale], :lin)
+            sc = _norm_cell(scale_col[i], :lin)
             sc === :log10 ? push!(lap_10, (idx, a, b)) :
             sc === :log   ? push!(lap_e,  (idx, a, b)) :
                             push!(lap_li, (idx, a, b))   # :lin (and any non-log scale)

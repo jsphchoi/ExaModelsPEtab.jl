@@ -8,7 +8,7 @@ dynamic optimization, `ExaModelsPEtab.jl` applies the simultaneous method (ortho
 formulate the problem as a large-scale NLP. The `ExaModel` can then be solved with 
 [MadNLP](https://github.com/MadNLP/MadNLP.jl) using a CPU or GPU.
 
-[![Build Status](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/mit-shin-group/ExaModelsPEtab.jl/blob/main/LICENSE) [![Build Status](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jsphchoi/ExaModelsPEtab.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
 
 ## Usage
@@ -16,10 +16,13 @@ formulate the problem as a large-scale NLP. The `ExaModel` can then be solved wi
 ```julia
 model = examodel_petab("path/to/petab.yaml"; backend = nothing, kwargs...)
 ```
-Builds a `ExaModel` from a PEtab file.
+Builds an `ExaModel` from a PEtab file, with the solution maps attached as `model.petab`.
 
 ### Keyword Arguments
 - `backend` : array backend, `nothing` (default) for CPU, `CUDA.CUDABackend()` for GPU
+- `K` : degree of the collocating polynomial (default 4)
+- `subdivide` : equal parts each required mesh interval is split into (default 4)
+- `p0` : start values for the estimated parameters (estimation scale, parameters-table order)
 - kwargs passed on to `CollocationExaCore`
 
 ### Example

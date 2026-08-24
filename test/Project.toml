@@ -2,8 +2,16 @@
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+ExaModelsCollocation = "806a8761-d632-41d1-aec4-b1285f27c7c5"
 ExaModelsPEtab = "449f6601-3844-48f4-990d-d57d890903df"
 MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
 MadNLPGPU = "d72a61cc-809d-412f-99be-fd81f4b8a598"
+OrdinaryDiffEqBDF = "6ad6398a-0878-4a85-9266-38940aa047c8"
+OrdinaryDiffEqCore = "bbf590c4-e513-4bbe-9b18-05decba2e5d8"
 PEtab = "48d54b35-e43e-4a66-a5a1-dde6b987cf69"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+# OrdinaryDiffEqBDF 2.4.3 needs a SciMLBase newer than the resolvable 3.39, so cap the pair
+OrdinaryDiffEqBDF = "2.2 - 2.4.2"
+OrdinaryDiffEqCore = "4 - 4.11"
