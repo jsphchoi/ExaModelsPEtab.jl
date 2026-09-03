@@ -89,6 +89,30 @@ function _assert_solved(sol, what::String)
     return nothing
 end
 
+# Dense nominal solve of one condition pair, pre-equilibrating first when required.
+# Returns `(sol, zss)` with `zss = nothing` without pre-eq. Errors if the solve fails.
+function _condition_solution(spec::PEtabSpec, modelsys::PEtabModelSys, theta::Vector{Float64},
+                             cidx::Int, tend::Float64, solver; tstops)
+    col = spec.simcv[cidx]
+    zss = nothing
+    if spec.precv[cidx] > 0
+        # Pre-equilibrate, then carry the steady state into every non-overridden state
+        zss = _equilibrate(spec, modelsys, theta, spec.precv[cidx], solver)
+        overridden = _overridden_states(spec)
+        u0 = _initial_state(spec, theta, col)
+        for v in 1:spec.Nz
+            v in overridden || (u0[v] = zss[v])
+        end
+        oprob = _make_odeproblem(spec, modelsys, theta, col, (0.0, tend); u0_override = u0)
+    else
+        oprob = _make_odeproblem(spec, modelsys, theta, col, (0.0, tend))
+    end
+    sol = ODE.solve(oprob, solver; callback = modelsys.callbacks, tstops = tstops,
+                    abstol = _ODE_ABSTOL, reltol = _ODE_RELTOL)
+    _assert_solved(sol, "condition '$(spec.conds[cidx].sim)'")
+    return sol, zss
+end
+
 # Terminal state of the pre-equilibration solve to t = _T_SS
 function _equilibrate(spec::PEtabSpec, modelsys::PEtabModelSys, theta, col::Int, solver)
     oprob = _make_odeproblem(spec, modelsys, theta, col, (0.0, _T_SS))
@@ -110,29 +134,14 @@ function _solve_conditions(spec::PEtabSpec, modelsys::PEtabModelSys, theta::Vect
     (; Nz, Nc) = spec
     N, K = mesh.N, length(taus)
     solver = _default_solver(Nz, spec.Np)
-    overridden = _overridden_states(spec)
     z_init = Array{Float64, 4}(undef, Nz, Nc, N, K + 1)
     zss_init = _has_preequilibration(spec) ? Matrix{Float64}(undef, Nz, Nc) : nothing
 
     for cidx in 1:Nc
-        col = spec.simcv[cidx]
         tend = mesh.nodes[cidx, end]
-        if spec.precv[cidx] > 0
-            # Pre-equilibrate, then carry the steady state into every non-overridden state
-            zss = _equilibrate(spec, modelsys, theta, spec.precv[cidx], solver)
-            zss_init[:, cidx] = zss
-            u0 = _initial_state(spec, theta, col)
-            for v in 1:Nz
-                v in overridden || (u0[v] = zss[v])
-            end
-            oprob = _make_odeproblem(spec, modelsys, theta, col, (0.0, tend); u0_override = u0)
-        else
-            oprob = _make_odeproblem(spec, modelsys, theta, col, (0.0, tend))
-        end
-        sol = ODE.solve(oprob, solver; callback = modelsys.callbacks,
-                        tstops = mesh.nodes[cidx, :],
-                        abstol = _ODE_ABSTOL, reltol = _ODE_RELTOL)
-        _assert_solved(sol, "condition '$(spec.conds[cidx].sim)'")
+        sol, zss = _condition_solution(spec, modelsys, theta, cidx, tend, solver;
+                                       tstops = mesh.nodes[cidx, :])
+        zss === nothing || (zss_init[:, cidx] = zss)
         for i in 1:N
             h = mesh.nodes[cidx, i + 1] - mesh.nodes[cidx, i]
             z_init[:, cidx, i, 1] = sol(mesh.nodes[cidx, i])

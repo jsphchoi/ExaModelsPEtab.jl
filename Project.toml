@@ -1,6 +1,6 @@
 name = "ExaModelsPEtab"
 uuid = "449f6601-3844-48f4-990d-d57d890903df"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Joseph Choi <jsphchoi@mit.edu>"]
 
 [deps]

@@ -43,6 +43,10 @@ kwargs:
 - `subdivide` : equal parts each required mesh interval is split into
 - `p0` : start values for the estimated parameters (estimation scale, parameters-table
   order), defaulting to the nominal values
+- `mesh_init` : node placement, `:integrator` (subsampled nominal-solve steps,
+  meshinit.jl) or `:uniform`, defaulting to a model-size heuristic. Ignored on the
+  steady-state path. `subdivide` only shapes the `:uniform` mesh.
+- `mesh_opts` : NamedTuple overriding the `:integrator` knobs (`stride`)
 - kwargs passed on to `CollocationExaCore`
 
 # Example
@@ -68,6 +72,8 @@ function examodel_petab(
         K::Int = 4,
         subdivide::Int = 4,
         p0 = nothing,
+        mesh_init::Union{Nothing, Symbol} = nothing,
+        mesh_opts::NamedTuple = (;),
         kwargs...
     )
     # Radau collocation on a fixed mesh is the only supported configuration
@@ -88,7 +94,12 @@ function examodel_petab(
         core = ExaModels.ExaCore(; backend = backend)
         return _build_ss(core, tables, spec, modelsys, theta0)
     else
-        mesh = _build_mesh(spec; subdivide = subdivide, variant = _VARIANT)
+        mi = something(mesh_init, _default_mesh_init(spec))
+        mesh = mi === :uniform    ? _build_mesh(spec; subdivide = subdivide, variant = _VARIANT) :
+               mi === :integrator ? _init_mesh(spec, modelsys, theta0, K;
+                                               subdivide = subdivide, variant = _VARIANT,
+                                               merge(_meshinit_defaults(spec), mesh_opts)...) :
+               error("ExaModelsPEtab: unknown mesh_init :$mi.")
         core = EMC.CollocationExaCore(_core_nodes(mesh, spec.Nc), K; backend = backend, kwargs...)
         return _build(core, tables, spec, modelsys, theta0, mesh)
     end

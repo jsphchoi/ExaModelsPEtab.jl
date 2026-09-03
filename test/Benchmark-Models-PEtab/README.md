@@ -1,8 +1,6 @@
-# Benchmark-Models-PEtab (test fixtures)
+# Benchmark-Models-PEtab
 
-The three model directories in this folder are from
-[The PEtab Benchmark Collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab).
-Each model is specified in the [PEtab](https://github.com/PEtab-dev/PEtab) format.
+Three [PEtab](https://github.com/PEtab-dev/PEtab) models from [The PEtab Benchmark Collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab) are chosen for testing the API.
 
 ### References
 

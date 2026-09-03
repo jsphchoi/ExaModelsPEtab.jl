@@ -1,17 +1,27 @@
 """
     ExaModelsPEtab
 
-Solve [PEtab](https://github.com/PEtab-dev/PEtab) parameter-estimation problems as an NLP
-using simultaneous method for dynamic optimization (orthogonal collocation), built as an
-[ExaModels](https://github.com/exanauts/ExaModels.jl) `ExaModel`.
+Formulates [ExaModels](https://github.com/madsuite-org/ExaModels.jl) from
+[PEtab](https://github.com/PEtab-dev/PEtab) models.
 
 # Usage
-[`examodel_petab`](@ref) builds the `ExaModel` from a PEtab problem YAML
+[`examodel_petab`](@ref) returns a `CollocationExaModel` from a [PEtab](https://github.com/PEtab-dev/PEtab) `.yaml` file
 
 ```julia
 using ExaModelsPEtab, MadNLP
-model = examodel_petab("path/to/problem.yaml")
-res = madnlp(model)
+
+# Build the ExaModel from a PEtab problem `.yaml` file
+model = examodel_petab("path/to/petab.yaml")
+result = madnlp(model)
+
+# Solve using GPU
+using MadNLPGPU, CUDA, CUDSS
+
+model = examodel_petab(
+  "path/to/petab.yaml";
+  backend = CUDA.CUDABackend()
+)
+result = madnlp(model; tol = 1e-6)
 ```
 """
 module ExaModelsPEtab
@@ -21,10 +31,10 @@ import ExaModels: ExaCore, ExaModels
 # for creating collocation constraints
 import ExaModelsCollocation as EMC
 
-# for parsing SBML -> symbolic model
+# for SBML file -> symbolic model
 import SBMLImporter
 
-# for building callback functions from symbolic model
+# for symbolic model -> callback functions
 import ModelingToolkitBase as MTK
 import Symbolics
 
@@ -39,6 +49,7 @@ for file in [
         "spec",
         "mesh",
         "guesses",
+        "meshinit",
         "variables",
         "dynamics",
         "objective",

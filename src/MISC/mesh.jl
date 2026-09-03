@@ -19,20 +19,7 @@ end
 function _build_mesh(spec::PEtabSpec; subdivide::Int, variant::Symbol)
     subdivide >= 1 || error("ExaModelsPEtab: subdivide must be >= 1.")
     variant in (:percond, :shared) || error("ExaModelsPEtab: unknown mesh variant :$variant.")
-    base = [_required_times(spec, cidx) for cidx in 1:spec.Nc]
-    # A condition measured only at t = 0 gets a padding horizon, keeping the family equal-N
-    tends = last.(base)
-    if any(==(0.0), tends)
-        tpad = minimum((t for t in tends if t > 0.0); init = Inf)
-        isfinite(tpad) || error("ExaModelsPEtab: no condition has a measurement after t = 0.")
-        for b in base
-            last(b) == 0.0 && push!(b, tpad)
-        end
-    end
-    if variant === :shared
-        merged = sort!(unique!(reduce(vcat, base)))
-        base = [merged for _ in 1:spec.Nc]
-    end
+    base = _mesh_base(spec, variant)
 
     # Common N across conditions, each base interval split subdivide ways at minimum
     N = subdivide * maximum(length(b) - 1 for b in base)
@@ -47,6 +34,25 @@ function _build_mesh(spec::PEtabSpec; subdivide::Int, variant::Symbol)
     meas_iidx = _measurement_intervals(spec, base, ref_of)
     u_vals, u_vals_ss = _control_values(spec, nodes, N)
     return PEtabMesh(variant, nodes, N, meas_iidx, u_vals, u_vals_ss)
+end
+
+# Per-condition base times, padded and merged per variant. Base times are hard anchors.
+function _mesh_base(spec::PEtabSpec, variant::Symbol)
+    base = [_required_times(spec, cidx) for cidx in 1:spec.Nc]
+    # A condition measured only at t = 0 gets a padding horizon, keeping the family equal-N
+    tends = last.(base)
+    if any(==(0.0), tends)
+        tpad = minimum((t for t in tends if t > 0.0); init = Inf)
+        isfinite(tpad) || error("ExaModelsPEtab: no condition has a measurement after t = 0.")
+        for b in base
+            last(b) == 0.0 && push!(b, tpad)
+        end
+    end
+    if variant === :shared
+        merged = sort!(unique!(reduce(vcat, base)))
+        base = [merged for _ in 1:spec.Nc]
+    end
+    return base
 end
 
 # Required base times of one condition: t0 = 0, its measurement times, its switch times.
