@@ -15,11 +15,11 @@ formulate the problem as a large-scale NLP. The `ExaModel` can then be solved wi
 ```julia
 examodel_petab("path/to/petab.yaml"; backend = nothing, kwargs...)
 ```
-Returns a `CollocationExaModel` from a [PEtab](https://github.com/PEtab-dev/PEtab) `.yaml` file.
+Returns an `ExaModel` from a [PEtab](https://github.com/PEtab-dev/PEtab) `.yaml` file.
 
 ### Keyword Arguments
 - `backend` : array backend
-- `kwargs...` passed on to `CollocationExaCore`
+- `kwargs...` passed on to `ExaCore`/`CollocationExaCore`
 
 ### Example
 

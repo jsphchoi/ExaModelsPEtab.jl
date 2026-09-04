@@ -5,7 +5,7 @@ Formulates [ExaModels](https://github.com/madsuite-org/ExaModels.jl) from
 [PEtab](https://github.com/PEtab-dev/PEtab) models.
 
 # Usage
-[`examodel_petab`](@ref) returns a `CollocationExaModel` from a [PEtab](https://github.com/PEtab-dev/PEtab) `.yaml` file
+[`examodel_petab`](@ref) returns an `ExaModel` from a [PEtab](https://github.com/PEtab-dev/PEtab) `.yaml` file
 
 ```julia
 using ExaModelsPEtab, MadNLP
@@ -43,18 +43,15 @@ import OrdinaryDiffEq as ODE
 import LinearAlgebra
 
 for file in [
-        "tables",
-        "model",
-        "controls",
-        "spec",
-        "mesh",
-        "guesses",
-        "meshinit",
-        "variables",
-        "dynamics",
-        "objective",
-        "steadystate",
-        "api",
+        "helpers/structs",
+        "helpers/utils",
+        "helpers/get_PEtabInfo",
+        "helpers/create_variables",
+        "helpers/create_constraints",
+        "helpers/create_objective",
+        "helpers/create_variables_steadystate",
+        "helpers/create_constraints_steadystate",
+        "api/examodel_petab",
     ]
     include("$file.jl")
 end
