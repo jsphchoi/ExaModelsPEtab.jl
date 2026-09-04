@@ -75,13 +75,7 @@ function _build_examodel_petab(
     # Create CollocationExaCore
     core = EMC.CollocationExaCore(PEinfo.nodes, PEinfo.K; backend, kwargs...)
 
-    # Create decision variables 
-    # - theta (transformed params)
-    # - z (states), 
-    # - cv (condition-dep. vars)
-    # - y (observable)
-    # - sigma (noise)
-    # - zss (pre-eqbm steadystate)
+    # Create decision variables
     core = _create_variables(core, PEinfo)
 
     # Create collocation and continuity constraints

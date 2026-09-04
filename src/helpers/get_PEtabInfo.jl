@@ -23,11 +23,13 @@ function _get_PEtabInfo(filename)
     nodes, K = _determine_mesh(petab, sols, model_size)
 
     # Initial guesses {z0, zss0}
+    theta0 = _get_theta0(petab)
     z0 = _get_z0(sols, nodes, K)
+    cv0 = _get_cv0(petab)
     zss0 = _get_zss0(sols_ss)
 
     # PEtabInfo: PEtabTables, 
-    return PEtabInfo(petab..., nodes, K, _get_theta0(petab), z0, zss0)
+    return PEtabInfo(petab..., nodes, K, theta0, z0, cv0, zss0)
 end
 
 # Parse the PEtab problem files
@@ -190,7 +192,10 @@ _is_steadystate(petab::NamedTuple) = all(measurement -> isinf(measurement.time),
 
 # theta0: nominal values of the estimated parameters on their scale
 _get_theta0(petab) = [
-    parameter.scale == :log10 ? log10(parameter.value) : parameter.scale == :log ? log(parameter.value) : parameter.value
+    parameter.scale == :log10 ? 
+        log10(parameter.value) : 
+            parameter.scale == :log ? 
+                log(parameter.value) : parameter.value
     for parameter in petab.parameters if parameter.estimate
 ]
 
@@ -201,7 +206,11 @@ _get_Nz(model) = length(MTK.unknowns(model.sys))
 function _get_Ntheta_per_cond(petab)
     sys_ids = string.(MTK.parameters(petab.model.sys))
     n_sys = count(parameter -> parameter.estimate && parameter.parameter_id in sys_ids, petab.parameters)
-    n_condition = maximum(count(cell -> cell isa Int, condition.target_values) for condition in [petab.conditions; petab.preeq_conditions]; init = 0)
+    n_condition = maximum(
+        count(cell -> cell isa Int, condition.target_values) 
+        for condition in [petab.conditions; petab.preeq_conditions]; 
+        init = 0
+    )
     return n_sys + n_condition
 end
 
@@ -282,12 +291,12 @@ function _get_op(petab, theta0, condition, zss)
     op = merge!(Dict{Any, Any}(speciemap), Dict{Any, Any}(parametermap))
     key = Dict(replace(string(symbol), "(t)" => "") => symbol for symbol in keys(op))
     scales = [parameter.scale for parameter in petab.parameters if parameter.estimate]
-    value(cell) = cell isa Int ? _unscale(theta0[cell], scales[cell]) : cell
+    value(cell) = cell isa Int ? _linscale(theta0[cell], scales[cell]) : cell
     i = 0
     for parameter in petab.parameters
         parameter.estimate && (i += 1)
         haskey(key, parameter.parameter_id) || continue
-        op[key[parameter.parameter_id]] = parameter.estimate ? _unscale(theta0[i], parameter.scale) : parameter.value
+        op[key[parameter.parameter_id]] = parameter.estimate ? _linscale(theta0[i], parameter.scale) : parameter.value
     end
     if !isnothing(zss)
         for (v, state) in enumerate(MTK.unknowns(sys))
@@ -359,5 +368,33 @@ end
 
 _get_z0(sols::Nothing, nodes, K) = zeros(0, 0, 0, 0)
 
-# zss0: steady state of every pre-equilibration simulation
 _get_zss0(sols_ss) = Vector{Float64}[sol.u[end] for sol in sols_ss]
+
+# Condition targets that some condition sets to an unknown parameter
+function _get_cv_ids(petab)
+    for condition in petab.preeq_conditions, (id, cell) in zip(condition.target_ids, condition.target_values)
+        cell isa Int && throw(ArgumentError(
+            "condition '$(condition.condition_id)' sets '$id' to an estimated parameter in pre-equilibration, which is not supported"
+        ))
+    end
+    cv_ids = String[]
+    for condition in petab.conditions, (id, cell) in zip(condition.target_ids, condition.target_values)
+        cell isa Int && !(id in cv_ids) && push!(cv_ids, id)
+    end
+    return cv_ids
+end
+
+# cv0[cvidx,cidx]: value of condition target cv_ids[cvidx] in condition cidx at theta0
+function _get_cv0(petab)
+    cv_ids = _get_cv_ids(petab)
+    theta0 = _get_theta0(petab)
+    scales = [parameter.scale for parameter in petab.parameters if parameter.estimate]
+    value(cell) = cell isa Int ? _linscale(theta0[cell], scales[cell]) : cell
+    cv0 = Matrix{Float64}(undef, length(cv_ids), length(petab.conditions))
+    for (cidx, condition) in enumerate(petab.conditions), (cvidx, id) in enumerate(cv_ids)
+        i = findfirst(==(id), condition.target_ids)
+        isnothing(i) && throw(ArgumentError("condition '$(condition.condition_id)' leaves '$id' unset"))
+        cv0[cvidx,cidx] = value(condition.target_values[i])
+    end
+    return cv0
+end

@@ -56,5 +56,8 @@ end
 _resolve_cells(cell, parameters) =
     Union{Float64, Int}[_resolve_cell(part, parameters) for part in split(cell, ';'; keepempty = false)]
 
-# Value on the linear scale of a value on `scale`
-_unscale(x, scale) = scale == :log10 ? exp10(x) : scale == :log ? exp(x) : x
+# Transforms x to linear scale
+_linscale(x, scale) = scale == :log10 ? exp10(x) : scale == :log ? exp(x) : x
+
+# Transforms x to its `scale`
+_logscale(x, scale) = scale == :log10 ? log10(x) : scale == :log ? log(x) : x

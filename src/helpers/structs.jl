@@ -64,7 +64,8 @@ struct PEtabInfo{M <: PEtabModel}
     measurements::Vector{PEtabMeasurement}
     nodes::Vector{Vector{Float64}}              # nodes[cidx]
     K::Int
-    theta0::Vector{Float64}
+    theta0::Vector{Float64}                     # theta0[]
     z0::Array{Float64, 4}                       # z0[v,cidx,i,k]
+    cv0::Matrix{Float64}                        # cv0[cvidx,cidx]
     zss0::Vector{Vector{Float64}}               # zss0[ssidx]
 end
