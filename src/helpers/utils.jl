@@ -23,7 +23,7 @@ end
 # Tab-separated table as a NamedTuple of String columns
 function _read_tsv(path)
     lines = filter(!isempty, rstrip.(readlines(path), '\r'))
-    header = Symbol.(split(lines[1], '\t'))
+    header = Symbol.(split(lstrip(lines[1], '﻿'), '\t'))
     rows = [split(line, '\t') for line in lines[2:end]]
     columns = [String[strip(get(row, j, "")) for row in rows] for j in eachindex(header)]
     return NamedTuple{Tuple(header)}(Tuple(columns))

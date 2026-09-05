@@ -35,11 +35,11 @@ struct PEtabObservable
     transform::Symbol   # :lin, :log, :log10
 end
 
-# One SBML event at a fixed event time
+# One SBML event, its time per condition in event_times
 struct PEtabEvent
     target_ids::Vector{String}
     target_values::Vector{String}
-    event_time::Float64
+    event_formula::String
 end
 
 # One measurements-table row
@@ -61,6 +61,7 @@ struct PEtabInfo{M <: PEtabModel}
     preeq_idxs::Vector{Int}                     # cidx => ssidx, 0 without pre-equilibration
     observables::Vector{PEtabObservable}
     events::Vector{PEtabEvent}
+    event_times::Matrix{Float64}                # event_times[uidx,cidx]
     measurements::Vector{PEtabMeasurement}
     nodes::Vector{Vector{Float64}}              # nodes[cidx]
     K::Int

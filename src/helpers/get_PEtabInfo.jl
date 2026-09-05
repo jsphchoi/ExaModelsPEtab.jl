@@ -58,14 +58,19 @@ function _parse_yaml(filename)
         preeq_idxs = collect(eachindex(sim_ids))
     end
 
+    model = _get_model(files.sbml)
+    conditions = [_get_condition(conditions_table, id, parameters) for id in sim_ids]
+    events = _get_events(files.sbml)
+
     return (
-        model            = _get_model(files.sbml),
+        model            = model,
         parameters       = parameters,
-        conditions       = [_get_condition(conditions_table, id, parameters) for id in sim_ids],
+        conditions       = conditions,
         preeq_conditions = [_get_condition(conditions_table, id, parameters) for id in preeq_ids],
         preeq_idxs       = preeq_idxs,
         observables      = observables,
-        events           = _get_events(files.sbml),
+        events           = events,
+        event_times      = _get_event_times(events, conditions, parameters, model.parametermap),
         measurements     = _get_measurements(measurements_table, sim_ids, observables, parameters),
     )
 end
@@ -156,18 +161,110 @@ function _get_events(sbml_file)
         PEtabEvent(
             [strip(split(formula, '='; limit = 2)[1]) for formula in event.formulas],
             [strip(split(formula, '='; limit = 2)[2]) for formula in event.formulas],
-            _get_event_time(event.trigger, name),
+            event.trigger,
         )
-        for (name, event) in events
+        for event in values(events)
     ]
 end
 
-# Event time of a `t <op> number` trigger
-function _get_event_time(trigger, name)
-    sides = strip.(split(trigger, r"≥|≤|>=|<=|==|>|<"))
-    time = length(sides) == 2 && "t" in sides ? tryparse(Float64, sides[1] == "t" ? sides[2] : sides[1]) : nothing
-    isnothing(time) && throw(ArgumentError("event '$name': only fixed-time events are supported, got '$trigger'"))
-    return time
+# get event times for each event variable u per simulation condition cidx
+# event_times[uidx,cidx]
+_get_event_times(events, conditions, parameters, parametermap) = Float64[
+    _get_event_time(event.event_formula, condition, parameters, parametermap)
+    for event in events, condition in conditions
+]
+
+# Event time of a `t <op> expression` event formula, the expression evaluated in the condition
+_get_event_time(event_formula, condition, parameters, parametermap) =
+    _evaluate_event(_split_event_formula(event_formula)[2], event_formula, condition, parameters, parametermap)
+
+# The event holds before its time (`t ≤ c`) instead of from it (`t ≥ c`)
+_holds_before(event_formula) = _split_event_formula(event_formula)[1] in (:≤, :<=, :<)
+
+# (op, expression) of a `t <op> expression` event formula, `-(t, c) <op> 0` and `expression <op> t` rewritten
+function _split_event_formula(event_formula)
+    parsed = Meta.parse(event_formula)
+    op, sides = parsed.args[1], parsed.args[2:3]
+    if sides[2] == 0 && sides[1] isa Expr && sides[1].args[1:2] == [:-, :t]
+        sides = sides[1].args[2:3]
+    end
+    :t in sides || throw(ArgumentError("event '$event_formula': only time events are supported"))
+    sides[1] == :t && return op, sides[2]
+    mirrored = Dict(:≤ => :≥, :<= => :>=, :< => :>, :≥ => :≤, :>= => :<=, :> => :<, :(==) => :(==))
+    return mirrored[op], sides[1]
+end
+
+# Evaluate an event expression: numbers, condition cells, fixed parameters, SBML constants
+_evaluate_event(number::Number, event_formula, condition, parameters, parametermap) = Float64(number)
+
+function _evaluate_event(id::Symbol, event_formula, condition, parameters, parametermap)
+    i = findfirst(==(string(id)), condition.target_ids)
+    if !isnothing(i)
+        cell = condition.target_values[i]
+        cell isa Int && throw(ArgumentError("event '$event_formula': '$id' is estimated in condition '$(condition.condition_id)'"))
+        return cell
+    end
+    i = findfirst(parameter -> parameter.parameter_id == string(id), parameters)
+    if !isnothing(i)
+        parameters[i].estimate && throw(ArgumentError("event '$event_formula': '$id' is estimated"))
+        return parameters[i].value
+    end
+    i = findfirst(pair -> string(pair.first) == string(id), parametermap)
+    value = isnothing(i) ? nothing : Symbolics.value(parametermap[i].second)
+    value isa Number || throw(ArgumentError("event '$event_formula': '$id' is not a fixed number"))
+    return Float64(value)
+end
+
+function _evaluate_event(expression::Expr, event_formula, condition, parameters, parametermap)
+    operations = Dict(:+ => +, :- => -, :* => *, :/ => /)
+    haskey(operations, expression.args[1]) ||
+        throw(ArgumentError("event '$event_formula': unsupported operation '$(expression.args[1])'"))
+    return operations[expression.args[1]](
+        (_evaluate_event(arg, event_formula, condition, parameters, parametermap) for arg in expression.args[2:end])...
+    )
+end
+
+_get_id(symbol) = replace(string(symbol), "(t)" => "")
+
+# Event targets
+_get_u_ids(petab) = unique(id for event in petab.events for id in event.target_ids)
+
+# Event targets of the events at time t
+_get_u_ids(petab, times, t) = unique(id for uidx in eachindex(times) if times[uidx] == t for id in petab.events[uidx].target_ids)
+
+# Default value of a model species or parameter
+function _get_default(model, id)
+    for (symbol, value) in Iterators.flatten((model.speciemap, model.parametermap))
+        _get_id(symbol) == id && return Float64(Symbolics.value(value))
+    end
+    throw(ArgumentError("'$id' is not in the model"))
+end
+
+# Value of event target id at time t, nothing when no event on id holds: a `t ≥ c` event holds from c on, a `t ≤ c` event until c
+function _get_u_value(petab, id, times, t)
+    value = nothing
+    for uidx in sortperm(times)
+        event = petab.events[uidx]
+        j = findfirst(==(id), event.target_ids)
+        isnothing(j) && continue
+        holds = _holds_before(event.event_formula) ? t < times[uidx] : t >= times[uidx]
+        holds && (value = parse(Float64, event.target_values[j]))
+    end
+    return value
+end
+
+# Event callback: the targets of the events at each event time take their value there
+function _get_event_callback(petab, times)
+    sys = petab.model.sys
+    symbols = Dict(_get_id(symbol) => symbol for symbol in [MTK.unknowns(sys); MTK.parameters(sys)])
+    parameter_ids = _get_id.(MTK.parameters(sys))
+    function affect!(integrator)
+        for id in _get_u_ids(petab, times, integrator.t)
+            value = something(_get_u_value(petab, id, times, integrator.t), _get_default(petab.model, id))
+            id in parameter_ids ? (integrator.ps[symbols[id]] = value) : (integrator[symbols[id]] = value)
+        end
+    end
+    return ODE.DiscreteCallback((u, t, integrator) -> t in times, affect!; save_positions = (false, false))
 end
 
 # Measurements-table rows
@@ -192,10 +289,7 @@ _is_steadystate(petab::NamedTuple) = all(measurement -> isinf(measurement.time),
 
 # theta0: nominal values of the estimated parameters on their scale
 _get_theta0(petab) = [
-    parameter.scale == :log10 ? 
-        log10(parameter.value) : 
-            parameter.scale == :log ? 
-                log(parameter.value) : parameter.value
+    _logscale(parameter.value == 0 && parameter.scale != :lin ? parameter.lb : parameter.value, parameter.scale)
     for parameter in petab.parameters if parameter.estimate
 ]
 
@@ -225,7 +319,7 @@ function _initial_solve(petab, model_size)
         _solve(
             _get_odeproblem(petab, theta0, cidx, sols_ss, t_stops), 
             solver; 
-            callback = petab.model.callbacks, 
+            callback = _get_event_callback(petab, petab.event_times[:,cidx]),
             tstops = t_stops[cidx]
         )
         for cidx in eachindex(t_stops)
@@ -251,7 +345,7 @@ function _get_t_stops(petab)
     t_stops = Vector{Vector{Float64}}(undef, length(petab.conditions))
     for cidx in eachindex(petab.conditions)
         t_meas = [measurement.time for measurement in petab.measurements if measurement.cidx == cidx]
-        t_events = [event.event_time for event in petab.events if 0 < event.event_time < maximum(t_meas)]
+        t_events = [time for time in petab.event_times[:,cidx] if 0 < time < maximum(t_meas)]
         t_stops[cidx] = sort!(unique!([0.0; t_meas; t_events]))
     end
     t_pad = minimum(t_stops[cidx][end] for cidx in eachindex(t_stops) if t_stops[cidx][end] > 0)
@@ -265,28 +359,34 @@ end
 function _get_odeproblem(petab, theta0, cidx, sols_ss, t_stops)
     ssidx = petab.preeq_idxs[cidx]
     zss = ssidx == 0 ? nothing : sols_ss[ssidx].u[end]
-    op = _get_op(petab, theta0, petab.conditions[cidx], zss)
+    op = _get_op(petab, theta0, petab.conditions[cidx], zss, petab.event_times[:,cidx])
     return ODE.ODEProblem(petab.model.sys, op, (0.0, t_stops[cidx][end]); build_initializeprob = false)
 end
 
 # Pre-equilibration steady-state simulations
 function _get_sols_ss(petab, theta0, solver)
+    preeq_times = _get_event_times(petab.events, petab.preeq_conditions, petab.parameters, petab.model.parametermap)
     return [
-        _solve_steadystate(petab, ODE.ODEProblem(petab.model.sys, _get_op(petab, theta0, condition, nothing), (0.0, Inf); build_initializeprob = false), solver)
-        for condition in petab.preeq_conditions
+        _solve_steadystate(
+            petab,
+            ODE.ODEProblem(petab.model.sys, _get_op(petab, theta0, condition, nothing, preeq_times[:,ssidx]), (0.0, Inf); build_initializeprob = false),
+            solver,
+            preeq_times[:,ssidx]
+        )
+        for (ssidx, condition) in enumerate(petab.preeq_conditions)
     ]
 end
 
 # PEtab.jl's steady state by simulation
-function _solve_steadystate(petab, prob, solver; abstol = 1e-6, reltol = 1e-6)
+function _solve_steadystate(petab, prob, solver, times; abstol = 1e-6, reltol = 1e-6)
     at_steadystate(u, t, integrator) = t >= 0.1 &&
         sqrt(sum(abs2, ODE.SciMLBase.get_du(integrator) ./ (reltol .* u .+ abstol)) / length(u)) < 1
     terminate = ODE.DiscreteCallback(at_steadystate, ODE.terminate!; save_positions = (false, true))
-    return _solve(prob, solver; callback = ODE.CallbackSet(petab.model.callbacks, terminate))
+    return _solve(prob, solver; callback = ODE.CallbackSet(_get_event_callback(petab, times), terminate), tstops = filter(>(0), times))
 end
 
 # MTK operating point of one condition at theta0
-function _get_op(petab, theta0, condition, zss)
+function _get_op(petab, theta0, condition, zss, times)
     (; sys, speciemap, parametermap) = petab.model
     op = merge!(Dict{Any, Any}(speciemap), Dict{Any, Any}(parametermap))
     key = Dict(replace(string(symbol), "(t)" => "") => symbol for symbol in keys(op))
@@ -305,6 +405,10 @@ function _get_op(petab, theta0, condition, zss)
     end
     for (id, cell) in zip(condition.target_ids, condition.target_values)
         isnan(cell) || (op[key[id]] = value(cell))
+    end
+    for id in _get_u_ids(petab)
+        u = _get_u_value(petab, id, times, 0.0)
+        isnothing(u) || (op[key[id]] = u)
     end
     return op
 end

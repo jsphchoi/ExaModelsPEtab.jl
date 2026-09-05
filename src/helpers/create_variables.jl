@@ -51,7 +51,7 @@ function _create_z(core, PEinfo)
     # Unpack PEtabInfo
     Nz = _get_Nz(PEinfo)
 
-    # Create ExaModels variable
+    # Create CollocationVariable
     EMC.@add_var_collocation(core,
         z,
         1:Nz;
@@ -61,7 +61,7 @@ function _create_z(core, PEinfo)
     return core
 end
 
-# Create cv (condition targets set to an unknown parameter)
+# Create cv (condition-dependent variables)
 function _create_cv(core, PEinfo)
     # Unpack PEtabInfo
     Ncv, Nc = _get_Ncv(PEinfo), _get_Nc(PEinfo)

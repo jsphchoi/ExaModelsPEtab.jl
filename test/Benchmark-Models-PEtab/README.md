@@ -1,6 +1,6 @@
 # Benchmark-Models-PEtab
 
-Three [PEtab](https://github.com/PEtab-dev/PEtab) models from [The PEtab Benchmark Collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab) are chosen for testing the API.
+Test suite composed of [PEtab](https://github.com/PEtab-dev/PEtab) models from [The PEtab Benchmark Collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab).
 
 ### References
 
