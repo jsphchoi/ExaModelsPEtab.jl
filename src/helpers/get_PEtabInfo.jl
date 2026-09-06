@@ -34,13 +34,14 @@ end
 
 # Parse the PEtab problem files
 function _parse_yaml(filename)
+    # Unpack .yaml file
     files = _read_yaml(filename)
     parameters = _get_parameters(_read_tsv(files.parameters))
     observables = _get_observables(_read_tsv(files.observables))
     conditions_table = _read_tsv(files.conditions)
     measurements_table = _read_tsv(files.measurements)
 
-    # Condition axes: simulation conditions cidx = 1:Nc, pre-equilibration conditions ssidx = 1:Nss
+    # Unpack column simulation and pre-eqbm condition ids, cidx = 1:Nc and ssidx = 1:Nss
     sim_column = measurements_table.simulationConditionId
     preeq_column = _get_column(measurements_table, :preequilibrationConditionId, "")
     sim_ids = unique(sim_column)
@@ -50,7 +51,7 @@ function _parse_yaml(filename)
         for sim_id in sim_ids
     ]
 
-    # Steady-state models: every simulation condition is its own pre-equilibration condition
+    # Parse steady-state only models as simulation condition == pre-eqbm condition
     if all(time -> isinf(parse(Float64, time)), measurements_table.time)
         isempty(preeq_ids) || 
             throw(ArgumentError("pre-equilibration with time = inf measurements is not supported"))
@@ -58,10 +59,10 @@ function _parse_yaml(filename)
         preeq_idxs = collect(eachindex(sim_ids))
     end
 
+    # Return parsed petab info
     model = _get_model(files.sbml)
     conditions = [_get_condition(conditions_table, id, parameters) for id in sim_ids]
     events = _get_events(files.sbml)
-
     return (
         model            = model,
         parameters       = parameters,
@@ -178,9 +179,6 @@ _get_event_times(events, conditions, parameters, parametermap) = Float64[
 _get_event_time(event_formula, condition, parameters, parametermap) =
     _evaluate_event(_split_event_formula(event_formula)[2], event_formula, condition, parameters, parametermap)
 
-# The event holds before its time (`t ≤ c`) instead of from it (`t ≥ c`)
-_holds_before(event_formula) = _split_event_formula(event_formula)[1] in (:≤, :<=, :<)
-
 # (op, expression) of a `t <op> expression` event formula, `-(t, c) <op> 0` and `expression <op> t` rewritten
 function _split_event_formula(event_formula)
     parsed = Meta.parse(event_formula)
@@ -229,9 +227,6 @@ _get_id(symbol) = replace(string(symbol), "(t)" => "")
 # Event targets
 _get_u_ids(petab) = unique(id for event in petab.events for id in event.target_ids)
 
-# Event targets of the events at time t
-_get_u_ids(petab, times, t) = unique(id for uidx in eachindex(times) if times[uidx] == t for id in petab.events[uidx].target_ids)
-
 # Default value of a model species or parameter
 function _get_default(model, id)
     for (symbol, value) in Iterators.flatten((model.speciemap, model.parametermap))
@@ -240,31 +235,16 @@ function _get_default(model, id)
     throw(ArgumentError("'$id' is not in the model"))
 end
 
-# Value of event target id at time t, nothing when no event on id holds: a `t ≥ c` event holds from c on, a `t ≤ c` event until c
+# Value of event target id at time t, nothing when no event on id has fired
 function _get_u_value(petab, id, times, t)
     value = nothing
     for uidx in sortperm(times)
         event = petab.events[uidx]
         j = findfirst(==(id), event.target_ids)
         isnothing(j) && continue
-        holds = _holds_before(event.event_formula) ? t < times[uidx] : t >= times[uidx]
-        holds && (value = parse(Float64, event.target_values[j]))
+        times[uidx] <= t && (value = parse(Float64, event.target_values[j]))
     end
     return value
-end
-
-# Event callback: the targets of the events at each event time take their value there
-function _get_event_callback(petab, times)
-    sys = petab.model.sys
-    symbols = Dict(_get_id(symbol) => symbol for symbol in [MTK.unknowns(sys); MTK.parameters(sys)])
-    parameter_ids = _get_id.(MTK.parameters(sys))
-    function affect!(integrator)
-        for id in _get_u_ids(petab, times, integrator.t)
-            value = something(_get_u_value(petab, id, times, integrator.t), _get_default(petab.model, id))
-            id in parameter_ids ? (integrator.ps[symbols[id]] = value) : (integrator[symbols[id]] = value)
-        end
-    end
-    return ODE.DiscreteCallback((u, t, integrator) -> t in times, affect!; save_positions = (false, false))
 end
 
 # Measurements-table rows
@@ -319,7 +299,7 @@ function _initial_solve(petab, model_size)
         _solve(
             _get_odeproblem(petab, theta0, cidx, sols_ss, t_stops), 
             solver; 
-            callback = _get_event_callback(petab, petab.event_times[:,cidx]),
+            callback = petab.model.callbacks,
             tstops = t_stops[cidx]
         )
         for cidx in eachindex(t_stops)
@@ -359,34 +339,37 @@ end
 function _get_odeproblem(petab, theta0, cidx, sols_ss, t_stops)
     ssidx = petab.preeq_idxs[cidx]
     zss = ssidx == 0 ? nothing : sols_ss[ssidx].u[end]
-    op = _get_op(petab, theta0, petab.conditions[cidx], zss, petab.event_times[:,cidx])
+    op = _get_op(petab, theta0, petab.conditions[cidx], zss)
     return ODE.ODEProblem(petab.model.sys, op, (0.0, t_stops[cidx][end]); build_initializeprob = false)
 end
 
 # Pre-equilibration steady-state simulations
 function _get_sols_ss(petab, theta0, solver)
-    preeq_times = _get_event_times(petab.events, petab.preeq_conditions, petab.parameters, petab.model.parametermap)
     return [
         _solve_steadystate(
             petab,
-            ODE.ODEProblem(petab.model.sys, _get_op(petab, theta0, condition, nothing, preeq_times[:,ssidx]), (0.0, Inf); build_initializeprob = false),
-            solver,
-            preeq_times[:,ssidx]
+            ODE.ODEProblem(
+                petab.model.sys,
+                _get_op(petab, theta0, condition, nothing),
+                (0.0, Inf);
+                build_initializeprob = false
+            ),
+            solver
         )
-        for (ssidx, condition) in enumerate(petab.preeq_conditions)
+        for condition in petab.preeq_conditions
     ]
 end
 
 # PEtab.jl's steady state by simulation
-function _solve_steadystate(petab, prob, solver, times; abstol = 1e-6, reltol = 1e-6)
+function _solve_steadystate(petab, prob, solver; abstol = 1e-6, reltol = 1e-6)
     at_steadystate(u, t, integrator) = t >= 0.1 &&
         sqrt(sum(abs2, ODE.SciMLBase.get_du(integrator) ./ (reltol .* u .+ abstol)) / length(u)) < 1
     terminate = ODE.DiscreteCallback(at_steadystate, ODE.terminate!; save_positions = (false, true))
-    return _solve(prob, solver; callback = ODE.CallbackSet(_get_event_callback(petab, times), terminate), tstops = filter(>(0), times))
+    return _solve(prob, solver; callback = ODE.CallbackSet(petab.model.callbacks, terminate))
 end
 
 # MTK operating point of one condition at theta0
-function _get_op(petab, theta0, condition, zss, times)
+function _get_op(petab, theta0, condition, zss)
     (; sys, speciemap, parametermap) = petab.model
     op = merge!(Dict{Any, Any}(speciemap), Dict{Any, Any}(parametermap))
     key = Dict(replace(string(symbol), "(t)" => "") => symbol for symbol in keys(op))
@@ -405,10 +388,6 @@ function _get_op(petab, theta0, condition, zss, times)
     end
     for (id, cell) in zip(condition.target_ids, condition.target_values)
         isnan(cell) || (op[key[id]] = value(cell))
-    end
-    for id in _get_u_ids(petab)
-        u = _get_u_value(petab, id, times, 0.0)
-        isnothing(u) || (op[key[id]] = u)
     end
     return op
 end
