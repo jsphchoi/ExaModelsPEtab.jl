@@ -10,7 +10,7 @@ function _create_constraints(
     core = _create_cv_constraints(core, PEinfo)
 
     if _has_zss(PEinfo)
-        core = _create_steadystate_constraints(core, PEinfo)
+        core = _create_zss_constraints(core, PEinfo)
     end
 
     return core
@@ -139,7 +139,7 @@ end
 
 # Create cv auxiliary variable constraints, cv = {fixed value, theta}
 function _create_cv_constraints(
-        core::EMC.CollocationExaCore,
+        core::ExaCore,
         PEinfo::PEtabInfo
     )
     # Do nothing if there is no cv
