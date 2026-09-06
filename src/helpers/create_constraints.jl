@@ -187,7 +187,7 @@ end
 # Symbolic arguments (theta, z, cv, cvfixed, u, t) of the model functions
 function _get_arguments(PEinfo)
     Ntheta, Nz, Ncv = _get_Ntheta(PEinfo), _get_Nz(PEinfo), _get_Ncv(PEinfo)
-    Ncvfixed, Nu = length(_get_cvfixed_ids(PEinfo)), length(_get_u_ids(PEinfo))
+    Ncvfixed, Nu = length(_get_cvfixed_ids(PEinfo)) + length(_get_ifelses(PEinfo)), length(_get_u_ids(PEinfo))
     Symbolics.@variables theta[1:Ntheta] z[1:Nz] cv[1:Ncv] cvfixed[1:Ncvfixed] u[1:Nu]
     t = only(MTK.independent_variables(PEinfo.model.sys))
     return (; theta, z, cv, cvfixed, u, t)
@@ -221,21 +221,16 @@ function _get_substitutions(PEinfo, arguments)
     for (cvfixedidx, id) in enumerate(_get_cvfixed_ids(PEinfo))
         haskey(key, id) && (rules[key[id]] = cvfixed[cvfixedidx])
     end
+    for (q, term) in enumerate(_get_ifelses(PEinfo))
+        c, a, b = Symbolics.arguments(term)
+        flag = cvfixed[length(_get_cvfixed_ids(PEinfo)) + q]
+        rules[term] = flag * a + (1 - flag) * b
+    end
     for (uidx, id) in enumerate(_get_u_ids(PEinfo))
         haskey(key, id) || throw(ArgumentError("event target '$id' is not a model parameter, which is not supported"))
         rules[key[id]] = u[uidx]
     end
     return rules
-end
-
-# Substitute until nothing changes, so nested assignment rules and initial assignments resolve
-function _substitute(expr, rules)
-    for _ in 1:100
-        next = Symbolics.substitute(expr, rules)
-        isequal(next, expr) && return next
-        expr = next
-    end
-    throw(ArgumentError("model expression does not resolve: $expr"))
 end
 
 # f[v](theta, z, cv, cvfixed, u, t): right-hand side of state v
@@ -244,7 +239,7 @@ function _get_f(PEinfo)
     rules = _get_substitutions(PEinfo, arguments)
     return [
         Symbolics.build_function(
-            _substitute(equation.rhs, rules), 
+            Symbolics.fixpoint_sub(equation.rhs, rules; fold = Val(true)), 
             arguments...; 
             expression = Val{false}, 
             nanmath = false
@@ -259,10 +254,11 @@ function _get_zic_sym(PEinfo, arguments)
     cv_ids, cvfixed_ids = _get_cv_ids(PEinfo), _get_cvfixed_ids(PEinfo)
     z0 = Dict(_get_id(state) => value for (state, value) in PEinfo.model.speciemap)
     return [
-        _substitute(
+        Symbolics.fixpoint_sub(
             id in cv_ids      ? arguments.cv[_get_index(id, cv_ids)] :
             id in cvfixed_ids ? arguments.cvfixed[_get_index(id, cvfixed_ids)] : z0[id],
-            rules
+            rules;
+            fold = Val(true)
         )
         for id in _get_state_ids(PEinfo.model)
     ]
@@ -289,7 +285,21 @@ function _get_cvfixed(PEinfo, conditions)
         isnothing(i) && throw(ArgumentError("condition '$(condition.condition_id)' leaves '$id' unset"))
         cvfixed[cvfixedidx,cidx] = condition.target_values[i]
     end
-    return cvfixed
+    key = Dict(_get_id(symbol) => symbol for symbol in MTK.parameters(PEinfo.model.sys))
+    flags = Matrix{Float64}(undef, length(_get_ifelses(PEinfo)), length(conditions))
+    for (q, term) in enumerate(_get_ifelses(PEinfo))
+        f = Symbolics.build_function(Symbolics.arguments(term)[1], (key[id] for id in cvfixed_ids)...; expression = Val{false})
+        flags[q,:] = [f(cvfixed[:,cidx]...) for cidx in eachindex(conditions)]
+    end
+    return [cvfixed; flags]
+end
+
+# ifelse terms of the right-hand sides whose condition reads only cvfixed values, each a flag row of cvfixed
+function _get_ifelses(PEinfo)
+    cvfixed_ids = _get_cvfixed_ids(PEinfo)
+    isifelse(x) = Symbolics.iscall(x) && Symbolics.operation(x) === ifelse
+    terms = unique([term for equation in MTK.equations(PEinfo.model.sys) for term in Symbolics.filterchildren(isifelse, equation.rhs)])
+    return filter(term -> all(v -> _get_id(v) in cvfixed_ids, Symbolics.get_variables(Symbolics.arguments(term)[1])), terms)
 end
 
 # u[uidx,cidx,i]: value of event target u_ids[uidx] on interval i of condition cidx

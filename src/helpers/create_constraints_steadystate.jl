@@ -22,26 +22,26 @@ function _create_zss_constraints(
     f = _get_f(PEinfo)
 
     # Create steady-state constraint iterator, u after every event
-    cvfixed_ss = _get_cvfixed(PEinfo, PEinfo.preeq_conditions)
+    cvfixed = _get_cvfixed(PEinfo, PEinfo.preeq_conditions)
     times = _get_event_times(PEinfo.events, PEinfo.preeq_conditions, PEinfo.parameters, PEinfo.model.parametermap)
-    u_ss = [
+    u = [
         something(_get_u_value(PEinfo, id, times[:,ssidx], Inf), _get_default(PEinfo.model, id))
         for id in _get_u_ids(PEinfo), ssidx in 1:_get_Nss(PEinfo)
     ]
     itr = [
-        (ssidx, Tuple(cvfixed_ss[:,ssidx]), Tuple(u_ss[:,ssidx]))
+        (ssidx, Tuple(cvfixed[:,ssidx]), Tuple(u[:,ssidx]))
         for ssidx in 1:_get_Nss(PEinfo)
     ]
 
     # Conservation laws W[ssidx] zss[:,ssidx] = b[ssidx] and the rows of f they do not replace
-    W, b, keep_rows = _get_conservation_laws(PEinfo, cvfixed_ss, u_ss)
+    W, b, keep_rows = _get_conservation_laws(PEinfo, cvfixed, u)
 
     # Create steady-state constraints
     for v in 1:_get_Nz(PEinfo)
         itr_v = [row for row in itr if v in keep_rows[row[1]]]
         isempty(itr_v) && continue
         ExaModels.@add_con(core,
-            f[v](theta[:], zss[:,ssidx], (), cvfixed_s, u_s, 0.0)
+            f[v](theta[:], zss[:,ssidx], (), cvfixed_ss0, u_ss, 0.0)
             for (ssidx, cvfixed_s, u_s) in itr_v
         )
     end
@@ -71,7 +71,7 @@ end
 function _get_dfdz(PEinfo)
     arguments = _get_arguments(PEinfo)
     rules = _get_substitutions(PEinfo, arguments)
-    rhs = [_substitute(equation.rhs, rules) for equation in MTK.equations(PEinfo.model.sys)]
+    rhs = [Symbolics.fixpoint_sub(equation.rhs, rules; fold = Val(true)) for equation in MTK.equations(PEinfo.model.sys)]
     return Symbolics.build_function(
         Symbolics.jacobian(rhs, collect(arguments.z)),
         arguments...;

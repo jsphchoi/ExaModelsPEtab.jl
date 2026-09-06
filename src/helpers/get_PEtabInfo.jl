@@ -78,14 +78,55 @@ end
 
 # Return PEtabModel from SBMLImporter model
 function _get_model(sbml_file)
-    reactionsys, callbacks = SBMLImporter.load_SBML(sbml_file)
-    sys = MTK.mtkcompile(SBMLImporter.Catalyst.ode_model(reactionsys))
-    return PEtabModel(
-        sys,
-        SBMLImporter.get_u0_map(reactionsys),
-        SBMLImporter.get_parameter_map(reactionsys),
-        callbacks
+    reactionsys, _ = SBMLImporter.load_SBML(sbml_file)
+    sys = SBMLImporter.Catalyst.ode_model(reactionsys)
+    speciemap, parametermap = SBMLImporter.get_u0_map(reactionsys), SBMLImporter.get_parameter_map(reactionsys)
+    sys, speciemap, parametermap = _parse_dzdt0_as_parameters(sys, speciemap, parametermap)
+    sys = MTK.mtkcompile(sys)
+    model_SBML = SBMLImporter.parse_SBML(sbml_file, false; model_as_string = false, inline_assignment_rules = false)
+    callbacks = SBMLImporter.create_callbacks(sys, model_SBML, model_SBML.name)
+    return PEtabModel(sys, speciemap, parametermap, callbacks)
+end
+
+# Unknowns with dz/dt = 0 become parameters of the same name, their species-map entries parameter-map entries
+function _parse_dzdt0_as_parameters(sys, speciemap, parametermap)
+    # dz/dt = 0
+    isdzdt0(equation) = MTK.isdifferential(equation.lhs) && isequal(Symbolics.value(equation.rhs), 0)
+    parameter = Dict(
+        _get_id(x) => MTK.toparam(Symbolics.variable(Symbolics.getname(x)))
+        for x in [
+            only(Symbolics.arguments(Symbolics.unwrap(equation.lhs))) 
+            for equation in MTK.equations(sys) if isdzdt0(equation)
+        ]
     )
+    isconstant(x) = haskey(parameter, _get_id(x))
+    replace(expr) = Symbolics.substitute(
+        expr, 
+        Dict(
+            x => parameter[_get_id(x)] 
+            for x in Symbolics.get_variables(expr) if isconstant(x)
+        )
+    )
+    equations = [
+        replace(equation) 
+        for equation in MTK.equations(sys) if !isdzdt0(equation)
+    ]
+    unknowns = filter(!isconstant, MTK.unknowns(sys))
+    parameters = [
+        MTK.parameters(sys); 
+        [parameter[_get_id(x)] for x in filter(isconstant, MTK.unknowns(sys))]
+    ]
+    sys = MTK.System(
+        equations, 
+        only(MTK.independent_variables(sys)), 
+        unknowns, 
+        parameters; 
+        name = nameof(sys)
+    )
+    speciemap, parametermap = [x => replace(v) for (x, v) in speciemap], [x => replace(v) for (x, v) in parametermap]
+    parametermap = [parametermap; [parameter[_get_id(x)] => v for (x, v) in speciemap if isconstant(x)]]
+    speciemap = filter(pair -> !isconstant(pair.first), speciemap)
+    return sys, speciemap, parametermap
 end
 
 # Return PEtabParameter from SBMLImporter parameters table
