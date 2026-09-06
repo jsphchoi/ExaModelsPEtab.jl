@@ -15,9 +15,7 @@ function _create_variables(
     
     core = _create_z(core, PEinfo)
 
-    if _has_cv(PEinfo)
-        core = _create_cv(core, PEinfo)
-    end
+    core = _create_cv(core, PEinfo)
 
     if _has_zss(PEinfo)
         core = _create_zss(core, PEinfo)
