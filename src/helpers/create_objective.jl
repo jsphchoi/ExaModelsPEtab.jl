@@ -16,65 +16,74 @@ function _create_objective(
 end
 
 # TODO only need to actually create sigma if sigma is not a fixed variable
+# TODO (REVIEW) sigma is created only for the measurements whose noise formula reads the observable.
+# A fixed value and an expression in theta go straight into the objective, with no variable and no row.
 
-# Create y (observables at the measurements), observable_parameters (their observableParameter cells) and constraints
-# y = fy(theta, z, cv, cvfixed, observable_parameters)
+# Create y (observables at the measurements) and its constraints, y = fy(theta, z, cv, cvfixed)
 function _create_y(
         core::ExaModels.ExaCore,
         PEinfo::PEtabInfo
     )
-    # Unpack PEtabInfo and model functions
-    Nm = _get_Nm(PEinfo)
-    cells = _get_cells([measurement.observable_parameters for measurement in PEinfo.measurements])
-    fy = _get_fy(PEinfo, size(cells, 1)) # get observable functions fy[yidx](theta,z,cv,cvfixed,observable_parameters)
+    # Resolve the observable formula of every measurement
+    arguments, yvalue = _get_arguments(PEinfo), _get_yvalue()
+    exprs = _get_exprs(PEinfo, arguments, yvalue, [Meta.parse(observable.observable_formula) for observable in PEinfo.observables])
 
-    # Create ExaModels variables
-    observable_parameters0 = _get_values(PEinfo, cells)
-    ExaModels.@add_var(core,
-        observable_parameters,
-        1:size(cells, 1), 1:Nm;
-        start = observable_parameters0,
-    )
+    # Create ExaModels variable
+    y0 = _get_starts(PEinfo, arguments, yvalue, exprs, zeros(_get_Nm(PEinfo)))
     ExaModels.@add_var(core,
         y,
-        1:Nm;
-        start = _get_f0(PEinfo, fy, observable_parameters0),
+        1:_get_Nm(PEinfo);
+        start = y0,
     )
 
     # Create constraints
-    core = _create_placeholder_constraints(core, PEinfo, observable_parameters, cells)
-    core = _create_measurement_constraints(core, PEinfo, y, fy, observable_parameters)
+    for (f, rows) in _get_groups(core, PEinfo, arguments, exprs, 1:_get_Nm(PEinfo))
+        core = _create_measurement_constraints(core, y, f, rows)
+    end
 
     return core
 end
 
-# Create sigma (noise at the measurements), noise_parameters (their noiseParameter cells) and constraints
-# sigma = fsigma(theta, z, cv, cvfixed, noise_parameters)
+# Create sigma (noise at the measurements) and its constraints, sigma = fsigma(theta, cv, cvfixed, y)
 function _create_sigma(
         core::ExaModels.ExaCore,
         PEinfo::PEtabInfo
     )
-    # Unpack PEtabInfo and model functions
-    Nm = _get_Nm(PEinfo)
-    cells = _get_cells([measurement.noise_parameters for measurement in PEinfo.measurements])
-    fsigma = _get_fsigma(PEinfo, size(cells, 1)) # get noise functions fsigma[yidx](theta,z,cv,cvfixed,noise_parameters)
+    # Resolve the noise formula of every measurement, the observable formula substituted by y
+    arguments, yvalue = _get_arguments(PEinfo), _get_yvalue()
+    sigmas, rows = _get_sigmas(PEinfo, arguments, yvalue)
+    maximum(rows) == 0 && return core
 
-    # Create ExaModels variables
-    noise_parameters0 = _get_values(PEinfo, cells)
-    ExaModels.@add_var(core,
-        noise_parameters,
-        1:size(cells, 1), 1:Nm;
-        start = noise_parameters0,
-    )
+    # Unpack variables
+    theta, cv, y = core.theta, core.cv, core.y
+
+    # Create sigma iterator, one group per observable and cells
+    exprs = _get_exprs(PEinfo, arguments, yvalue, [Meta.parse(observable.observable_formula) for observable in PEinfo.observables])
+    y0 = _get_starts(PEinfo, arguments, yvalue, exprs, zeros(_get_Nm(PEinfo)))
+    sigma0 = _get_starts(PEinfo, arguments, yvalue, sigmas, y0)
+    cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
+    groups = [
+        (
+            _get_fsigma(sigmas[first(ms)], arguments, yvalue),
+            [(rows[m], m, PEinfo.measurements[m].cidx, Tuple(cvfixed[:,PEinfo.measurements[m].cidx])) for m in ms]
+        )
+        for ms in _get_key_groups(PEinfo, [m for m in 1:_get_Nm(PEinfo) if rows[m] > 0])
+    ]
+
+    # Create ExaModels variable
     ExaModels.@add_var(core,
         sigma,
-        1:Nm;
-        start = _get_f0(PEinfo, fsigma, noise_parameters0),
+        1:maximum(rows);
+        start = [sigma0[m] for m in 1:_get_Nm(PEinfo) if rows[m] > 0],
     )
 
     # Create constraints
-    core = _create_placeholder_constraints(core, PEinfo, noise_parameters, cells)
-    core = _create_measurement_constraints(core, PEinfo, sigma, fsigma, noise_parameters)
+    for (fsigma, itr) in groups
+        ExaModels.@add_con(core,
+            sigma[row] - fsigma(theta[:], cv[:,cidx], cvfixed_m, (y[m],))
+            for (row, m, cidx, cvfixed_m) in itr
+        )
+    end
 
     return core
 end
@@ -85,40 +94,65 @@ function _create_nllh(
         PEinfo::PEtabInfo
     )
     # Unpack variables
-    y, sigma = core.y, core.sigma
+    y = core.y
 
-    # Create objective iterator, (m, ymeas, transform)
-    rows = [
-        (m, measurement.measurement, PEinfo.observables[measurement.yidx].transform)
-        for (m, measurement) in enumerate(PEinfo.measurements)
-    ]
+    # Resolve sigma of every measurement
+    arguments, yvalue = _get_arguments(PEinfo), _get_yvalue()
+    sigmas, rows = _get_sigmas(PEinfo, arguments, yvalue)
+    values = [Symbolics.value(sigma) for sigma in sigmas]
 
-    # Create objective for lin
-    itr = [(m, ymeas, 0.5 * log(2pi)) for (m, ymeas, transform) in rows if transform == :lin]
-    if !isempty(itr)
-        ExaModels.@add_obj(core,
-            0.5 * ((y[m] - ymeas) / sigma[m])^2 + log(sigma[m]) + constant
-            for (m, ymeas, constant) in itr
-        )
+    # Split the measurements by what sigma is
+    itr_fixed = [m for m in 1:_get_Nm(PEinfo) if values[m] isa Number]
+    itr_sigma = [m for m in 1:_get_Nm(PEinfo) if rows[m] > 0]
+    itr_theta = setdiff(1:_get_Nm(PEinfo), itr_fixed, itr_sigma)
+
+    # Create residuals for sigma = fixed value
+    for transform in (:lin, :log, :log10)
+        itr = [
+            (m, _get_ymeas(PEinfo.measurements[m], transform), Float64(values[m]))
+            for m in itr_fixed if _get_transform(PEinfo, m) == transform
+        ]
+        isempty(itr) && continue
+        if transform == :lin
+            ExaModels.@add_obj(core, 0.5 * ((y[m] - ymeas) / value)^2 for (m, ymeas, value) in itr)
+        elseif transform == :log
+            ExaModels.@add_obj(core, 0.5 * ((log(y[m]) - ymeas) / value)^2 for (m, ymeas, value) in itr)
+        else
+            ExaModels.@add_obj(core, 0.5 * ((log10(y[m]) - ymeas) / value)^2 for (m, ymeas, value) in itr)
+        end
     end
 
-    # Create objective for log
-    itr = [(m, log(ymeas), 0.5 * log(2pi) + log(ymeas)) for (m, ymeas, transform) in rows if transform == :log]
-    if !isempty(itr)
-        ExaModels.@add_obj(core,
-            0.5 * ((log(y[m]) - log_ymeas) / sigma[m])^2 + log(sigma[m]) + constant
-            for (m, log_ymeas, constant) in itr
-        )
+    # Create residuals and log(sigma) for sigma = theta expression, one log term per distinct row
+    for (f, rows_f) in _get_groups(core, PEinfo, arguments, sigmas, itr_theta)
+        core = _create_theta_sigma_objective(core, PEinfo, y, f, rows_f)
     end
 
-    # Create objective for log10
-    itr = [(m, log10(ymeas), 0.5 * log(2pi) + log(ymeas) + log(log(10))) for (m, ymeas, transform) in rows if transform == :log10]
-    if !isempty(itr)
-        ExaModels.@add_obj(core,
-            0.5 * ((log10(y[m]) - log10_ymeas) / sigma[m])^2 + log(sigma[m]) + constant
-            for (m, log10_ymeas, constant) in itr
-        )
+    # Create residuals and log(sigma) for sigma = variable
+    if !isempty(itr_sigma)
+        sigma = core.sigma
+        for transform in (:lin, :log, :log10)
+            itr = [
+                (rows[m], m, _get_ymeas(PEinfo.measurements[m], transform))
+                for m in itr_sigma if _get_transform(PEinfo, m) == transform
+            ]
+            isempty(itr) && continue
+            if transform == :lin
+                ExaModels.@add_obj(core, 0.5 * ((y[m] - ymeas) / sigma[row])^2 for (row, m, ymeas) in itr)
+            elseif transform == :log
+                ExaModels.@add_obj(core, 0.5 * ((log(y[m]) - ymeas) / sigma[row])^2 for (row, m, ymeas) in itr)
+            else
+                ExaModels.@add_obj(core, 0.5 * ((log10(y[m]) - ymeas) / sigma[row])^2 for (row, m, ymeas) in itr)
+            end
+        end
+        ExaModels.@add_obj(core, log(sigma[row]) for row in rows[itr_sigma])
     end
+
+    # Create the measurement constants, log(sigma) of a fixed sigma among them
+    constant = sum(
+        _get_constant(PEinfo.measurements[m], _get_transform(PEinfo, m)) + (m in itr_fixed ? log(Float64(values[m])) : 0.0)
+        for m in 1:_get_Nm(PEinfo)
+    )
+    ExaModels.@add_obj(core, value for value in [constant])
 
     return core
 end
@@ -191,40 +225,105 @@ end
 
 _get_Nm(PEinfo::PEtabInfo) = length(PEinfo.measurements)
 _get_Ny(PEinfo::PEtabInfo) = length(PEinfo.observables)
-_is_steadystate(PEinfo::PEtabInfo) = all(measurement -> isinf(measurement.time), PEinfo.measurements)
 
-# fy[yidx](theta, z, cv, cvfixed, observable_parameters): observable formula of observable yidx
-_get_fy(PEinfo, Nplaceholders) = _get_formula_functions(
-    PEinfo, [observable.observable_formula for observable in PEinfo.observables], "observableParameter", Nplaceholders
-)
+# Observable and cells of a measurement, the key its formulas are resolved and grouped by
+_get_key(measurement::PEtabMeasurement) =
+    (measurement.yidx, measurement.observable_parameters, measurement.noise_parameters)
 
-# fsigma[yidx](theta, z, cv, cvfixed, noise_parameters): noise formula of observable yidx
-_get_fsigma(PEinfo, Nplaceholders) = _get_formula_functions(
-    PEinfo, [observable.noise_formula for observable in PEinfo.observables], "noiseParameter", Nplaceholders
-)
+# Measurements of ms with the same key, in the order they first occur
+function _get_key_groups(PEinfo, ms)
+    groups = Dict{Any, Vector{Int}}()
+    for m in ms
+        push!(get!(groups, _get_key(PEinfo.measurements[m]), Int[]), m)
+    end
+    return [groups[key] for key in unique(_get_key(PEinfo.measurements[m]) for m in ms)]
+end
 
-# f[yidx](theta, z, cv, cvfixed, placeholders): formulas[yidx] compiled, {prefix}{n}_{observableId} as placeholders[n]
-function _get_formula_functions(PEinfo, formulas, prefix, Nplaceholders)
-    arguments = _get_arguments(PEinfo)
+# yvalue[1]: the observable of a measurement, standing in for y[m] inside its noise formula
+function _get_yvalue()
+    Symbolics.@variables yvalue[1:1]
+    return yvalue
+end
+
+_get_transform(PEinfo, m) = PEinfo.observables[PEinfo.measurements[m].yidx].transform
+
+# Measured value on the observableTransformation scale
+_get_ymeas(measurement::PEtabMeasurement, transform) =
+    transform == :log   ? log(measurement.measurement)   :
+    transform == :log10 ? log10(measurement.measurement) : measurement.measurement
+
+# Measurement constant of the Gaussian negative log-likelihood, PEtab.jl's change of variables
+_get_constant(measurement::PEtabMeasurement, transform) =
+    0.5 * log(2pi) +
+    (transform == :lin ? 0.0 : log(measurement.measurement)) +
+    (transform == :log10 ? log(log(10)) : 0.0)
+
+# exprs[m]: formulas[yidx] of measurement m, its cells and every id resolved into the arguments
+function _get_exprs(PEinfo, arguments, yvalue, formulas)
     rules = _get_substitutions(PEinfo, arguments)
     symbols = _get_symbols(PEinfo, arguments)
-    Symbolics.@variables placeholders[1:Nplaceholders]
+    haskey(symbols, "yvalue") && throw(ArgumentError("'yvalue' is reserved for the observable inside a noise formula"))
+    symbols["yvalue"] = yvalue[1]
+    scales = [parameter.scale for parameter in PEinfo.parameters if parameter.estimate]
+    value(cell) = cell isa Int ? _linscale(arguments.theta[cell], scales[cell]) : cell
+    cache = Dict{Any, Any}()
     return [
-        Symbolics.build_function(
-            Symbolics.fixpoint_sub(
-                _parse_formula(
-                    Meta.parse(formula),
-                    merge(symbols, Dict("$(prefix)$(n)_$(observable.observable_id)" => placeholders[n] for n in 1:Nplaceholders))
-                ),
-                rules;
-                fold = Val(true)
-            ),
-            arguments.theta, arguments.z, arguments.cv, arguments.cvfixed, placeholders;
-            expression = Val{false},
-            nanmath = false
-        )
-        for (observable, formula) in zip(PEinfo.observables, formulas)
+        get!(cache, _get_key(measurement)) do
+            observable = PEinfo.observables[measurement.yidx]
+            cells = Dict{String, Any}(
+                "$(prefix)Parameter$(n)_$(observable.observable_id)" => value(cell)
+                for (prefix, parameters) in
+                    ("observable" => measurement.observable_parameters, "noise" => measurement.noise_parameters)
+                for (n, cell) in enumerate(parameters)
+            )
+            Symbolics.unwrap(
+                Symbolics.fixpoint_sub(
+                    _parse_formula(formulas[measurement.yidx], merge(symbols, cells)),
+                    rules;
+                    fold = Val(true)
+                )
+            )
+        end
+        for measurement in PEinfo.measurements
     ]
+end
+
+# sigmas[m]: noise formula of measurement m with its observable formula substituted by yvalue.
+# rows[m]: its sigma row, 0 when sigma reads no observable
+function _get_sigmas(PEinfo, arguments, yvalue)
+    sigmas = _get_exprs(PEinfo, arguments, yvalue, [
+        _substitute_observable(Meta.parse(observable.noise_formula), Meta.parse(observable.observable_formula))
+        for observable in PEinfo.observables
+    ])
+    rows, row = zeros(Int, _get_Nm(PEinfo)), 0
+    for (m, sigma) in enumerate(sigmas)
+        kinds = _get_kinds(sigma)
+        :z in kinds && throw(ArgumentError(
+            "noise formula of '$(PEinfo.observables[PEinfo.measurements[m].yidx].observable_id)' reads a state outside its observable formula, which is not supported"
+        ))
+        :yvalue in kinds && (row += 1; rows[m] = row)
+    end
+    return sigmas, rows
+end
+
+# Every subexpression of expression equal to observable replaced by the yvalue placeholder
+_substitute_observable(expression, observable) =
+    expression == observable ? :yvalue :
+    expression isa Expr ? Expr(expression.head, (_substitute_observable(argument, observable) for argument in expression.args)...) :
+    expression
+
+# fsigma(theta, cv, cvfixed, yvalue): a noise formula that reads the observable
+_get_fsigma(sigma, arguments, yvalue) = Symbolics.build_function(
+    sigma, arguments.theta, arguments.cv, arguments.cvfixed, yvalue;
+    expression = Val{false},
+    nanmath = false
+)
+
+# Leaf kinds a resolved expression reads
+function _get_kinds(x)
+    leaf = _get_leaf(x)
+    isnothing(leaf) || return Set([leaf[1]])
+    return union((_get_kinds(argument) for argument in SymbolicUtils.arguments(x))...)
 end
 
 # Symbol of every formula id: model states, assignment rules and parameters, and parameters-table ids outside the model as theta or values
@@ -269,141 +368,230 @@ end
 # z0_measurements[:,m]: initial guess of the states at measurement m, z0 at its collocation point or zss0 of its condition
 function _get_z0_measurements(PEinfo)
     z0_measurements = Matrix{Float64}(undef, _get_Nz(PEinfo), _get_Nm(PEinfo))
-    if _is_steadystate(PEinfo)
-        for (m, measurement) in enumerate(PEinfo.measurements)
+    for (m, measurement) in enumerate(PEinfo.measurements)
+        if isinf(measurement.time)
             z0_measurements[:,m] = PEinfo.zss0[PEinfo.preeq_idxs[measurement.cidx]]
-        end
-    else
-        points = _get_measurement_points(PEinfo)
-        for (m, measurement) in enumerate(PEinfo.measurements)
-            i, k = points[m]
+        else
+            i, k = _get_measurement_points(PEinfo)[m]
             z0_measurements[:,m] = PEinfo.z0[:,measurement.cidx,i,k+1]
         end
     end
     return z0_measurements
 end
 
-# cells[n,m]: cell n of measurement m, 0.0 past its cells
-function _get_cells(measurement_cells)
-    N = maximum(length, measurement_cells; init = 0)
-    return Union{Float64, Int}[
-        n <= length(cells) ? cells[n] : 0.0
-        for n in 1:N, cells in measurement_cells
-    ]
-end
-
-# Values of the cells at theta0
-function _get_values(PEinfo, cells)
-    scales = [parameter.scale for parameter in PEinfo.parameters if parameter.estimate]
-    value(cell) = cell isa Int ? _linscale(PEinfo.theta0[cell], scales[cell]) : cell
-    return Float64[value(cell) for cell in cells]
-end
-
-# f0[m]: f[yidx](theta, z, cv, cvfixed, placeholders) of measurement m at the initial guess
-function _get_f0(PEinfo, f, placeholders0)
-    z0_measurements = _get_z0_measurements(PEinfo)
+# starts[m]: exprs[m] at the initial guess, its observable read from y0
+function _get_starts(PEinfo, arguments, yvalue, exprs, y0)
+    z0 = _get_z0_measurements(PEinfo)
     cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
+    cache = Dict{Any, Any}()
     return [
-        f[measurement.yidx](PEinfo.theta0, z0_measurements[:,m], PEinfo.cv0[:,measurement.cidx], cvfixed[:,measurement.cidx], placeholders0[:,m])
+        get!(cache, _get_key(measurement)) do
+            Symbolics.build_function(
+                exprs[m],
+                arguments.theta, arguments.z, arguments.cv, arguments.cvfixed, yvalue;
+                expression = Val{false},
+                nanmath = false
+            )
+        end(PEinfo.theta0, z0[:,m], PEinfo.cv0[:,measurement.cidx], cvfixed[:,measurement.cidx], (y0[m],))
         for (m, measurement) in enumerate(PEinfo.measurements)
     ]
 end
 
-# Create placeholder constraints, placeholder = {fixed value, theta}
-function _create_placeholder_constraints(
-        core::ExaModels.ExaCore,
-        PEinfo::PEtabInfo,
-        placeholder,
-        cells
-    )
-    # Unpack variables
-    theta = core.theta
-
-    # Parse cells
-    scales = [parameter.scale for parameter in PEinfo.parameters if parameter.estimate]
-    rows = [(n, m, cells[n,m]) for n in axes(cells, 1), m in axes(cells, 2)]
-
-    # Create constraints for placeholder = fixed value
-    itr = [(n, m, cell) for (n, m, cell) in rows if cell isa Float64]
-    if !isempty(itr)
-        ExaModels.@add_con(core,
-            placeholder[n,m] - value
-            for (n, m, value) in itr
-        )
+# Groups of measurements ms sharing a term form: (f, rows) with rows = (m, cidx, i, k, js, vs, cvidxs, data, t)
+function _get_groups(core::EMC.CollocationExaCore, PEinfo, arguments, exprs, ms)
+    isempty(ms) && return []
+    cvfixed, u = _get_cvfixed(PEinfo, PEinfo.conditions), _get_u(PEinfo)
+    points = _get_measurement_points(PEinfo)
+    slots = _get_slots(core, PEinfo, maximum(_count_leaves(exprs[m]) for m in ms))
+    forms, occurrences = Dict{String, Any}(), []
+    for m in ms
+        form = _get_form(exprs[m])
+        expr, leaves = _get_expr(exprs[m], arguments, slots)
+        haskey(forms, form) || (forms[form] = expr)
+        cidx, (i, k) = PEinfo.measurements[m].cidx, points[m]
+        push!(occurrences, (
+            form, m, cidx, i, k,
+            Tuple(leaves.js), Tuple(leaves.vs), Tuple(leaves.cvidxs),
+            Tuple(_get_data(leaf, cvfixed, u, cidx, i) for leaf in leaves.data),
+            PEinfo.measurements[m].time,
+        ))
     end
-
-    # Create constraints for placeholder = _linscale(theta)
-    for scale in (:log10, :log, :lin)
-        itr = [(n, m, cell) for (n, m, cell) in rows if cell isa Int && scales[cell] == scale]
-        isempty(itr) && continue
-        ExaModels.@add_con(core,
-            placeholder[n,m] - _linscale(theta[j], scale)
-            for (n, m, j) in itr
+    return [
+        (
+            Symbolics.build_function(
+                forms[form],
+                arguments.theta, slots.z, slots.cv, slots.m, slots.i, slots.k,
+                slots.js, slots.vs, slots.cvidxs, slots.data, arguments.t;
+                expression = Val{false},
+                nanmath = false
+            ),
+            [occurrence[2:end] for occurrence in occurrences if occurrence[1] == form]
         )
-    end
-
-    return core
+        for form in unique(first.(occurrences))
+    ]
 end
 
-# Create constraints variable[m] = f[yidx](theta, z, cv, cvfixed, placeholder) at the collocation point of every measurement
+# Groups of measurements ms sharing an observable and cells: (f, rows) with rows = (m, ssidx, cvfixed_m)
+function _get_groups(core::ExaModels.ExaCore, PEinfo, arguments, exprs, ms)
+    cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
+    return [
+        (
+            Symbolics.build_function(
+                exprs[first(group)],
+                arguments.theta, arguments.z, arguments.cv, arguments.cvfixed;
+                expression = Val{false},
+                nanmath = false
+            ),
+            [
+                (m, PEinfo.preeq_idxs[PEinfo.measurements[m].cidx], Tuple(cvfixed[:,PEinfo.measurements[m].cidx]))
+                for m in group
+            ]
+        )
+        for group in _get_key_groups(PEinfo, ms)
+    ]
+end
+
+# Create constraints variable[m] = f(theta, z, cv, cvfixed) at the collocation point of every measurement of the group
 function _create_measurement_constraints(
         core::EMC.CollocationExaCore,
-        PEinfo::PEtabInfo,
         variable,
         f,
-        placeholder
+        rows
     )
     # Unpack variables
     z, theta, cv = core.z, core.theta, core.cv
 
-    # Create constraint iterator
-    cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
-    points = _get_measurement_points(PEinfo)
-    rows = [
-        (m, measurement.yidx, measurement.cidx, points[m][1], points[m][2], Tuple(cvfixed[:,measurement.cidx]))
-        for (m, measurement) in enumerate(PEinfo.measurements)
-    ]
-
-    # Create constraints, one per observable
-    for yidx in 1:_get_Ny(PEinfo)
-        itr = [(m, cidx, i, k, cvfixed_m) for (m, yidx_m, cidx, i, k, cvfixed_m) in rows if yidx_m == yidx]
-        isempty(itr) && continue
-        ExaModels.@add_con(core,
-            variable[m] - f[yidx](theta[:], z[:,cidx,i,k], cv[:,cidx], cvfixed_m, placeholder[:,m])
-            for (m, cidx, i, k, cvfixed_m) in itr
-        )
-    end
+    # Create constraints
+    ExaModels.@add_con(core,
+        variable[m] - f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t)
+        for (m, cidx, i, k, js, vs, cvidxs, data_m, t) in rows
+    )
 
     return core
 end
 
-# Create constraints variable[m] = f[yidx](theta, zss, (), cvfixed, placeholder) at the steady state of every measurement
+# Create constraints variable[m] = f(theta, zss, (), cvfixed) at the steady state of every measurement of the group
 function _create_measurement_constraints(
         core::ExaModels.ExaCore,
-        PEinfo::PEtabInfo,
         variable,
         f,
-        placeholder
+        rows
     )
     # Unpack variables
     zss, theta = core.zss, core.theta
 
-    # Create constraint iterator
-    cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
-    rows = [
-        (m, measurement.yidx, PEinfo.preeq_idxs[measurement.cidx], Tuple(cvfixed[:,measurement.cidx]))
-        for (m, measurement) in enumerate(PEinfo.measurements)
-    ]
+    # Create constraints
+    ExaModels.@add_con(core,
+        variable[m] - f(theta[:], zss[:,ssidx], (), cvfixed_m)
+        for (m, ssidx, cvfixed_m) in rows
+    )
 
-    # Create constraints, one per observable
-    for yidx in 1:_get_Ny(PEinfo)
-        itr = [(m, ssidx, cvfixed_m) for (m, yidx_m, ssidx, cvfixed_m) in rows if yidx_m == yidx]
+    return core
+end
+
+# Create the residuals of a sigma form and its log(sigma), one log term per distinct row
+function _create_theta_sigma_objective(
+        core::EMC.CollocationExaCore,
+        PEinfo,
+        y,
+        f,
+        rows
+    )
+    # Unpack variables
+    z, theta, cv = core.z, core.theta, core.cv
+
+    # Create residuals
+    for transform in (:lin, :log, :log10)
+        itr = [
+            (_get_ymeas(PEinfo.measurements[m], transform), m, cidx, i, k, js, vs, cvidxs, data_m, t)
+            for (m, cidx, i, k, js, vs, cvidxs, data_m, t) in rows if _get_transform(PEinfo, m) == transform
+        ]
         isempty(itr) && continue
-        ExaModels.@add_con(core,
-            variable[m] - f[yidx](theta[:], zss[:,ssidx], (), cvfixed_m, placeholder[:,m])
-            for (m, ssidx, cvfixed_m) in itr
-        )
+        if transform == :lin
+            ExaModels.@add_obj(core,
+                0.5 * ((y[m] - ymeas) / f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t))^2
+                for (ymeas, m, cidx, i, k, js, vs, cvidxs, data_m, t) in itr
+            )
+        elseif transform == :log
+            ExaModels.@add_obj(core,
+                0.5 * ((log(y[m]) - ymeas) / f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t))^2
+                for (ymeas, m, cidx, i, k, js, vs, cvidxs, data_m, t) in itr
+            )
+        else
+            ExaModels.@add_obj(core,
+                0.5 * ((log10(y[m]) - ymeas) / f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t))^2
+                for (ymeas, m, cidx, i, k, js, vs, cvidxs, data_m, t) in itr
+            )
+        end
     end
+
+    # Create log(sigma), one term per distinct row since sigma reads no state
+    counts, first_rows = Dict{Any, Int}(), Dict{Any, Any}()
+    for row in rows
+        (m, cidx, i, k, js, vs, cvidxs, data_m, t) = row
+        key = (cidx, js, vs, cvidxs, data_m)
+        counts[key] = get(counts, key, 0) + 1
+        get!(first_rows, key, row)
+    end
+    itr = [
+        (counts[key], first_rows[key][2:end]...)
+        for key in unique((cidx, js, vs, cvidxs, data_m) for (m, cidx, i, k, js, vs, cvidxs, data_m, t) in rows)
+    ]
+    ExaModels.@add_obj(core,
+        count * log(f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t))
+        for (count, cidx, i, k, js, vs, cvidxs, data_m, t) in itr
+    )
+
+    return core
+end
+
+# Create the residuals of a sigma group and its log(sigma) at the steady state
+function _create_theta_sigma_objective(
+        core::ExaModels.ExaCore,
+        PEinfo,
+        y,
+        f,
+        rows
+    )
+    # Unpack variables
+    zss, theta = core.zss, core.theta
+
+    # Create residuals
+    for transform in (:lin, :log, :log10)
+        itr = [
+            (_get_ymeas(PEinfo.measurements[m], transform), m, ssidx, cvfixed_m)
+            for (m, ssidx, cvfixed_m) in rows if _get_transform(PEinfo, m) == transform
+        ]
+        isempty(itr) && continue
+        if transform == :lin
+            ExaModels.@add_obj(core,
+                0.5 * ((y[m] - ymeas) / f(theta[:], zss[:,ssidx], (), cvfixed_m))^2
+                for (ymeas, m, ssidx, cvfixed_m) in itr
+            )
+        elseif transform == :log
+            ExaModels.@add_obj(core,
+                0.5 * ((log(y[m]) - ymeas) / f(theta[:], zss[:,ssidx], (), cvfixed_m))^2
+                for (ymeas, m, ssidx, cvfixed_m) in itr
+            )
+        else
+            ExaModels.@add_obj(core,
+                0.5 * ((log10(y[m]) - ymeas) / f(theta[:], zss[:,ssidx], (), cvfixed_m))^2
+                for (ymeas, m, ssidx, cvfixed_m) in itr
+            )
+        end
+    end
+
+    # Create log(sigma), one term per condition since sigma reads no state
+    counts, first_rows = Dict{Any, Int}(), Dict{Any, Any}()
+    for row in rows
+        counts[row[3]] = get(counts, row[3], 0) + 1
+        get!(first_rows, row[3], row)
+    end
+    itr = [(counts[key], first_rows[key][2], key) for key in unique(cvfixed_m for (m, ssidx, cvfixed_m) in rows)]
+    ExaModels.@add_obj(core,
+        count * log(f(theta[:], zss[:,ssidx], (), cvfixed_m))
+        for (count, ssidx, cvfixed_m) in itr
+    )
 
     return core
 end

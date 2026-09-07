@@ -17,7 +17,13 @@ const MODELS = [
     "Weber_BMC2015",
     "Zhao_QuantBiol2020",
     "Schwen_PONE2014",
+    "Alkan_SciSignal2018",
 ]
+
+const UNSUPPORTED = Dict(
+    "Liu_IFACPapersOnLine2025" => "SBML event on a state",
+    "Oliveira_NatCommun2021" => "estimated event time",
+)
 
 function find_yaml(model)
     dir = joinpath(@__DIR__, "Benchmark-Models-PEtab", model)
@@ -27,6 +33,8 @@ end
 
 const PEINFO = Dict{String, EMP.PEtabInfo}()
 peinfo(model) = get!(() -> EMP._get_PEtabInfo(find_yaml(model)), PEINFO, model)
+
+block(w, variable) = reshape(w[variable.offset .+ (1:variable.length)], EMP.ExaModels.size(variable.size)...)
 
 function revise_model(model, table, edit)
     dir = mktempdir()
