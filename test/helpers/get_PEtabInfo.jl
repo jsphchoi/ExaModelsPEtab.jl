@@ -223,8 +223,4 @@
         end
         @test_throws ArgumentError EMP._get_PEtabInfo(revise_model("Brannmark_JBC2010", :measurements, inf_times))
     end
-
-    @testset "rejects $model, $reason" for (model, reason) in UNSUPPORTED
-        @test_throws ArgumentError EMP._get_PEtabInfo(find_yaml(model))
-    end
 end

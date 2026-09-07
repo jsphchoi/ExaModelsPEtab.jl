@@ -36,12 +36,13 @@ const MODELS = [
     "SalazarCavazos_MBoC2020",
     "Isensee_JCB2018",
     "Raimundez_PCB2020",
-    # Froehlich_CellSystems2018 : too large for the test suite
+    # Froehlich_CellSystems2018 : too large
     # Fiedler_BMCSystBiol2016 : initial condition expression too large
 ]
 
 const UNSUPPORTED = Dict(
     "Liu_IFACPapersOnLine2025" => "SBML event on a state",
+    "Smith_BMCSystBiol2013" => "SBML event on a state",
     "Oliveira_NatCommun2021" => "estimated event time",
     "Beer_MolBioSystems2014" => "event time estimated in a condition",
 )
@@ -52,8 +53,18 @@ function find_yaml(model)
     return isfile(path) ? path : only(filter(endswith(".yaml"), readdir(dir; join = true)))
 end
 
+const MODELS_SOLVED = [
+    "Blasi_CellSystems2016",
+    "Bertozzi_PNAS2020",
+    "Armistead_CellDeathDis2024",
+    "Boehm_JProteomeRes2014",
+]
+
 const PEINFO = Dict{String, EMP.PEtabInfo}()
 peinfo(model) = get!(() -> EMP._get_PEtabInfo(find_yaml(model)), PEINFO, model)
+
+const EXAMODEL = Dict{String, Any}()
+examodel(model) = get!(() -> examodel_petab(find_yaml(model)), EXAMODEL, model)
 
 block(w, variable) = reshape(w[variable.offset .+ (1:variable.length)], EMP.ExaModels.size(variable.size)...)
 
@@ -83,7 +94,8 @@ end
 
     @testset "api" begin
         for file in [
-            "examodel_petab"
+            "examodel_petab",
+            "evaluate_objective"
         ]
             include("api/$file.jl")
         end
