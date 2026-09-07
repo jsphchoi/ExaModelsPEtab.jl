@@ -14,10 +14,6 @@ function _create_objective(
     return core
 end
 
-# TODO only need to actually create sigma if sigma is not a fixed variable
-# TODO (REVIEW) sigma is created only for the measurements whose noise formula reads the observable.
-# A fixed value and an expression in theta go straight into the objective, with no variable and no row.
-
 # Create y (observables at the measurements) and its constraints, y = fy(theta, z, cv, cvfixed)
 function _create_y(
         core::ExaModels.ExaCore,
@@ -322,7 +318,7 @@ end
 
 # ----- helper functions -----
 
-_get_Nm(PEinfo::PEtabInfo) = length(PEinfo.measurements)
+_get_Nm(PEinfo::Union{NamedTuple, PEtabInfo}) = length(PEinfo.measurements)
 _get_Ny(PEinfo::PEtabInfo) = length(PEinfo.observables)
 
 # Observable and cells of a measurement, the key its formulas are resolved and grouped by
@@ -446,6 +442,13 @@ _substitute_observable(expression, observable) =
     expression == observable ? :yvalue :
     expression isa Expr ? Expr(expression.head, (_substitute_observable(argument, observable) for argument in expression.args)...) :
     expression
+
+# fy(theta, z, cv, cvfixed): an observable formula
+_get_fy(expr, arguments) = Symbolics.build_function(
+    expr, arguments.theta, arguments.z, arguments.cv, arguments.cvfixed;
+    expression = Val{false},
+    nanmath = false
+)
 
 # fsigma(theta, cv, cvfixed, yvalue): a noise formula that reads the observable
 _get_fsigma(sigma, arguments, yvalue) = Symbolics.build_function(
@@ -578,12 +581,7 @@ function _get_groups(core::ExaModels.ExaCore, PEinfo, arguments, exprs, ms)
     cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
     return [
         (
-            Symbolics.build_function(
-                exprs[first(group)],
-                arguments.theta, arguments.z, arguments.cv, arguments.cvfixed;
-                expression = Val{false},
-                nanmath = false
-            ),
+            _get_fy(exprs[first(group)], arguments),
             [
                 (m, PEinfo.preeq_idxs[PEinfo.measurements[m].cidx], Tuple(cvfixed[:,PEinfo.measurements[m].cidx]))
                 for m in group

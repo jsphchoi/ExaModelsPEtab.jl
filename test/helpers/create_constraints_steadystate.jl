@@ -23,7 +23,7 @@
             zss = PEinfo.zss0[ssidx]
             @test size(W[ssidx]) == (length(b[ssidx]), Nz)
             @test length(keep_rows[ssidx]) + length(b[ssidx]) == Nz
-            @test W[ssidx] * zss ≈ b[ssidx]
+            @test maximum(abs, W[ssidx] * zss - b[ssidx]) <= 1e-8 * maximum(abs, zss)
 
             J = dfdz(PEinfo.theta0, zss, Float64[], cvfixed[:,ssidx], u[:,ssidx], 0.0)
             @test maximum(abs, W[ssidx] * J; init = 0.0) <= 1e-6 * maximum(abs, J)

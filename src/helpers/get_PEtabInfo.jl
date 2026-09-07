@@ -7,20 +7,13 @@ function _get_PEtabInfo(filename)
     petab = _parse_yaml(filename)
 
     # Determine model size
-    Nz = _get_Nz(petab.model)
-    Ntheta_per_cond = _get_Ntheta_per_cond(petab)
-    model_size = :large
-    if Nz <= 15 && Ntheta_per_cond <= 20
-        model_size = :small
-    elseif Nz <= 50 && Ntheta_per_cond <= 70
-        model_size = :medium
-    end
+    model_size = _get_model_size(petab)
 
     # Simulate at nominal theta0
     sols, sols_ss = _initial_solve(petab, model_size)
 
     # Determine mesh nodes and K
-    mesh_size = _get_mesh_size(petab, sols, Nz)
+    mesh_size = _get_mesh_size(petab, sols, _get_Nz(petab.model))
     nodes, K = _determine_mesh(petab, sols, mesh_size)
 
     # Initial guesses {z0, zss0}
@@ -307,7 +300,7 @@ function _get_measurements(table, sim_ids, observables, parameters)
     ]
 end
 
-_is_steadystate(petab::NamedTuple) = all(measurement -> isinf(measurement.time), petab.measurements)
+_is_steadystate(petab::Union{NamedTuple, PEtabInfo}) = all(measurement -> isinf(measurement.time), petab.measurements)
 
 # theta0: nominal values of the estimated parameters on their scale
 _get_theta0(petab) = [
@@ -330,16 +323,24 @@ function _get_Ntheta_per_cond(petab)
     return n_sys + n_condition
 end
 
+# PEtab.jl's model size by the state count and the estimated dynamic parameter count
+function _get_model_size(petab)
+    Nz, Ntheta_per_cond = _get_Nz(petab.model), _get_Ntheta_per_cond(petab)
+    return Nz <= 15 && Ntheta_per_cond <= 20 ? :small  :
+           Nz <= 50 && Ntheta_per_cond <= 70 ? :medium : :large
+end
+
 # Simulate every condition at theta0
-function _initial_solve(petab, model_size)
-    solver = _get_odesolver(model_size)
-    theta0 = _get_theta0(petab)
-    sols_ss = _get_sols_ss(petab, theta0, solver)
+_initial_solve(petab, model_size) = _get_sols(petab, _get_theta0(petab), _get_odesolver(model_size))
+
+# Simulate every condition at theta, sols[cidx] and sols_ss[ssidx]
+function _get_sols(petab, theta, solver)
+    sols_ss = _get_sols_ss(petab, theta, solver)
     _is_steadystate(petab) && return nothing, sols_ss
     t_stops = _get_t_stops(petab)
     sols = [
         _solve(
-            _get_odeproblem(petab, theta0, cidx, sols_ss, t_stops), 
+            _get_odeproblem(petab, theta, cidx, sols_ss, t_stops), 
             solver; 
             callback = petab.model.callbacks,
             tstops = t_stops[cidx]
@@ -524,16 +525,18 @@ function _get_cv_ids(petab)
 end
 
 # cv0[cvidx,cidx]: value of condition target cv_ids[cvidx] in condition cidx at theta0
-function _get_cv0(petab)
+_get_cv0(petab) = _get_cv(petab, _get_theta0(petab))
+
+# cv[cvidx,cidx]: value of condition target cv_ids[cvidx] in condition cidx at theta
+function _get_cv(petab, theta)
     cv_ids = _get_cv_ids(petab)
-    theta0 = _get_theta0(petab)
     scales = [parameter.scale for parameter in petab.parameters if parameter.estimate]
-    value(cell) = cell isa Int ? _linscale(theta0[cell], scales[cell]) : cell
-    cv0 = Matrix{Float64}(undef, length(cv_ids), length(petab.conditions))
+    value(cell) = cell isa Int ? _linscale(theta[cell], scales[cell]) : cell
+    cv = Matrix{Float64}(undef, length(cv_ids), length(petab.conditions))
     for (cidx, condition) in enumerate(petab.conditions), (cvidx, id) in enumerate(cv_ids)
         i = findfirst(==(id), condition.target_ids)
         isnothing(i) && throw(ArgumentError("condition '$(condition.condition_id)' leaves '$id' unset"))
-        cv0[cvidx,cidx] = value(condition.target_values[i])
+        cv[cvidx,cidx] = value(condition.target_values[i])
     end
-    return cv0
+    return cv
 end

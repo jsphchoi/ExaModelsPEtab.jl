@@ -92,8 +92,8 @@ end
 _has_cv(PEinfo::PEtabInfo) = _get_Ncv(PEinfo) > 0
 _has_zss(PEinfo::PEtabInfo) = _get_Nss(PEinfo) > 0
 
-_get_Ntheta(PEinfo::PEtabInfo) = count(parameter -> parameter.estimate, PEinfo.parameters)
-_get_Nz(PEinfo::PEtabInfo) = _get_Nz(PEinfo.model)
+_get_Ntheta(PEinfo::Union{NamedTuple, PEtabInfo}) = count(parameter -> parameter.estimate, PEinfo.parameters)
+_get_Nz(PEinfo::Union{NamedTuple, PEtabInfo}) = _get_Nz(PEinfo.model)
 _get_Nc(PEinfo::PEtabInfo) = length(PEinfo.conditions)
-_get_Ncv(PEinfo::PEtabInfo) = size(PEinfo.cv0, 1)
+_get_Ncv(PEinfo::Union{NamedTuple, PEtabInfo}) = length(_get_cv_ids(PEinfo))
 _get_Nss(PEinfo::PEtabInfo) = length(PEinfo.preeq_conditions)

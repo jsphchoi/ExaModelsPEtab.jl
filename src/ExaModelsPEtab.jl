@@ -53,10 +53,11 @@ for file in [
         "helpers/create_variables_steadystate",
         "helpers/create_constraints_steadystate",
         "api/examodel_petab",
+        "api/evaluate_objective",
     ]
     include("$file.jl")
 end
 
-export examodel_petab
+export examodel_petab, evaluate_objective
 
 end
