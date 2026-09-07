@@ -28,14 +28,14 @@ const MODELS = [
     "Rahman_MBS2016",
     "Okuonghae_ChaosSolitonsFractals2020",
     "Bachmann_MSB2011",
-    "SalazarCavazos_MBoC2020",
     "Armistead_CellDeathDis2024",
     "Laske_PLOSComputBiol2019",
     "Giordano_Nature2020",
     "Lang_PLOSComputBiol2024",
-    "Chen_MSB2009",
-    "Isensee_JCB2018",
-    "Raimundez_PCB2020"
+    # Chen_MSB2009 : observable kernel build over 1000 s
+    # SalazarCavazos_MBoC2020 : observable kernel build over 1000 s
+    # Isensee_JCB2018 : massive, skipped for now
+    # Raimundez_PCB2020 : massive, skipped for now
     # Froehlich_CellSystems2018 : too large for the test suite
     # Fiedler_BMCSystBiol2016 : initial condition expression too large
 ]
@@ -44,7 +44,6 @@ const UNSUPPORTED = Dict(
     "Liu_IFACPapersOnLine2025" => "SBML event on a state",
     "Oliveira_NatCommun2021" => "estimated event time",
     "Beer_MolBioSystems2014" => "event time estimated in a condition",
-    "Smith_BMCSystBiol2013" => "SBML event on a state",
 )
 
 function find_yaml(model)

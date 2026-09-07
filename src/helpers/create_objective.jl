@@ -1,5 +1,4 @@
 # Creates objective function / y, sigma auxiliary variable constraints
-# Creates the collocation + continuity / initial conition / cv auxiliary variable constraints
 function _create_objective(
         core::ExaModels.ExaCore,
         PEinfo::PEtabInfo
@@ -28,8 +27,11 @@ function _create_y(
     arguments, yvalue = _get_arguments(PEinfo), _get_yvalue()
     exprs = _get_exprs(PEinfo, arguments, yvalue, [Meta.parse(observable.observable_formula) for observable in PEinfo.observables])
 
+    # Create zsum for the sums of states inside the formulas
+    core, zsum_sym, zsum0, exprs = _create_zsum(core, PEinfo, arguments, exprs)
+
     # Create ExaModels variable
-    y0 = _get_starts(PEinfo, arguments, yvalue, exprs, zeros(_get_Nm(PEinfo)))
+    y0 = _get_starts(PEinfo, arguments, yvalue, exprs, zeros(_get_Nm(PEinfo)), zsum_sym, zsum0)
     ExaModels.@add_var(core,
         y,
         1:_get_Nm(PEinfo);
@@ -37,8 +39,106 @@ function _create_y(
     )
 
     # Create constraints
-    for (f, rows) in _get_groups(core, PEinfo, arguments, exprs, 1:_get_Nm(PEinfo))
+    core = _create_y_constraints(core, PEinfo, arguments, exprs)
+
+    return core
+end
+
+# Create zsum (sums of states inside a denominator, a function, or a large product of an observable) and its constraints, one per sum and measurement point
+function _create_zsum(
+        core::EMC.CollocationExaCore,
+        PEinfo,
+        arguments,
+        exprs
+    )
+    # Find the sums, one key per sum and measurement point
+    points = _get_measurement_points(PEinfo)
+    sums = []
+    for (m, measurement) in enumerate(PEinfo.measurements)
+        _bind_sums(exprs[m], false, sums, (measurement.cidx, points[m]...), nothing, _get_zsum(1))
+    end
+    keys = unique(sums)
+    index = Dict(key => q for (q, key) in enumerate(keys))
+    zsum_sym = _get_zsum(length(keys))
+    exprs = [
+        _bind_sums(exprs[m], false, sums, (measurement.cidx, points[m]...), index, zsum_sym)
+        for (m, measurement) in enumerate(PEinfo.measurements)
+    ]
+
+    # Create ExaModels variable
+    cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
+    cache = Dict{Any, Any}()
+    zsum0 = Float64[
+        get!(cache, sum) do
+            Symbolics.build_function(
+                sum,
+                arguments.theta, arguments.z, arguments.cv, arguments.cvfixed;
+                expression = Val{false},
+                nanmath = false
+            )
+        end(PEinfo.theta0, PEinfo.z0[:,cidx,i,k+1], PEinfo.cv0[:,cidx], cvfixed[:,cidx])
+        for (sum, cidx, i, k) in keys
+    ]
+    ExaModels.@add_var(core,
+        zsum,
+        1:length(keys);
+        start = zsum0,
+    )
+    isempty(keys) && return core, zsum_sym, zsum0, exprs
+
+    # Create constraints zsum[q] = sum, one call per term form
+    times = Dict((measurement.cidx, points[m]...) => measurement.time for (m, measurement) in enumerate(PEinfo.measurements))
+    items = [(q, sum, cidx, i, k, times[(cidx, i, k)]) for (q, (sum, cidx, i, k)) in enumerate(keys)]
+    ExaModels.@add_con(core, con, zsum[q] for q in 1:length(keys))
+    for (f, rows) in _get_form_groups(core, PEinfo, arguments, [(q, term, cidx, i, k, t) for (q, sum, cidx, i, k, t) in items for term in _get_terms(sum)])
+        core = _create_term_constraints(core, con, f, rows)
+    end
+
+    return core, zsum_sym, zsum0, exprs
+end
+
+_create_zsum(core::ExaModels.ExaCore, PEinfo, arguments, exprs) = core, _get_zsum(0), Float64[], exprs
+
+# Create y constraints, one kernel per form up to 8 leaves and one per term form above
+function _create_y_constraints(
+        core::EMC.CollocationExaCore,
+        PEinfo,
+        arguments,
+        exprs
+    )
+    # Unpack variables
+    y = core.y
+
+    # Create constraints for the formulas up to 8 leaves
+    ms = [m for m in 1:_get_Nm(PEinfo) if _count_leaves(exprs[m]) <= 8]
+    for (f, rows) in _get_groups(core, PEinfo, arguments, exprs, ms)
         core = _create_measurement_constraints(core, y, f, rows)
+    end
+
+    # Create constraints for the formulas above 8 leaves, y[m] minus its terms
+    ms = [m for m in 1:_get_Nm(PEinfo) if _count_leaves(exprs[m]) > 8]
+    isempty(ms) && return core
+    ExaModels.@add_con(core, con, y[m] for m in ms)
+    points = _get_measurement_points(PEinfo)
+    items = [
+        (row, term, PEinfo.measurements[m].cidx, points[m]..., PEinfo.measurements[m].time)
+        for (row, m) in enumerate(ms) for term in _get_y_terms(exprs[m])
+    ]
+    for (f, rows) in _get_form_groups(core, PEinfo, arguments, items)
+        core = _create_term_constraints(core, con, f, rows)
+    end
+
+    return core
+end
+
+function _create_y_constraints(
+        core::ExaModels.ExaCore,
+        PEinfo,
+        arguments,
+        exprs
+    )
+    for (f, rows) in _get_groups(core, PEinfo, arguments, exprs, 1:_get_Nm(PEinfo))
+        core = _create_measurement_constraints(core, core.y, f, rows)
     end
 
     return core
@@ -58,8 +158,7 @@ function _create_sigma(
     theta, cv, y = core.theta, core.cv, core.y
 
     # Create sigma iterator, one group per observable and cells
-    exprs = _get_exprs(PEinfo, arguments, yvalue, [Meta.parse(observable.observable_formula) for observable in PEinfo.observables])
-    y0 = _get_starts(PEinfo, arguments, yvalue, exprs, zeros(_get_Nm(PEinfo)))
+    y0 = Array(core.x0)[y.offset .+ (1:_get_Nm(PEinfo))]
     sigma0 = _get_starts(PEinfo, arguments, yvalue, sigmas, y0)
     cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
     groups = [
@@ -247,6 +346,42 @@ end
 
 _get_transform(PEinfo, m) = PEinfo.observables[PEinfo.measurements[m].yidx].transform
 
+# zsum[q]: a sum of states inside an observable formula at a measurement point
+function _get_zsum(Nsum)
+    Symbolics.@variables zsum[1:Nsum]
+    return zsum
+end
+
+_get_Nsum(core::EMC.CollocationExaCore) = core.zsum.length
+_get_Nsum(core::ExaModels.ExaCore) = 0
+
+# Sums with more than 8 leaves in a denominator, a function, or a product with more than 8 other leaves replaced by zsum: collected into sums without an index, else zsum[index[sum, point]]
+function _bind_sums(x, under, sums, point, index, zsum)
+    isnothing(_get_leaf(x)) || return x
+    op, args = SymbolicUtils.operation(x), collect(SymbolicUtils.arguments(x))
+    if op === (+) && under && _count_leaves(x) > 8
+        isnothing(index) && push!(sums, (x, point...))
+        return zsum[isnothing(index) ? 1 : index[(x, point...)]]
+    end
+    if op === (/)
+        den = _bind_sums(args[2], true, sums, point, index, zsum)
+        num = _bind_sums(args[1], under || _count_leaves(den) > 8, sums, point, index, zsum)
+        return num / den
+    end
+    unders = op === (*) ? [under || _count_leaves(x) - _count_leaves(a) > 8 for a in args] : fill(op !== (+), length(args))
+    return op((_bind_sums(a, under_a, sums, point, index, zsum) for (a, under_a) in zip(args, unders))...)
+end
+
+# Top-level terms of an observable formula, a numerator sum distributed over its denominator
+function _get_y_terms(expr)
+    expr isa Number && return [expr]
+    if SymbolicUtils.iscall(expr) && SymbolicUtils.operation(expr) === (/)
+        num, den = SymbolicUtils.arguments(expr)
+        return [term / den for term in _get_terms(SymbolicUtils.expand(num))]
+    end
+    return _get_terms(SymbolicUtils.expand(expr))
+end
+
 # Measured value on the observableTransformation scale
 _get_ymeas(measurement::PEtabMeasurement, transform) =
     transform == :log   ? log(measurement.measurement)   :
@@ -355,10 +490,11 @@ function _parse_formula(expression::Expr, symbols)
     return getfield(Base, expression.args[1])((_parse_formula(argument, symbols) for argument in expression.args[2:end])...)
 end
 
-# points[m]: (i, k) of the collocation point z[:,cidx,i,k] at the time of measurement m, node 1 is (1, 0) and node i + 1 is (i, K)
+# points[m]: (i, k) of the collocation point z[:,cidx,i,k] at the time of measurement m, node 1 is (1, 0), node i + 1 is (i, K), a steady state is (0, 0)
 function _get_measurement_points(PEinfo)
     points = Vector{Tuple{Int, Int}}(undef, _get_Nm(PEinfo))
     for (m, measurement) in enumerate(PEinfo.measurements)
+        isinf(measurement.time) && (points[m] = (0, 0); continue)
         node = _get_index(measurement.time, PEinfo.nodes[measurement.cidx])
         points[m] = node == 1 ? (1, 0) : (node - 1, PEinfo.K)
     end
@@ -368,60 +504,66 @@ end
 # z0_measurements[:,m]: initial guess of the states at measurement m, z0 at its collocation point or zss0 of its condition
 function _get_z0_measurements(PEinfo)
     z0_measurements = Matrix{Float64}(undef, _get_Nz(PEinfo), _get_Nm(PEinfo))
+    points = _get_measurement_points(PEinfo)
     for (m, measurement) in enumerate(PEinfo.measurements)
         if isinf(measurement.time)
             z0_measurements[:,m] = PEinfo.zss0[PEinfo.preeq_idxs[measurement.cidx]]
         else
-            i, k = _get_measurement_points(PEinfo)[m]
+            i, k = points[m]
             z0_measurements[:,m] = PEinfo.z0[:,measurement.cidx,i,k+1]
         end
     end
     return z0_measurements
 end
 
-# starts[m]: exprs[m] at the initial guess, its observable read from y0
-function _get_starts(PEinfo, arguments, yvalue, exprs, y0)
+# starts[m]: exprs[m] at the initial guess, its observable read from y0 and its sums from zsum0
+function _get_starts(PEinfo, arguments, yvalue, exprs, y0, zsum = _get_zsum(0), zsum0 = Float64[])
     z0 = _get_z0_measurements(PEinfo)
     cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
     cache = Dict{Any, Any}()
-    return [
-        get!(cache, _get_key(measurement)) do
+    return Float64[
+        get!(cache, exprs[m]) do
             Symbolics.build_function(
                 exprs[m],
-                arguments.theta, arguments.z, arguments.cv, arguments.cvfixed, yvalue;
+                arguments.theta, arguments.z, arguments.cv, arguments.cvfixed, yvalue, zsum;
                 expression = Val{false},
                 nanmath = false
             )
-        end(PEinfo.theta0, z0[:,m], PEinfo.cv0[:,measurement.cidx], cvfixed[:,measurement.cidx], (y0[m],))
+        end(PEinfo.theta0, z0[:,m], PEinfo.cv0[:,measurement.cidx], cvfixed[:,measurement.cidx], (y0[m],), zsum0)
         for (m, measurement) in enumerate(PEinfo.measurements)
     ]
 end
 
-# Groups of measurements ms sharing a term form: (f, rows) with rows = (m, cidx, i, k, js, vs, cvidxs, data, t)
+# Groups of measurements ms sharing a form: (f, rows) with rows = (m, cidx, i, k, js, vs, cvidxs, qs, data, t)
 function _get_groups(core::EMC.CollocationExaCore, PEinfo, arguments, exprs, ms)
-    isempty(ms) && return []
-    cvfixed, u = _get_cvfixed(PEinfo, PEinfo.conditions), _get_u(PEinfo)
     points = _get_measurement_points(PEinfo)
-    slots = _get_slots(core, PEinfo, maximum(_count_leaves(exprs[m]) for m in ms))
+    items = [(m, exprs[m], PEinfo.measurements[m].cidx, points[m]..., PEinfo.measurements[m].time) for m in ms]
+    return _get_form_groups(core, PEinfo, arguments, items)
+end
+
+# Groups of items (row, expr, cidx, i, k, t) sharing a form: (f, rows) with rows = (row, cidx, i, k, js, vs, cvidxs, qs, data, t)
+function _get_form_groups(core, PEinfo, arguments, items)
+    isempty(items) && return []
+    cvfixed, u = _get_cvfixed(PEinfo, PEinfo.conditions), _get_u(PEinfo)
+    slots = _get_slots(core, PEinfo, maximum(_count_leaves(expr) for (row, expr, cidx, i, k, t) in items); Nsum = _get_Nsum(core))
     forms, occurrences = Dict{String, Any}(), []
-    for m in ms
-        form = _get_form(exprs[m])
-        expr, leaves = _get_expr(exprs[m], arguments, slots)
+    for (row, expr, cidx, i, k, t) in items
+        form = _get_form(expr)
+        expr, leaves = _get_expr(expr, arguments, slots)
         haskey(forms, form) || (forms[form] = expr)
-        cidx, (i, k) = PEinfo.measurements[m].cidx, points[m]
         push!(occurrences, (
-            form, m, cidx, i, k,
-            Tuple(leaves.js), Tuple(leaves.vs), Tuple(leaves.cvidxs),
+            form, row, cidx, i, k,
+            Tuple(leaves.js), Tuple(leaves.vs), Tuple(leaves.cvidxs), Tuple(leaves.qs),
             Tuple(_get_data(leaf, cvfixed, u, cidx, i) for leaf in leaves.data),
-            PEinfo.measurements[m].time,
+            t,
         ))
     end
     return [
         (
             Symbolics.build_function(
                 forms[form],
-                arguments.theta, slots.z, slots.cv, slots.m, slots.i, slots.k,
-                slots.js, slots.vs, slots.cvidxs, slots.data, arguments.t;
+                arguments.theta, slots.z, slots.cv, slots.zsum, slots.m, slots.i, slots.k,
+                slots.js, slots.vs, slots.cvidxs, slots.qs, slots.data, arguments.t;
                 expression = Val{false},
                 nanmath = false
             ),
@@ -459,12 +601,31 @@ function _create_measurement_constraints(
         rows
     )
     # Unpack variables
-    z, theta, cv = core.z, core.theta, core.cv
+    z, theta, cv, zsum = core.z, core.theta, core.cv, core.zsum
 
     # Create constraints
     ExaModels.@add_con(core,
-        variable[m] - f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t)
-        for (m, cidx, i, k, js, vs, cvidxs, data_m, t) in rows
+        variable[m] - f(theta, z, cv, zsum, cidx, i, k, js, vs, cvidxs, qs, data_m, t)
+        for (m, cidx, i, k, js, vs, cvidxs, qs, data_m, t) in rows
+    )
+
+    return core
+end
+
+# Create constraint augmentations row => -f(theta, z, cv, zsum) of the terms of the group
+function _create_term_constraints(
+        core::EMC.CollocationExaCore,
+        con,
+        f,
+        rows
+    )
+    # Unpack variables
+    z, theta, cv, zsum = core.z, core.theta, core.cv, core.zsum
+
+    # Create constraint augmentations
+    ExaModels.@add_con!(core, con,
+        row => -f(theta, z, cv, zsum, cidx, i, k, js, vs, cvidxs, qs, data_m, t)
+        for (row, cidx, i, k, js, vs, cvidxs, qs, data_m, t) in rows
     )
 
     return core
@@ -498,29 +659,29 @@ function _create_theta_sigma_objective(
         rows
     )
     # Unpack variables
-    z, theta, cv = core.z, core.theta, core.cv
+    z, theta, cv, zsum = core.z, core.theta, core.cv, core.zsum
 
     # Create residuals
     for transform in (:lin, :log, :log10)
         itr = [
-            (_get_ymeas(PEinfo.measurements[m], transform), m, cidx, i, k, js, vs, cvidxs, data_m, t)
-            for (m, cidx, i, k, js, vs, cvidxs, data_m, t) in rows if _get_transform(PEinfo, m) == transform
+            (_get_ymeas(PEinfo.measurements[m], transform), m, cidx, i, k, js, vs, cvidxs, qs, data_m, t)
+            for (m, cidx, i, k, js, vs, cvidxs, qs, data_m, t) in rows if _get_transform(PEinfo, m) == transform
         ]
         isempty(itr) && continue
         if transform == :lin
             ExaModels.@add_obj(core,
-                0.5 * ((y[m] - ymeas) / f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t))^2
-                for (ymeas, m, cidx, i, k, js, vs, cvidxs, data_m, t) in itr
+                0.5 * ((y[m] - ymeas) / f(theta, z, cv, zsum, cidx, i, k, js, vs, cvidxs, qs, data_m, t))^2
+                for (ymeas, m, cidx, i, k, js, vs, cvidxs, qs, data_m, t) in itr
             )
         elseif transform == :log
             ExaModels.@add_obj(core,
-                0.5 * ((log(y[m]) - ymeas) / f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t))^2
-                for (ymeas, m, cidx, i, k, js, vs, cvidxs, data_m, t) in itr
+                0.5 * ((log(y[m]) - ymeas) / f(theta, z, cv, zsum, cidx, i, k, js, vs, cvidxs, qs, data_m, t))^2
+                for (ymeas, m, cidx, i, k, js, vs, cvidxs, qs, data_m, t) in itr
             )
         else
             ExaModels.@add_obj(core,
-                0.5 * ((log10(y[m]) - ymeas) / f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t))^2
-                for (ymeas, m, cidx, i, k, js, vs, cvidxs, data_m, t) in itr
+                0.5 * ((log10(y[m]) - ymeas) / f(theta, z, cv, zsum, cidx, i, k, js, vs, cvidxs, qs, data_m, t))^2
+                for (ymeas, m, cidx, i, k, js, vs, cvidxs, qs, data_m, t) in itr
             )
         end
     end
@@ -528,18 +689,18 @@ function _create_theta_sigma_objective(
     # Create log(sigma), one term per distinct row since sigma reads no state
     counts, first_rows = Dict{Any, Int}(), Dict{Any, Any}()
     for row in rows
-        (m, cidx, i, k, js, vs, cvidxs, data_m, t) = row
-        key = (cidx, js, vs, cvidxs, data_m)
+        (m, cidx, i, k, js, vs, cvidxs, qs, data_m, t) = row
+        key = (cidx, js, vs, cvidxs, qs, data_m)
         counts[key] = get(counts, key, 0) + 1
         get!(first_rows, key, row)
     end
     itr = [
         (counts[key], first_rows[key][2:end]...)
-        for key in unique((cidx, js, vs, cvidxs, data_m) for (m, cidx, i, k, js, vs, cvidxs, data_m, t) in rows)
+        for key in unique((cidx, js, vs, cvidxs, qs, data_m) for (m, cidx, i, k, js, vs, cvidxs, qs, data_m, t) in rows)
     ]
     ExaModels.@add_obj(core,
-        count * log(f(theta, z, cv, cidx, i, k, js, vs, cvidxs, data_m, t))
-        for (count, cidx, i, k, js, vs, cvidxs, data_m, t) in itr
+        count * log(f(theta, z, cv, zsum, cidx, i, k, js, vs, cvidxs, qs, data_m, t))
+        for (count, cidx, i, k, js, vs, cvidxs, qs, data_m, t) in itr
     )
 
     return core

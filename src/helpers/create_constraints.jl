@@ -373,10 +373,10 @@ function _analyze_rhs(core, PEinfo)
 end
 
 # Slot arrays of a form: z[v,m,i,k] and cv[cvidx,m] with the mesh indices, index tuples js, vs, cvidxs, data
-function _get_slots(core, PEinfo, n)
+function _get_slots(core, PEinfo, n; Nsum = 0)
     Nz, Nc, N, K, Ncv = _get_Nz(PEinfo), _get_Nc(PEinfo), core.N, core.K, _get_Ncv(PEinfo)
-    Symbolics.@variables z[1:Nz, 1:Nc, 1:N, 1:(K + 1)] cv[1:Ncv, 1:Nc] m::Int i::Int k::Int js[1:n]::Int vs[1:n]::Int cvidxs[1:n]::Int data[1:n]
-    return (; z, cv, m, i, k, js, vs, cvidxs, data)
+    Symbolics.@variables z[1:Nz, 1:Nc, 1:N, 1:(K + 1)] cv[1:Ncv, 1:Nc] zsum[1:Nsum] m::Int i::Int k::Int js[1:n]::Int vs[1:n]::Int cvidxs[1:n]::Int qs[1:n]::Int data[1:n]
+    return (; z, cv, zsum, m, i, k, js, vs, cvidxs, qs, data)
 end
 
 _count_leaves(x) = isnothing(_get_leaf(x)) ? sum(_count_leaves, SymbolicUtils.arguments(x)) : 1
@@ -425,7 +425,7 @@ end
 
 # Term written over the slots, leaves numbered in the order of the form
 function _get_expr(x, arguments, slots)
-    leaves = (; js = Int[], vs = Int[], cvidxs = Int[], data = Tuple{Symbol, Any}[])
+    leaves = (; js = Int[], vs = Int[], cvidxs = Int[], qs = Int[], data = Tuple{Symbol, Any}[])
     return _get_expr!(x, arguments, slots, leaves), leaves
 end
 
@@ -437,6 +437,7 @@ function _get_expr!(x, arguments, slots, leaves)
         kind === :theta && (push!(leaves.js, index); return arguments.theta[slots.js[length(leaves.js)]])
         kind === :z && (push!(leaves.vs, index); return slots.z[slots.vs[length(leaves.vs)], slots.m, slots.i, slots.k])
         kind === :cv && (push!(leaves.cvidxs, index); return slots.cv[slots.cvidxs[length(leaves.cvidxs)], slots.m])
+        kind === :zsum && (push!(leaves.qs, index); return slots.zsum[slots.qs[length(leaves.qs)]])
         push!(leaves.data, leaf)
         return slots.data[length(leaves.data)]
     end

@@ -77,10 +77,7 @@
         if isempty(PEinfo.nodes)
             @test PEinfo.K == 0
         else
-            Nz, Ntheta_per_cond = EMP._get_Nz(PEinfo), EMP._get_Ntheta_per_cond(PEinfo)
-            model_size = Nz <= 15 && Ntheta_per_cond <= 20 ? :small :
-                         Nz <= 50 && Ntheta_per_cond <= 70 ? :medium : :large
-            @test PEinfo.K == (model_size == :large ? 3 : 4)
+            @test PEinfo.K in (3, 4)
             @test all(nodes -> nodes[1] == 0 && issorted(nodes) && allunique(nodes), PEinfo.nodes)
 
             t_stops = EMP._get_t_stops(PEinfo)
@@ -122,12 +119,17 @@
         @test EMP._split_widest!([0.0, 1.0, 3.0], 4) == [0.0, 0.5, 1.0, 2.0, 3.0]
 
         sols = [(; t = collect(0.0:0.25:4.0)), (; t = [0.0, 4.0])]
-        for (model_size, expected) in ((:small, (16, 4)), (:medium, (8, 4)), (:large, (4, 3)))
-            nodes, K = EMP._determine_mesh(petab, sols, model_size)
+        for (mesh_size, expected) in ((:small, (8, 4)), (:medium, (4, 4)), (:large, (4, 3)), (:massive, (4, 3)))
+            nodes, K = EMP._determine_mesh(petab, sols, mesh_size)
             @test (length(nodes[1]) - 1, K) == expected
             @test all(node -> length(node) == length(nodes[1]), nodes)
         end
         @test EMP._determine_mesh(petab, nothing, :small) == (Vector{Float64}[], 0)
+        @test EMP._get_mesh_size(petab, sols, 1) == :small
+        @test EMP._get_mesh_size(petab, sols, 5000) == :medium
+        @test EMP._get_mesh_size(petab, sols, 20000) == :large
+        @test EMP._get_mesh_size(petab, sols, 100000) == :massive
+        @test EMP._get_mesh_size(petab, nothing, 1) == :small
         @test isempty(EMP._get_z0(nothing, Vector{Float64}[], 0))
 
         @test EMP._get_odesolver(:small) isa EMP.ODE.Rodas5P

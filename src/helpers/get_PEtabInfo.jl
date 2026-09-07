@@ -20,7 +20,8 @@ function _get_PEtabInfo(filename)
     sols, sols_ss = _initial_solve(petab, model_size)
 
     # Determine mesh nodes and K
-    nodes, K = _determine_mesh(petab, sols, model_size)
+    mesh_size = _get_mesh_size(petab, sols, Nz)
+    nodes, K = _determine_mesh(petab, sols, mesh_size)
 
     # Initial guesses {z0, zss0}
     theta0 = _get_theta0(petab)
@@ -434,14 +435,16 @@ function _get_op(petab, theta0, condition, zss)
 end
 
 # Mesh nodes per condition and K
-function _determine_mesh(petab, sols, model_size)
+function _determine_mesh(petab, sols, mesh_size)
     t_stops = _get_t_stops(petab)
-    if model_size == :small
-        every, K = 1, 4
-    elseif model_size == :medium
+    if mesh_size == :small
         every, K = 2, 4
-    elseif model_size == :large
-        every, K = 4, 3
+    elseif mesh_size == :medium
+        every, K = 4, 4
+    elseif mesh_size == :large
+        every, K = 8, 3
+    elseif mesh_size == :massive
+        every, K = 16, 3
     end
     nodes = [_get_nodes(sols[cidx].t, t_stops[cidx], every) for cidx in eachindex(sols)]
     N = maximum(length.(nodes)) - 1
@@ -451,7 +454,19 @@ function _determine_mesh(petab, sols, model_size)
     return nodes, K
 end
 
-_determine_mesh(petab, sols::Nothing, model_size) = Vector{Float64}[], 0
+_determine_mesh(petab, sols::Nothing, mesh_size) = Vector{Float64}[], 0
+
+# Mesh size by the variable count of the finest mesh, a node at every integrator step with K = 4
+function _get_mesh_size(petab, sols, Nz)
+    t_stops = _get_t_stops(petab)
+    N1 = maximum(length(_get_nodes(sols[cidx].t, t_stops[cidx], 1)) for cidx in eachindex(sols)) - 1
+    nvar1 = Nz * length(petab.conditions) * N1 * 5
+    return nvar1 < 5e5   ? :small  :
+           nvar1 < 2.5e6 ? :medium :
+           nvar1 < 1e7   ? :large  : :massive
+end
+
+_get_mesh_size(petab, sols::Nothing, Nz) = :small
 
 # Fixed nodes t_stops plus one in every `every` integrator steps between them
 function _get_nodes(t, t_stops, every; tol = 1e-8)
