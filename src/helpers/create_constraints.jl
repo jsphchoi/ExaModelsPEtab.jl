@@ -23,22 +23,52 @@ function _create_collocation_constraints(
     )
     # Unpack variables and model functions
     z, theta, cv = core.z, core.theta, core.cv
+    Nz, Nc, N, K = _get_Nz(PEinfo), _get_Nc(PEinfo), core.N, core.K
 
-    # Create colloation constraint iterator
-    cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
-    u = _get_u(PEinfo)
-    itr = [
-        (m, Tuple(cvfixed[:,m]), Tuple(u[:,m,i]), i, k)
-        for m in 1:_get_Nc(PEinfo), i in 1:core.N, k in 1:core.K
-    ]
+    # One kernel per term form of the right-hand sides when that is fewer than one per state
+    forms, arguments = _analyze_rhs(core, PEinfo)
+    if length(forms) + 1 < Nz
+        # Create base rows sum_j A[j,k] z[v,m,i,j] = 0, the terms of f are added below
+        rows = [(v, m, i, k) for v in 1:Nz, m in 1:Nc, i in 1:N, k in 1:K]
+        EMC.@add_con_collocation(core, coll, z[v,m], 0 for (v, m, i, k) in rows)
+        pos = LinearIndices(rows)
 
-    # Create collocation constraints
-    f = _get_f(PEinfo) # get RHS functions f[v](theta,z,cv,cvfixed,u,t)
-    for v in 1:_get_Nz(PEinfo)
-        EMC.@add_con_collocation(core, z[v,m],
-            f[v](theta[:], z[:,m,i,k], cv[:,m], cvfixed_m, u_mi, t)
-            for (m, cvfixed_m, u_mi, i, k) in itr
-        )
+        # Add -h f to the rows of every state containing the term form, one call per form
+        h, t = core.mesh.h, core.mesh.t
+        for (expr, terms) in forms
+            f = Symbolics.build_function(
+                expr, 
+                arguments...; 
+                expression = Val{false}, 
+                nanmath = false
+            )
+            itr = [
+                (pos[v,m,i,k], h[m,i], m, i, k, js, vs, cvidxs, data[m,i], t[m,i,k])
+                for (v, js, vs, cvidxs, data) in terms, m in 1:Nc, i in 1:N, k in 1:K
+            ]
+            # Constraint augmentation append reaction terms 
+            ExaModels.@add_con!(core, coll,
+                row => -h_mi * f(theta, z, cv, m, i, k, js, vs, cvidxs, data_mi, t_mik)
+                for (row, h_mi, m, i, k, js, vs, cvidxs, data_mi, t_mik) in itr
+            )
+        end
+    else
+        # Create colloation constraint iterator
+        cvfixed = _get_cvfixed(PEinfo, PEinfo.conditions)
+        u = _get_u(PEinfo)
+        itr = [
+            (m, Tuple(cvfixed[:,m]), Tuple(u[:,m,i]), i, k)
+            for m in 1:_get_Nc(PEinfo), i in 1:core.N, k in 1:core.K
+        ]
+
+        # Create collocation constraints
+        f = _get_f(PEinfo) # get RHS functions f[v](theta,z,cv,cvfixed,u,t)
+        for v in 1:_get_Nz(PEinfo)
+            EMC.@add_con_collocation(core, z[v,m],
+                f[v](theta[:], z[:,m,i,k], cv[:,m], cvfixed_m, u_mi, t)
+                for (m, cvfixed_m, u_mi, i, k) in itr
+            )
+        end
     end
 
     # Create continuity constraints
@@ -313,3 +343,116 @@ function _get_u(PEinfo)
     end
     return u
 end
+
+# Right-hand-side terms grouped by form: forms = [(expr, terms)] with expr written over the slot
+# arguments (theta, z, cv, m, i, k, js, vs, cvidxs, data, t) and terms = [(v, js, vs, cvidxs, data[m,i])]
+function _analyze_rhs(core, PEinfo)
+    arguments = _get_arguments(PEinfo)
+    rules = _get_substitutions(PEinfo, arguments)
+    cvfixed, u = _get_cvfixed(PEinfo, PEinfo.conditions), _get_u(PEinfo)
+    Nc, N = _get_Nc(PEinfo), core.N
+    terms = [
+        (v, term)
+        for (v, equation) in enumerate(MTK.equations(PEinfo.model.sys))
+        for term in _get_terms(Symbolics.fixpoint_sub(equation.rhs, rules; fold = Val(true)))
+    ]
+    slots = _get_slots(core, PEinfo, maximum(_count_leaves(term) for (v, term) in terms))
+    exprs, occurrences = Dict{String, Any}(), []
+    for (v, term) in terms
+        form = _get_form(term)
+        expr, leaves = _get_expr(term, arguments, slots)
+        haskey(exprs, form) || (exprs[form] = expr)
+        data = [Tuple(_get_data(leaf, cvfixed, u, m, i) for leaf in leaves.data) for m in 1:Nc, i in 1:N]
+        push!(occurrences, (form, v, Tuple(leaves.js), Tuple(leaves.vs), Tuple(leaves.cvidxs), data))
+    end
+    forms = [
+        (exprs[form], [(v, js, vs, cvidxs, data) for (other, v, js, vs, cvidxs, data) in occurrences if other == form])
+        for form in unique(first.(occurrences))
+    ]
+    return forms, (arguments.theta, slots.z, slots.cv, slots.m, slots.i, slots.k, slots.js, slots.vs, slots.cvidxs, slots.data, arguments.t)
+end
+
+# Slot arrays of a form: z[v,m,i,k] and cv[cvidx,m] with the mesh indices, index tuples js, vs, cvidxs, data
+function _get_slots(core, PEinfo, n)
+    Nz, Nc, N, K, Ncv = _get_Nz(PEinfo), _get_Nc(PEinfo), core.N, core.K, _get_Ncv(PEinfo)
+    Symbolics.@variables z[1:Nz, 1:Nc, 1:N, 1:(K + 1)] cv[1:Ncv, 1:Nc] m::Int i::Int k::Int js[1:n]::Int vs[1:n]::Int cvidxs[1:n]::Int data[1:n]
+    return (; z, cv, m, i, k, js, vs, cvidxs, data)
+end
+
+_count_leaves(x) = isnothing(_get_leaf(x)) ? sum(_count_leaves, SymbolicUtils.arguments(x)) : 1
+
+# Top-level + terms of a right-hand side
+function _get_terms(rhs)
+    rhs = SymbolicUtils.unwrap_const(Symbolics.unwrap(rhs))
+    rhs isa Number && return [rhs]
+    return SymbolicUtils.isadd(rhs) ? collect(SymbolicUtils.arguments(rhs)) : [rhs]
+end
+
+# Leaf of a term as (kind, index or value), or nothing for an inner node
+function _get_leaf(x)
+    x = SymbolicUtils.unwrap_const(x)
+    x isa Number && return (:data, x)
+    SymbolicUtils.issym(x) && return (:t, 0)
+    if SymbolicUtils.iscall(x) && SymbolicUtils.operation(x) === getindex
+        array, index = SymbolicUtils.arguments(x)
+        return (Symbol(string(array)), SymbolicUtils.unwrap_const(index))
+    end
+    return nothing
+end
+
+# Integer power of a leaf as repeated factors, else the operation and its arguments
+function _get_children(x)
+    op, args = SymbolicUtils.operation(x), collect(SymbolicUtils.arguments(x))
+    if op === (^) && !isnothing(_get_leaf(args[1]))
+        n = SymbolicUtils.unwrap_const(args[2])
+        n isa Integer && 2 <= n <= 4 && return (*), fill(args[1], n)
+    end
+    return op, args
+end
+
+# Form of a term: every leaf occurrence its kind, children of + and * sorted by form
+function _get_form(x)
+    leaf = _get_leaf(x)
+    isnothing(leaf) || return leaf[1] in (:cvfixed, :u) ? "data" : string(leaf[1])
+    op, args = _get_children(x)
+    if op === (^) && SymbolicUtils.unwrap_const(args[2]) isa Integer
+        return string("^(", _get_form(args[1]), ",", SymbolicUtils.unwrap_const(args[2]), ")")
+    end
+    kids = [_get_form(a) for a in args]
+    op in (+, *) && sort!(kids)
+    return string(nameof(op), "(", join(kids, ","), ")")
+end
+
+# Term written over the slots, leaves numbered in the order of the form
+function _get_expr(x, arguments, slots)
+    leaves = (; js = Int[], vs = Int[], cvidxs = Int[], data = Tuple{Symbol, Any}[])
+    return _get_expr!(x, arguments, slots, leaves), leaves
+end
+
+function _get_expr!(x, arguments, slots, leaves)
+    leaf = _get_leaf(x)
+    if !isnothing(leaf)
+        kind, index = leaf
+        kind === :t && return arguments.t
+        kind === :theta && (push!(leaves.js, index); return arguments.theta[slots.js[length(leaves.js)]])
+        kind === :z && (push!(leaves.vs, index); return slots.z[slots.vs[length(leaves.vs)], slots.m, slots.i, slots.k])
+        kind === :cv && (push!(leaves.cvidxs, index); return slots.cv[slots.cvidxs[length(leaves.cvidxs)], slots.m])
+        push!(leaves.data, leaf)
+        return slots.data[length(leaves.data)]
+    end
+    op, args = _get_children(x)
+    if op === (^) && SymbolicUtils.unwrap_const(args[2]) isa Integer
+        return _get_expr!(args[1], arguments, slots, leaves)^SymbolicUtils.unwrap_const(args[2])
+    end
+    order = op in (+, *) ? sortperm([_get_form(a) for a in args]) : eachindex(args)
+    kids = [_get_expr!(args[q], arguments, slots, leaves) for q in order]
+    return op(kids...)
+end
+
+# Value of a data leaf in condition m, interval i
+_get_data(leaf, cvfixed, u, m, i) = Float64(
+    leaf[1] === :data    ? leaf[2] :
+    leaf[1] === :cvfixed ? cvfixed[leaf[2],m] :
+    leaf[1] === :u       ? u[leaf[2],m,i] :
+    throw(ArgumentError("unsupported leaf $(leaf[1]) in a right-hand side"))
+)

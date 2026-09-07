@@ -37,6 +37,7 @@ import SBMLImporter
 # for symbolic model -> callback functions
 import ModelingToolkitBase as MTK
 import Symbolics
+import Symbolics.SymbolicUtils
 
 # for initial solve & steady-state model analysis
 import OrdinaryDiffEq as ODE

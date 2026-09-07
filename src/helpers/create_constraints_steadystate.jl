@@ -41,8 +41,8 @@ function _create_zss_constraints(
         itr_v = [row for row in itr if v in keep_rows[row[1]]]
         isempty(itr_v) && continue
         ExaModels.@add_con(core,
-            f[v](theta[:], zss[:,ssidx], (), cvfixed_ss0, u_ss, 0.0)
-            for (ssidx, cvfixed_s, u_s) in itr_v
+            f[v](theta[:], zss[:,ssidx], (), cvfixed_ss, u_ss, 0.0)
+            for (ssidx, cvfixed_ss, u_ss) in itr_v
         )
     end
 
