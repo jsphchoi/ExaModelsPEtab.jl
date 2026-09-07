@@ -32,10 +32,10 @@ const MODELS = [
     "Laske_PLOSComputBiol2019",
     "Giordano_Nature2020",
     "Lang_PLOSComputBiol2024",
-    # Chen_MSB2009 : observable kernel build over 1000 s
-    # SalazarCavazos_MBoC2020 : observable kernel build over 1000 s
-    # Isensee_JCB2018 : massive, skipped for now
-    # Raimundez_PCB2020 : massive, skipped for now
+    "Chen_MSB2009",
+    "SalazarCavazos_MBoC2020",
+    "Isensee_JCB2018",
+    "Raimundez_PCB2020",
     # Froehlich_CellSystems2018 : too large for the test suite
     # Fiedler_BMCSystBiol2016 : initial condition expression too large
 ]
