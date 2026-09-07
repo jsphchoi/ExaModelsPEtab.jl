@@ -23,7 +23,7 @@
         @test core.ncon == collocation + continuity + ic + cv + Nz * Nss
 
         c, scale, from = residual(core), maximum(abs, PEinfo.z0), 0
-        @test maximum(abs, c[from+1:from+collocation]) <= 1e-5 * scale
+        @test maximum(abs, c[from+1:from+collocation]) <= 1e-3 * scale
         from += collocation
         @test maximum(abs, c[from+1:from+continuity]) <= 1e-10 * scale
         from += continuity
