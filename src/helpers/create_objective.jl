@@ -548,7 +548,7 @@ end
 function _get_form_groups(core, PEinfo, arguments, items)
     isempty(items) && return []
     cvfixed, u = _get_cvfixed(PEinfo, PEinfo.conditions), _get_u(PEinfo)
-    slots = _get_slots(core, PEinfo, maximum(_count_leaves(expr) for (row, expr, cidx, i, k, t) in items); Nsum = _get_Nsum(core))
+    slots = _get_slots(core, PEinfo, maximum(_count_slots(expr) for (row, expr, cidx, i, k, t) in items); Nsum = _get_Nsum(core))
     forms, occurrences = Dict{String, Any}(), []
     for (row, expr, cidx, i, k, t) in items
         form = _get_form(expr)

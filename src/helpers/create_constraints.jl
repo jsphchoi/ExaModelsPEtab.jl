@@ -356,7 +356,7 @@ function _analyze_rhs(core, PEinfo)
         for (v, equation) in enumerate(MTK.equations(PEinfo.model.sys))
         for term in _get_terms(Symbolics.fixpoint_sub(equation.rhs, rules; fold = Val(true)))
     ]
-    slots = _get_slots(core, PEinfo, maximum(_count_leaves(term) for (v, term) in terms))
+    slots = _get_slots(core, PEinfo, maximum(_count_slots(term) for (v, term) in terms))
     exprs, occurrences = Dict{String, Any}(), []
     for (v, term) in terms
         form = _get_form(term)
@@ -380,6 +380,8 @@ function _get_slots(core, PEinfo, n; Nsum = 0)
 end
 
 _count_leaves(x) = isnothing(_get_leaf(x)) ? sum(_count_leaves, SymbolicUtils.arguments(x)) : 1
+
+_count_slots(x) = isnothing(_get_leaf(x)) ? sum(_count_slots, last(_get_children(x))) : 1
 
 # Top-level + terms of a right-hand side
 function _get_terms(rhs)

@@ -1,5 +1,5 @@
 @testset "examodel_petab" begin
-    @testset "builds $model" for model in MODELS_SOLVED
+    @testset "builds $model" for model in MODELS
         PEinfo, nlp = peinfo(model), examodel(model)
         @test nlp.meta.ncon == nlp.meta.nvar - EMP._get_Ntheta(PEinfo)
         @test EMP.ExaModels.NLPModels.obj(nlp, nlp.meta.x0) ≈ EMP._evaluate_objective(PEinfo, PEinfo.theta0) rtol = 1e-10
