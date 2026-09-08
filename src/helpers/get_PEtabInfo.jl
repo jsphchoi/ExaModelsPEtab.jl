@@ -443,9 +443,9 @@ function _determine_mesh(petab, sols, mesh_size)
     elseif mesh_size == :medium
         every, K = 4, 4
     elseif mesh_size == :large
-        every, K = 8, 3
+        every, K = 8, 4
     elseif mesh_size == :massive
-        every, K = 16, 3
+        every, K = 16, 4
     end
     nodes = [_get_nodes(sols[cidx].t, t_stops[cidx], every) for cidx in eachindex(sols)]
     N = maximum(length.(nodes)) - 1

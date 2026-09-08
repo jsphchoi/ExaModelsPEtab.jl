@@ -119,7 +119,7 @@
         @test EMP._split_widest!([0.0, 1.0, 3.0], 4) == [0.0, 0.5, 1.0, 2.0, 3.0]
 
         sols = [(; t = collect(0.0:0.25:4.0)), (; t = [0.0, 4.0])]
-        for (mesh_size, expected) in ((:small, (8, 4)), (:medium, (4, 4)), (:large, (4, 3)), (:massive, (4, 3)))
+        for (mesh_size, expected) in ((:small, (8, 4)), (:medium, (4, 4)), (:large, (4, 4)), (:massive, (4, 4)))
             nodes, K = EMP._determine_mesh(petab, sols, mesh_size)
             @test (length(nodes[1]) - 1, K) == expected
             @test all(node -> length(node) == length(nodes[1]), nodes)
