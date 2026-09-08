@@ -407,7 +407,16 @@ function _get_children(x)
         n = SymbolicUtils.unwrap_const(args[2])
         n isa Integer && 2 <= n <= 4 && return (*), fill(args[1], n)
     end
-    return op, args
+    op === (*) || return op, args
+    args = [f for arg in args for f in _get_factors(arg)]
+    return op, any(arg -> SymbolicUtils.unwrap_const(arg) isa Number, args) ? args : [1; args]
+end
+
+# Factors an argument of a product stands for
+function _get_factors(x)
+    SymbolicUtils.iscall(x) || return [x]
+    op, args = _get_children(x)
+    return op === (*) ? args : [x]
 end
 
 # Form of a term: every leaf occurrence its kind, children of + and * sorted by form
